@@ -1,0 +1,74 @@
+{
+  "version": "1.0.0",
+  "description": "七类数据的保留期与清理优先级（data-storage.md 合规）",
+  "dataTypes": {
+    "cache": {
+      "directory": "Data/Cache/",
+      "retentionDays": 7,
+      "maxSizeMb": 100,
+      "cleanupPriority": 1,
+      "cleanupStrategy": "LRU",
+      "description": "缓存数据，可安全删除"
+    },
+    "decisions": {
+      "directory": "Data/Decisions/",
+      "retentionDays": 365,
+      "maxSizeMb": 50,
+      "cleanupPriority": 5,
+      "cleanupStrategy": "archive",
+      "description": "决策历史，归档不删除"
+    },
+    "loops": {
+      "directory": "Data/Loops/",
+      "retentionDays": 90,
+      "maxSizeMb": 200,
+      "cleanupPriority": 4,
+      "cleanupStrategy": "compress",
+      "description": "Loop 数据，完成后压缩归档"
+    },
+    "operations": {
+      "directory": "Data/Operations/",
+      "retentionDays": 180,
+      "maxSizeMb": 100,
+      "cleanupPriority": 4,
+      "cleanupStrategy": "compress",
+      "description": "操作历史，压缩归档"
+    },
+    "sessions": {
+      "directory": "Data/Sessions/",
+      "retentionDays": 30,
+      "maxSizeMb": 50,
+      "cleanupPriority": 3,
+      "cleanupStrategy": "archive",
+      "description": "会话数据，过期后归档"
+    },
+    "workspace": {
+      "directory": "Data/Workspace/",
+      "retentionDays": 14,
+      "maxSizeMb": 500,
+      "cleanupPriority": 2,
+      "cleanupStrategy": "delete",
+      "description": "工作区临时文件，可删除"
+    },
+    "db": {
+      "directory": "Data/db/",
+      "retentionDays": -1,
+      "maxSizeMb": 1000,
+      "cleanupPriority": 6,
+      "cleanupStrategy": "vacuum",
+      "description": "SQLite 数据库，仅 VACUUM 不删除"
+    }
+  },
+  "cleanupOrder": [
+    "cache",
+    "workspace",
+    "sessions",
+    "loops",
+    "operations",
+    "decisions",
+    "db"
+  ],
+  "globalQuotaMb": 2000,
+  "autoCleanupEnabled": true,
+  "cleanupIntervalHours": 24
+}

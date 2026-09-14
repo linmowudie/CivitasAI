@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-09-14",
+  "files": {
+    "roles/prime_director.md": "1.0.0",
+    "roles/partner.md": "1.0.0",
+    "roles/worker.md": "1.0.0",
+    "roles/reviewer.md": "1.0.0",
+    "roles/assembly_node.md": "1.0.0",
+    "roles/arbitrator.md": "1.0.0",
+    "roles/auditor.md": "1.0.0",
+    "roles/regulator.md": "1.0.0",
+    "system/mainLoop.md": "1.0.0",
+    "tasks/defaultTask.md": "1.0.0"
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-09-14",
+      "description": "初始版本——8 角色 + 系统提示词 + 任务模板"
+    }
+  ]
+}

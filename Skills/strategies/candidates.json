@@ -1,0 +1,63 @@
+{
+  "$schema": "StrategyLedger 候选策略集",
+  "version": "1.0.0",
+  "description": "当 StopRules.noProgress 触发 switch_strategy 时，从本候选集中选择替代策略。每条策略描述 ≤ 30 字。selectNextStrategy() 自动排除已失败策略。",
+  "candidates": [
+    {
+      "id": "decompose_smaller",
+      "strategy": "将任务拆解为更小的子任务",
+      "category": "decomposition",
+      "applicableWhen": "任务过于复杂，单次尝试无法完成",
+      "riskLevel": "LOW"
+    },
+    {
+      "id": "switch_approach",
+      "strategy": "切换实现方法（如递归→迭代）",
+      "category": "approach_change",
+      "applicableWhen": "当前方法陷入死循环或性能瓶颈",
+      "riskLevel": "LOW"
+    },
+    {
+      "id": "use_different_tool",
+      "strategy": "使用不同工具完成同一目标",
+      "category": "tool_switch",
+      "applicableWhen": "当前工具连续失败或返回错误",
+      "riskLevel": "MEDIUM"
+    },
+    {
+      "id": "simplify_scope",
+      "strategy": "缩小任务范围，先完成核心功能",
+      "category": "scope_reduction",
+      "applicableWhen": "Token 预算即将耗尽，需优先保证核心产出",
+      "riskLevel": "LOW"
+    },
+    {
+      "id": "retry_with_feedback",
+      "strategy": "基于 FailureFeedback 重试",
+      "category": "retry",
+      "applicableWhen": "有明确的失败反馈信息可指导改进",
+      "riskLevel": "LOW"
+    },
+    {
+      "id": "parallel_split",
+      "strategy": "将串行任务拆为并行执行",
+      "category": "parallelization",
+      "applicableWhen": "子任务间无依赖关系，可通过并行加速",
+      "riskLevel": "MEDIUM"
+    },
+    {
+      "id": "request_more_context",
+      "strategy": "请求更多上下文信息",
+      "category": "context_enrichment",
+      "applicableWhen": "因信息不足导致决策错误",
+      "riskLevel": "LOW"
+    },
+    {
+      "id": "escalate_human",
+      "strategy": "升级到人工决策",
+      "category": "escalation",
+      "applicableWhen": "所有自动策略均已失败",
+      "riskLevel": "HIGH"
+    }
+  ]
+}

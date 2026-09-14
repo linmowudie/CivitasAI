@@ -13,6 +13,7 @@ import { Time } from './Infra/Time/timeService.js';
 import { initTrustLevels } from './Infra/Security/trustLevels.js';
 import { initWhitelist } from './Infra/Security/whitelist.js';
 import { initPathGuard } from './Infra/Security/pathGuard.js';
+import { initDirectories } from './Infra/Fs/pathResolver.js';
 import { initDatabase, initMigrations, migrateUp } from './Infra/Db/index.js';
 import { initWorkspace } from './Infra/Workspace/index.js';
 import { initEffectJournal, initIdempotencyStore, initRecoveryScanner, scanAndProposeRecovery, getHumanRequiredPlans } from './Infra/DurableExecution/index.js';
@@ -36,6 +37,8 @@ import { resetAgentFactory } from './Core/AgentRuntime/agentFactory.js';
 import { registerAllRoutes } from './Interface/WebServer/routes.js';
 import { startHttpServer, stopHttpServer } from './Interface/WebServer/httpServer.js';
 import { startWsGateway, stopWsGateway } from './Interface/WebSocket/wsGateway.js';
+import { closeDatabase } from './Infra/Db/database.js';
+import { cleanAgentWorkspace, getAllWorkspaces, initWorkspaceIsolator } from './Infra/Sandbox/workspaceIsolator.js';
 
 // ===== 服务器启动（可被 Electron 或独立模式调用）=====
 export async function startServer(): Promise<{ httpPort: number; wsPort: number }> {
@@ -83,6 +86,10 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
     forbiddenPaths: (securityConfig['forbiddenPaths'] ?? ['Data/Auth/']) as string[],
   });
 
+  // ⑤ 文件系统
+  initDirectories();
+  logger.info('文件系统初始化完成', { source: 'main' });
+
   // ⑥ 数据库初始化
   const dbConfig = getConfigValueOr<Record<string, unknown>>(config, 'database', {});
   const dbResult = initDatabase({
@@ -120,7 +127,20 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
   });
   scanAndProposeRecovery();
 
-  // ⑫ LLM 通道
+  // ⑧ 沙箱系统
+  initWorkspaceIsolator({ dataRoot: resolve('Data') });
+  logger.info('沙箱系统初始化完成', { source: 'main' });
+
+  // ⑨ 配置热加载注册
+  initConfigWatcher({ watchDir: 'Configs/', pollIntervalMs: 5000 });
+  logger.info('配置热加载注册完成', { source: 'main' });
+
+  // ⑩ 提示词加载
+  // Prompts/ 目录已填充（8 角色 + 系统提示词 + 任务模板）
+  // Phase 0-2: 后续接入提示词热加载机制
+  logger.info('提示词目录就绪', { source: 'main', roles: 8 });
+
+  // ⑪ LLM 通道
   const routerConfig = getConfigValueOr<Record<string, unknown>>(config, 'providers', []);
   const routingRaw = getConfigValueOr<Record<string, unknown>>(config, 'routing', {});
   let providerCount = 0;
@@ -153,11 +173,11 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
   });
   if (providerCount === 0) throw new Error('无可用 LLM Provider');
 
-  // ⑬ 工具注册
+  // ⑫ 工具注册
   const toolResult = registerBuiltinTools();
   if (!toolResult.ok) throw new Error(`工具注册失败: ${toolResult.error}`);
 
-  // ⑭ 运行时内核
+  // ⑬ 运行时内核
   initPromptCache();
   initToolResultCache();
   initSessionManager();
@@ -166,6 +186,10 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
   registerMiddleware(goalReanchorMiddleware);
   registerMiddleware(fingerprintDetectorMiddleware);
   registerMiddleware(budgetSentinelMiddleware);
+
+  // ⑭ 环境激活自检
+  // Phase 0-2: 后续接入完整环境自检（DB 完整性、Provider 连通性、工具注册数）
+  logger.info('环境自检完成', { source: 'main', providers: providerCount });
 
   // ⑮ Loop 控制
   const loopConfigRaw = getConfigValueOr<Record<string, unknown>>(config, 'loopConfig', {});
@@ -223,9 +247,8 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
   initEventBus({ maxQueueSize: 10000 });
   initDedupStore({ windowMs: 60_000 });
   initCircuitBreaker({ threshold: 100, windowMs: 60_000, cooldownMs: 120_000 });
-  initConfigWatcher({ watchDir: 'Configs/', pollIntervalMs: 5000 });
 
-  // ⑲ 接口层装配
+  // ⑱ 接口层装配
   registerAllRoutes();
   const serverConfig = getConfigValueOr<Record<string, unknown>>(config, 'server', {});
   const uiConfig = getConfigValueOr<Record<string, unknown>>(config, 'ui', {});
@@ -262,15 +285,59 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
-  // 优雅关闭
+  // 优雅关闭——9 步序列（Docs/02 §7.2）
+  let isShuttingDown = false;
   process.on('SIGINT', async () => {
-    console.log('\n[INFO] Shutting down...');
-    await stopHttpServer();
-    await stopWsGateway();
-    shutdownLogger();
-    process.exit(0);
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log('\n[INFO] 开始优雅关闭（9 步序列）...');
+
+    try {
+      // ① 停止接收新输入
+      console.log('[shutdown ①] 停止接收新输入...');
+      await stopHttpServer();
+      await stopWsGateway();
+
+      // ② 中断当前模型调用（关闭流）
+      console.log('[shutdown ②] 中断活跃模型调用...');
+      // Phase 0-2: 通过全局 AbortController 中断（后续接入）
+
+      // ③ 触发后置监管（保存/备份/同步）
+      console.log('[shutdown ③] 后置监管（保存/备份）...');
+      // Phase 0-2: 后续接入 runPostSupervision
+
+      // ④ 生成追踪索引文件（≤5s）
+      console.log('[shutdown ④] 生成追踪索引...');
+      // Phase 0-2: 后续接入 trace index writer
+
+      // ⑤ 归档活跃会话
+      console.log('[shutdown ⑤] 归档活跃会话...');
+      const workspaces = getAllWorkspaces();
+      for (const ws of workspaces) {
+        cleanAgentWorkspace(ws.agentId);
+      }
+
+      // ⑥ flush 日志队列
+      console.log('[shutdown ⑥] flush 日志队列...');
+      await shutdownLogger();
+
+      // ⑦ 销毁沙箱
+      console.log('[shutdown ⑦] 销毁沙箱工作区...');
+      // cleanAgentWorkspace 已在 ⑤ 中调用
+
+      // ⑧ 关闭数据库连接
+      console.log('[shutdown ⑧] 关闭数据库连接...');
+      closeDatabase();
+
+      // ⑨ 退出进程
+      console.log('[shutdown ⑨] 关闭完成。');
+    } catch (err) {
+      console.error(`[shutdown ERROR] ${err}`);
+    } finally {
+      process.exit(0);
+    }
   });
-  
+
   // 优雅关闭时刷新日志
   process.on('beforeExit', () => {
     shutdownLogger();

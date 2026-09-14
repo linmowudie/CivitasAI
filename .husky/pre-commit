@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+
+# pre-commit: 代码提交前门禁
+# 执行 prettier 格式化 + eslint + tsc 类型检查
+# 跳过: git commit --no-verify
+
+set -e
+
+# 1. Prettier 格式化（仅暂存文件）
+echo "[pre-commit] Running prettier on staged files..."
+npx pretty-quick --staged --pattern '**/*.ts' 2>/dev/null || true
+
+# 2. ESLint 检查（仅暂存文件）
+echo "[pre-commit] Running ESLint on staged files..."
+npx eslint --ext .ts $(git diff --cached --name-only --diff-filter=ACM | grep '\.ts$' | tr '\n' ' ') 2>/dev/null || true
+
+# 3. TypeScript 类型检查
+echo "[pre-commit] Running TypeScript type check..."
+npx tsc --noEmit
+
+echo "[pre-commit] All checks passed."

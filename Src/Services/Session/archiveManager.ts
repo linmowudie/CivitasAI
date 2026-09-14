@@ -1,11 +1,14 @@
 /**
  * @module Session/archiveManager
  * @description
- * 归档管理器——管理会话和循环的归档存储�?
+ * 归档管理器——管理会话和循环的归档存储�?
  */
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+/** 归档类型 */
+export type ArchiveType = 'session' | 'operation' | 'decision';
 
 /** 归档条目 */
 export interface ArchiveEntry {
@@ -13,6 +16,8 @@ export interface ArchiveEntry {
   sessionId: string;
   agentId: string;
   archivedAt: number;
+  /** 归档类型 */
+  type: ArchiveType;
   /** 归档数据摘要 */
   summary: string;
   /** 归档数据 */
@@ -23,7 +28,7 @@ export interface ArchiveEntry {
 
 /** 归档配置 */
 export interface ArchiveConfig {
-  /** 最大归档条目数，默�?1000 */
+  /** 最大归档条目数，默�?1000 */
   maxEntries: number;
   /** 最大归档存储（字节），默认 50MB */
   maxStorageBytes: number;
@@ -51,9 +56,10 @@ export function createArchive(
   agentId: string,
   summary: string,
   data: Record<string, unknown>,
+  type: ArchiveType = 'session',
 ): Result<ArchiveEntry> {
   if (archives.size >= config.maxEntries) {
-    return err('LIMIT_REACHED', `归档数已达上�?(${config.maxEntries})`);
+    return err('LIMIT_REACHED', `归档数已达上�?(${config.maxEntries})`);
   }
 
   const dataStr = JSON.stringify(data);
@@ -69,6 +75,7 @@ export function createArchive(
     sessionId,
     agentId,
     archivedAt: Date.now(),
+    type,
     summary,
     data,
     sizeBytes,
@@ -87,9 +94,34 @@ export function getArchive(archiveId: string): Result<ArchiveEntry> {
   return ok(entry);
 }
 
-/** 按会话查询归�?*/
+/** 按会话查询归档 */
 export function getArchivesBySession(sessionId: string): ArchiveEntry[] {
   return Array.from(archives.values()).filter(a => a.sessionId === sessionId);
+}
+
+/** 按类型查询归档 */
+export function getArchivesByType(type: ArchiveType): ArchiveEntry[] {
+  return Array.from(archives.values()).filter(a => a.type === type);
+}
+
+/** 归档操作历史 */
+export function archiveOperation(
+  sessionId: string,
+  agentId: string,
+  summary: string,
+  data: Record<string, unknown>,
+): Result<ArchiveEntry> {
+  return createArchive(sessionId, agentId, summary, data, 'operation');
+}
+
+/** 归档决策历史 */
+export function archiveDecision(
+  sessionId: string,
+  agentId: string,
+  summary: string,
+  data: Record<string, unknown>,
+): Result<ArchiveEntry> {
+  return createArchive(sessionId, agentId, summary, data, 'decision');
 }
 
 /** 获取归档总数 */

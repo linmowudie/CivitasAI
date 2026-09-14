@@ -1,36 +1,24 @@
 [
-  {
-    "id": "task-simple-1",
-    "description": "创建一个简单的 add 函数",
-    "complexity": "low",
-    "expectedRoute": "DIRECT",
-    "domains": ["coding"],
-    "estimatedTokens": 500
-  },
-  {
-    "id": "task-multi-1",
-    "description": "设计 REST API 并实现前后端代码",
-    "complexity": "high",
-    "expectedRoute": "ASSEMBLY_LINE",
-    "domains": ["design", "coding", "testing"],
-    "estimatedTokens": 5000
-  },
-  {
-    "id": "task-conflict-1",
-    "description": "两个 Agent 对同一文件写入不同内容",
-    "complexity": "medium",
-    "expectedRoute": "DELEGATION",
-    "domains": ["coding"],
-    "estimatedTokens": 2000,
-    "expectedConflict": true
-  },
-  {
-    "id": "task-budget-1",
-    "description": "长时间运行的分析任务，测试预算控制",
-    "complexity": "medium",
-    "expectedRoute": "DIRECT",
-    "domains": ["analysis"],
-    "estimatedTokens": 8000,
-    "budgetTest": true
-  }
+  { "id": "task-simple-1", "description": "创建一个简单的 add 函数", "complexity": "low", "expectedRoute": "SINGLE_AGENT", "domains": ["coding"], "estimatedTokens": 500 },
+  { "id": "task-simple-2", "description": "编写一个正则表达式验证邮箱格式", "complexity": "low", "expectedRoute": "SINGLE_AGENT", "domains": ["coding"], "estimatedTokens": 400 },
+  { "id": "task-simple-3", "description": "解释 JavaScript 中的闭包概念", "complexity": "low", "expectedRoute": "SINGLE_AGENT", "domains": ["knowledge"], "estimatedTokens": 600 },
+  { "id": "task-simple-4", "description": "将摄氏度转换为华氏度的函数", "complexity": "low", "expectedRoute": "SINGLE_AGENT", "domains": ["coding"], "estimatedTokens": 350 },
+  { "id": "task-medium-1", "description": "实现一个支持增删改查的 Todo List 数据结构", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding"], "estimatedTokens": 3000 },
+  { "id": "task-medium-2", "description": "编写 REST API 的用户注册登录模块", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding", "security"], "estimatedTokens": 4000 },
+  { "id": "task-medium-3", "description": "分析代码库中的循环复杂度并提出优化建议", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["analysis"], "estimatedTokens": 5000 },
+  { "id": "task-medium-4", "description": "为现有模块编写单元测试覆盖边界条件", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["testing"], "estimatedTokens": 3500 },
+  { "id": "task-medium-5", "description": "重构：将大文件拆分为多个小模块", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding", "architecture"], "estimatedTokens": 4500 },
+  { "id": "task-high-1", "description": "设计并实现完整的电商系统后端 API", "complexity": "high", "expectedRoute": "ASSEMBLY_LINE", "domains": ["design", "coding", "testing"], "estimatedTokens": 15000 },
+  { "id": "task-high-2", "description": "从零搭建 React 管理后台（含路由/状态管理/API 对接）", "complexity": "high", "expectedRoute": "ASSEMBLY_LINE", "domains": ["frontend", "design", "coding"], "estimatedTokens": 12000 },
+  { "id": "task-high-3", "description": "实现分布式任务调度系统（含重试/幂等/监控）", "complexity": "high", "expectedRoute": "ASSEMBLY_LINE", "domains": ["architecture", "coding", "testing"], "estimatedTokens": 20000 },
+  { "id": "task-conflict-1", "description": "两个 Agent 对同一文件写入不同内容", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding"], "estimatedTokens": 2000, "expectedConflict": true },
+  { "id": "task-conflict-2", "description": "多 Agent 并行修改共享配置文件", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding"], "estimatedTokens": 2500, "expectedConflict": true },
+  { "id": "task-budget-1", "description": "长时间运行的分析任务，测试预算控制", "complexity": "medium", "expectedRoute": "SINGLE_AGENT", "domains": ["analysis"], "estimatedTokens": 8000, "budgetTest": true },
+  { "id": "task-budget-2", "description": "大规模代码搜索与替换，测试 Token 管理", "complexity": "high", "expectedRoute": "ASSEMBLY_LINE", "domains": ["coding"], "estimatedTokens": 25000, "budgetTest": true },
+  { "id": "task-recovery-1", "description": "模拟工具执行中途崩溃，验证 EffectJournal 恢复", "complexity": "medium", "expectedRoute": "SINGLE_AGENT", "domains": ["testing"], "estimatedTokens": 3000, "faultInjection": true },
+  { "id": "task-recovery-2", "description": "模拟网络超时，验证重试与降级机制", "complexity": "medium", "expectedRoute": "SINGLE_AGENT", "domains": ["testing"], "estimatedTokens": 2000, "faultInjection": true },
+  { "id": "task-review-1", "description": "Worker 提交代码后 Reviewer 审核并拒绝", "complexity": "low", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding", "review"], "estimatedTokens": 1500, "reviewTest": true },
+  { "id": "task-arbitrate-1", "description": "两个 Agent 对实现方案产生分歧，触发仲裁", "complexity": "medium", "expectedRoute": "DIRECTOR_WORKER", "domains": ["coding", "arbitration"], "estimatedTokens": 3000, "arbitrationTest": true },
+  { "id": "task-security-1", "description": "测试注入检测——输入中包含提示注入攻击", "complexity": "low", "expectedRoute": "SINGLE_AGENT", "domains": ["security"], "estimatedTokens": 500, "securityTest": true },
+  { "id": "task-doc-1", "description": "为整个项目生成 API 接口文档", "complexity": "high", "expectedRoute": "ASSEMBLY_LINE", "domains": ["documentation", "coding"], "estimatedTokens": 10000 }
 ]

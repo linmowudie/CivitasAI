@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "recordedAt": "2026-09-14T14:20:00.000Z",
   "metrics": {
     "testCount": 582,
@@ -15,5 +15,15 @@
       "governance": 0.95,
       "maintainability": 0.88
     }
+  },
+  "degradationThreshold": {
+    "alertRatio": 0.05,
+    "blockRatio": 0.10,
+    "description": "六维评分下降超过 alertRatio(5%) 触发告警，超过 blockRatio(10%) 阻断发布"
+  },
+  "datasetCoverage": {
+    "totalTasks": 22,
+    "routePatterns": ["SINGLE_AGENT", "DIRECTOR_WORKER", "ASSEMBLY_LINE"],
+    "specialScenarios": ["conflict", "budget", "recovery", "review", "arbitration", "security"]
   }
 }

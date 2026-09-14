@@ -27,7 +27,9 @@
     "typecheck": "tsc --noEmit",
     "electron:dev": "npm run dev:electron",
     "electron:build": "npm run build:all && electron-builder --win portable",
-    "electron:build:dir": "npm run build:all && electron-builder --win dir"
+    "electron:build:dir": "npm run build:all && electron-builder --win dir",
+    "prepare": "husky",
+    "commitlint": "commitlint --edit"
   },
   "build": {
     "appId": "com.civitasai.app",
@@ -112,6 +114,11 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
-    "wait-on": "^9.1.0"
+    "wait-on": "^9.1.0",
+    "husky": "^9.1.0",
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "prettier": "^3.4.0",
+    "pretty-quick": "^4.0.0"
   }
 }

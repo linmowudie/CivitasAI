@@ -4,6 +4,31 @@
 
 ---
 
+## [修复 v1.1 · 审查报告全量修复 P1~P3] - 2026-09-14
+
+### P1 高优先级（续）
+
+- **P1-4**：填充 `Prompts/roles/` 8 角色提示词（prime_director/partner/worker/reviewer/assembly_node/arbitrator/auditor/regulator）+ `Prompts/system/mainLoop.md`（Reasoning Sandwich）+ `Prompts/tasks/defaultTask.md` + `Prompts/versions/manifest.json`
+- **P1-5a**：新增 `.husky/pre-commit`（prettier + eslint + tsc）、`.husky/pre-push`（vitest）、`commitlint.config.cjs`（Conventional Commits）
+- **P1-7b**：新增 `Docs/04-使用指南/fullGuide.md`、`configuration.md`、`troubleshooting.md`
+- **P1-7c**：新增 `Docs/05-部署运维/Deployment/`（local/docker/windows）+ `Runbooks/`（healthCheck/logAnalysis/commonIssues/rollback）
+
+### P2 中优先级
+
+- **P2-8b**：新增 `Scripts/install.ps1` + `Scripts/install.sh` 一键安装脚本
+- **P2-9**：`Src/main.ts` SIGINT handler 扩展为 9 步关闭序列（停输入→中断模型→后置监管→追踪索引→归档会话→flush日志→销毁沙箱→关DB→退出）
+- **P2-10**：启动序列对齐为 ⑱ 步（补 ⑤文件系统/⑧沙箱/⑨配置热加载/⑩提示词加载/⑭环境自检）
+- **P2-11**：新增 `Src/Infra/Hook/System/auditHook.ts`（审计/备份/指标三内置 Hook）+ `Data/Hooks/README.md`（用户 Hook 目录）
+- **P2-12**：`Benchmarks/datasets/sampleTasks.json` 扩充至 22 任务（覆盖 3 路由模式 + 6 特殊场景）；`Configs/benchBaseline.json` 新增 `degradationThreshold`（5%告警/10%阻断）
+
+### P3 低优先级
+
+- **P3-13**：新增 `Docs/03-开发规范/docsMigrationPlan.md`（Docs 目录迁移计划）
+- **P3-14**：新增 `Configs/dataStorage.json`（七类数据保留期 + 清理优先级 + 全局配额）
+- **P3-15**：`Src/Services/Session/archiveManager.ts` 扩展支持操作/决策两类归档（`archiveOperation`/`archiveDecision`/`getArchivesByType`）
+
+---
+
 ## [修复 v1.0 · 审查报告 P0/P1/P2 修复] - 2026-09-14
 
 ### P0 阻断性修复

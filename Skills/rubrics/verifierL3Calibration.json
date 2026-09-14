@@ -1,0 +1,55 @@
+{
+  "$schema": "Verifier L3 LLM Judge Rubric 校准集",
+  "version": "1.0.0",
+  "description": "LLM Judge 评分校准数据集。每条包含任务描述、Agent 产出、人工评分（0-100）、评分维度。目标：LLM Judge 与人工评分偏差 ≤ 15 分（一致性 ≥ 80%）。",
+  "rubricDimensions": [
+    { "name": "correctness", "weight": 0.4, "description": "功能正确性——是否满足任务要求" },
+    { "name": "code_quality", "weight": 0.25, "description": "代码质量——可读性、命名、错误处理" },
+    { "name": "security", "weight": 0.2, "description": "安全性——无注入风险、无敏感信息泄露" },
+    { "name": "efficiency", "weight": 0.15, "description": "效率——无冗余操作、Token 使用合理" }
+  ],
+  "samples": [
+    {
+      "id": "cal-001",
+      "task": "实现一个函数，计算数组中所有偶数的和",
+      "output": "function sumEvens(arr: number[]): number { return arr.filter(n => n % 2 === 0).reduce((a, b) => a + b, 0); }",
+      "humanScore": 95,
+      "dimensions": { "correctness": 100, "code_quality": 90, "security": 95, "efficiency": 90 }
+    },
+    {
+      "id": "cal-002",
+      "task": "编写 REST API 的用户注册端点",
+      "output": "app.post('/register', (req, res) => { const user = req.body; db.insert(user); res.json({ ok: true }); });",
+      "humanScore": 45,
+      "dimensions": { "correctness": 60, "code_quality": 40, "security": 20, "efficiency": 50 },
+      "defects": ["无输入验证", "无密码哈希", "SQL注入风险", "无错误处理"]
+    },
+    {
+      "id": "cal-003",
+      "task": "重构：将类中的大方法拆分为小方法",
+      "output": "class Service { process(order) { this.validate(order); this.calculate(order); this.save(order); } validate(o) { /* ... */ } calculate(o) { /* ... */ } save(o) { /* ... */ } }",
+      "humanScore": 85,
+      "dimensions": { "correctness": 90, "code_quality": 85, "security": 80, "efficiency": 85 }
+    },
+    {
+      "id": "cal-004",
+      "task": "编写单元测试覆盖边界条件",
+      "output": "describe('sumEvens', () => { it('empty array', () => expect(sumEvens([])).toBe(0)); it('all odd', () => expect(sumEvens([1,3,5])).toBe(0)); it('mixed', () => expect(sumEvens([1,2,3,4])).toBe(6)); });",
+      "humanScore": 80,
+      "dimensions": { "correctness": 85, "code_quality": 80, "security": 90, "efficiency": 70 }
+    },
+    {
+      "id": "cal-005",
+      "task": "解释什么是闭包",
+      "output": "闭包是函数和其词法环境的组合。当一个函数在另一个函数内部创建时，它可以访问外部函数的变量，即使外部函数已经返回。",
+      "humanScore": 90,
+      "dimensions": { "correctness": 95, "code_quality": 85, "security": 100, "efficiency": 85 }
+    }
+  ],
+  "calibrationTarget": {
+    "consistencyRate": 0.80,
+    "maxDeviation": 15,
+    "minSamples": 50,
+    "recalibrateIntervalDay": 90
+  }
+}

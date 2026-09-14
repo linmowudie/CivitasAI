@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+# pre-push: 代码推送前门禁
+# 执行完整测试套件
+# 跳过: git push --no-verify
+
+set -e
+
+echo "[pre-push] Running test suite..."
+npm test
+
+echo "[pre-push] All tests passed."
