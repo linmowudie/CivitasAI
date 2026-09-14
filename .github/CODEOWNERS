@@ -1,0 +1,15 @@
+# Core engine & infrastructure - requires 2 reviewers
+/Src/Core/ @linmowudie
+/Src/Infra/ @linmowudie
+
+# Services layer
+/Src/Services/ @linmowudie
+
+# Configuration changes
+/Configs/ @linmowudie
+
+# Design documents
+/Docs/ @linmowudie
+
+# ADR changes
+/ADR/ @linmowudie

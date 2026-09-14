@@ -4,6 +4,37 @@
 
 ---
 
+## [修复 v1.0 · 审查报告 P0/P1/P2 修复] - 2026-09-14
+
+### P0 阻断性修复
+
+- **P0-1**：实现 `Src/Core/Loop/runIteration.ts`（625 行）——十步主循环执行器，组合监管/中间件/上下文装配/模型调用/工具执行/迭代判定完整链路
+- **P0-2**：改造 `Src/Interface/WebSocket/wsHandler.ts`——`startStreamGeneration` 从裸调 `callModelStream` 改为调用 `executeLoop`，走完整十步链路
+- **P0-3**：新增 `Src/Services/LoopControl/middleware/toolSafetyGate.ts`（185 行）——wrapToolCall 钩子按危险分级强制管控：DANGEROUS+IRREVERSIBLE → ApprovalGate；CONTROLLED → EffectJournal；幂等缓存 DUR-005
+
+### P1 高优先级
+
+- **P1-5**：新增 `.github/workflows/ci.yml`（lint + test + build 三阶段流水线）、`CODEOWNERS`、`pull_request_template.md`
+- **P1-6**：新增 `Docs/03-开发规范/Interfaces/` 五层接口文档（core/services/tools/infra/interface）
+- **P1-7**：新增 `Docs/04-使用指南/quickStart.md`
+
+### P2 基础资产
+
+- **P2-8**：新增 `README.md`、`.env.example`、`CONTRIBUTING.md`
+
+### 工程资产
+
+- 清理根目录 8 张截图 + 1 个临时文件
+- `.gitignore` 新增 `.vite/` 忽略规则
+- 零编译错误，测试无回归
+
+### 成熟度变化
+
+- 从 **L1.5 实现 / L2 设计** 跨越至 **L2 实现**
+- 主循环执行器已就位，所有监管/中间件/上下文装配/LoopControl/DurableExecution 联动已贯通
+
+---
+
 ## [审查 v1.0 · 后端 Harness 与 Loop 工程合规审查] - 2026-09-14
 
 ### 新增文档

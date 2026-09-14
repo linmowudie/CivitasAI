@@ -78,9 +78,11 @@ export {
   createBudgetSentinelControlMiddleware,
   createStopRuleEvaluatorMiddleware,
   createCheckpointWriterMiddleware,
+  createToolSafetyGateMiddleware,
   getCheckpoints, getLatestCheckpoint, clearCheckpointStore,
 } from './middleware/index.js';
 export type {
   GoalReanchorControlConfig, BudgetEventCallbacks,
   StopRuleCallbacks, CheckpointRecord, CheckpointCallbacks,
+  ToolSafetyGateConfig,
 } from './middleware/index.js';

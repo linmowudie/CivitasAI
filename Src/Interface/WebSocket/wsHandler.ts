@@ -11,7 +11,9 @@ import { getDashboardOverview } from '../RestApi/loopApi.js';
 import { listPendingApprovals } from '../RestApi/approvalApi.js';
 import { listMessages, addMessage } from '../RestApi/chatApi.js';
 import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
-import { callModelStream } from '../../Core/Model/modelCaller.js';
+import { executeLoop, type IterationContext } from '../../Core/Loop/runIteration.js';
+import { createLoopState } from '../../Core/Loop/loopEngine.js';
+import { createLoopConfig } from '../../Core/Loop/loopConfig.js';
 import { getRoutingConfig } from '../../Infra/Llm/Router/modelRouter.js';
 import { logger } from '../../Infra/Logging/logger.js';
 import type { Result } from '../../Infra/types.js';
@@ -164,19 +166,17 @@ export function handleClientMessage(clientId: string, message: ClientMessage): R
   }
 }
 
-// ── 流式生成核心逻辑 ────────────────────────────────────────────────
+// ── 流式生成核心逻辑（P0-2：经主循环执行器）──────────────────────────────
 
 async function startStreamGeneration(
   clientId: string,
   sessionId: string,
-  _userMessage: string,
+  userMessage: string,
   streamMessageId: string,
 ): Promise<void> {
   const abortController = new AbortController();
   let fullContent = '';
-  let fullReasoning = '';
   const genT0 = Date.now();
-  let firstChunkMs: number | null = null;
 
   // 注册活跃流
   activeStreams.set(streamMessageId, {
@@ -194,7 +194,7 @@ async function startStreamGeneration(
       content: m.content,
     }));
 
-    // 2. 调用流式 LLM（使用路由配置的默认模型，而非未注册的 'default' 字面量）
+    // 2. 解析模型路由
     const model = getRoutingConfig()?.defaultModel ?? '';
     if (!model) {
       publish(createEvent({
@@ -205,19 +205,38 @@ async function startStreamGeneration(
       return;
     }
 
-    const result = await callModelStream(
-      model,
-      chatMessages,
-      (chunk) => {
-        if (firstChunkMs === null) {
-          firstChunkMs = Date.now() - genT0;
-          logger.info('流式生成首包', { source: 'wsHandler/streamGeneration', model, firstChunkMs });
-        }
-        fullContent += chunk.delta;
-        if (chunk.reasoning_delta) fullReasoning += chunk.reasoning_delta;
+    // 3. 创建 Loop 状态与配置
+    const loopConfigResult = createLoopConfig({ model, stream: true });
+    if (!loopConfigResult.ok) {
+      publish(createEvent({
+        eventType: EventType.AGENT_STREAM_END,
+        source: 'wsHandler/streamGeneration',
+        payload: { messageId: streamMessageId, error: loopConfigResult.error },
+      }));
+      return;
+    }
 
-        // 推送 stream_chunk 事件：reasoning（思维链）与正文分字段透传，
-        // 前端流式展示 CoT、流结束后折叠
+    const loopId = `loop-${sessionId}-${Date.now()}`;
+    const traceId = `trace-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+    const loopState = createLoopState({
+      loopId,
+      agentId: 'ws-handler',
+      traceId,
+      config: loopConfigResult.value,
+    });
+
+    // 4. 经主循环执行器（十步完整链路）
+    const iterCtx: Omit<IterationContext, 'currentIteration' | 'totalTokensConsumed'> = {
+      userInput: userMessage,
+      sessionId,
+      agentId: 'ws-handler',
+      agentRole: 'worker',
+      config: loopConfigResult.value,
+      chatMessages,
+      recentCallTimestamps: [],
+      signal: abortController.signal,
+      onStreamChunk: (chunk) => {
+        fullContent += chunk.delta;
         const payload: Record<string, unknown> = { messageId: streamMessageId };
         if (chunk.reasoning_delta) payload.reasoning = chunk.reasoning_delta;
         if (chunk.delta) payload.chunk = chunk.delta;
@@ -227,52 +246,58 @@ async function startStreamGeneration(
           payload,
         }));
       },
-      { signal: abortController.signal },
-    );
+    };
 
-    // 3. 流结束
+    const loopResult = await executeLoop(loopState, iterCtx);
+
+    // 5. 流结束
     activeStreams.delete(streamMessageId);
 
-    if (result.ok) {
-      logger.info('流式生成完成', {
+    if (loopResult.ok) {
+      const result = loopResult.value;
+      const lastIter = result.iterations[result.iterations.length - 1];
+      const outputText = lastIter?.outputText ?? fullContent;
+
+      logger.info('主循环执行完成', {
         source: 'wsHandler/streamGeneration',
         model,
-        firstChunkMs,
-        totalMs: Date.now() - genT0,
-        chunks: fullContent.length + fullReasoning.length,
-        tokensUsed: result.value.usage.total_tokens,
+        iterations: result.iterations.length,
+        totalTokens: result.totalTokensConsumed,
+        totalToolCalls: result.totalToolCalls,
+        totalMs: result.totalMs,
+        exitReason: result.exitReason,
       });
+
       // 落库助手消息
-      addMessage(sessionId, 'assistant', fullContent, {
-        model: result.value.model,
-        tokens_used: result.value.usage.total_tokens,
-      });
+      if (outputText) {
+        addMessage(sessionId, 'assistant', outputText, {
+          model,
+          tokens_used: result.totalTokensConsumed,
+        });
+      }
 
       // 发布 stream_end
       publish(createEvent({
         eventType: EventType.AGENT_STREAM_END,
         source: 'wsHandler/streamGeneration',
-        payload: { messageId: streamMessageId, tokensUsed: result.value.usage.total_tokens },
+        payload: { messageId: streamMessageId, tokensUsed: result.totalTokensConsumed },
       }));
     } else {
-      // 生成失败
+      // 执行失败
       publish(createEvent({
         eventType: EventType.AGENT_STREAM_END,
         source: 'wsHandler/streamGeneration',
-        payload: { messageId: streamMessageId, error: result.error },
+        payload: { messageId: streamMessageId, error: loopResult.error },
       }));
     }
   } catch (e) {
     activeStreams.delete(streamMessageId);
     const errorMsg = e instanceof Error ? e.message : String(e);
-    // 检查是否为用户主动停止
     if (abortController.signal.aborted) {
-      // 已停止的内容落库
       if (fullContent) {
         addMessage(sessionId, 'assistant', fullContent, { model: 'default' });
       }
     } else {
-      // 真实错误
       publish(createEvent({
         eventType: EventType.AGENT_STREAM_END,
         source: 'wsHandler/streamGeneration',
