@@ -1,0 +1,36 @@
+[
+  {
+    "id": "task-simple-1",
+    "description": "创建一个简单的 add 函数",
+    "complexity": "low",
+    "expectedRoute": "DIRECT",
+    "domains": ["coding"],
+    "estimatedTokens": 500
+  },
+  {
+    "id": "task-multi-1",
+    "description": "设计 REST API 并实现前后端代码",
+    "complexity": "high",
+    "expectedRoute": "ASSEMBLY_LINE",
+    "domains": ["design", "coding", "testing"],
+    "estimatedTokens": 5000
+  },
+  {
+    "id": "task-conflict-1",
+    "description": "两个 Agent 对同一文件写入不同内容",
+    "complexity": "medium",
+    "expectedRoute": "DELEGATION",
+    "domains": ["coding"],
+    "estimatedTokens": 2000,
+    "expectedConflict": true
+  },
+  {
+    "id": "task-budget-1",
+    "description": "长时间运行的分析任务，测试预算控制",
+    "complexity": "medium",
+    "expectedRoute": "DIRECT",
+    "domains": ["analysis"],
+    "estimatedTokens": 8000,
+    "budgetTest": true
+  }
+]

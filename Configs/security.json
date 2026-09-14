@@ -1,0 +1,23 @@
+{
+  "security": {
+    "trustLevels": {
+      "systemRoles": ["prime_director", "arbitrator", "regulator", "auditor"],
+      "userRoles": ["partner", "worker", "assembly_node", "reviewer"]
+    },
+    "forbiddenPaths": [
+      "Data/Auth/",
+      "~/.ssh/"
+    ],
+    "forbiddenCommands": [
+      "rm -rf /",
+      ":(){ :|:& };:"
+    ],
+    "networkWhitelist": [],
+    "sandboxDefaultMode": "standard",
+    "criticalSecurityEvents": [
+      "KEY_LEAKAGE",
+      "FORBIDDEN_PATH_ACCESS",
+      "INJECTION_DETECTED"
+    ]
+  }
+}

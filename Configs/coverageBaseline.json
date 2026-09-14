@@ -1,0 +1,8 @@
+{
+  "coverageMinimum": 80,
+  "excludePatterns": [
+    "Src/main.ts",
+    "Src/**/types.ts",
+    "Src/**/*.d.ts"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "session": {
+    "sessionKeyHexLength": 16,
+    "archiveInactiveDays": 30,
+    "historyMaxMessagesInMemory": 200
+  },
+  "retention": {
+    "tasksActiveDays": 30,
+    "agentsDestroyedDays": 90,
+    "operationHistoryDays": 180,
+    "eventsDays": 90,
+    "loopsCompletedDays": 90,
+    "pendingApprovalsDoneDays": 30,
+    "verifierResultsDays": 90,
+    "failureFeedbacksDays": 90,
+    "actionFingerprintsDays": 90,
+    "longTermMemoryPermanent": true,
+    "tokenTransactionsPermanent": true
+  }
+}

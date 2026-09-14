@@ -1,0 +1,61 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "plugins": ["@typescript-eslint", "import"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "rules": {
+    "import/no-restricted-paths": [
+      "error",
+      {
+        "zones": [
+          {
+            "target": "./Src/Infra",
+            "from": ["./Src/Tools", "./Src/Services", "./Src/Core", "./Src/Interface"],
+            "message": "Infra 层不可依赖上层（Tools/Services/Core/Interface）"
+          },
+          {
+            "target": "./Src/Tools",
+            "from": ["./Src/Services", "./Src/Core", "./Src/Interface"],
+            "message": "Tools 层不可依赖上层（Services/Core/Interface）"
+          },
+          {
+            "target": "./Src/Services",
+            "from": ["./Src/Core", "./Src/Interface"],
+            "message": "Services 层不可依赖上层（Core/Interface）"
+          },
+          {
+            "target": "./Src/Core",
+            "from": ["./Src/Interface"],
+            "message": "Core 层不可依赖上层（Interface）"
+          }
+        ]
+      }
+    ],
+    "no-console": "warn",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/explicit-function-return-type": "warn",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-non-null-assertion": "warn",
+    "import/order": ["warn", {
+      "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+      "newlines-between": "always"
+    }]
+  },
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true
+      }
+    }
+  },
+  "ignorePatterns": ["dist/", "node_modules/", "*.js", "*.d.ts"]
+}

@@ -1,0 +1,13 @@
+{
+  "audit": {
+    "loopSimilarityThreshold": 0.85,
+    "loopConsecutiveRounds": 5,
+    "patrolIntervalSec": 86400,
+    "patrolTopPercentile": 0.1,
+    "patrolFailureRateThreshold": 0.3,
+    "patrolWindowHours": 24,
+    "freezeAutoUnfreezeSec": 3600,
+    "auditRecentOpsCount": 50,
+    "auditRecentTxCount": 20
+  }
+}

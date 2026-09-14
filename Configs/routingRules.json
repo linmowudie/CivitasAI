@@ -1,0 +1,10 @@
+{
+  "routing": {
+    "consortiumTokenThreshold": 50000,
+    "consortiumDomainThreshold": 2,
+    "delegationMaxCouplingScore": 0.3,
+    "delegationMinSubtaskCount": 2,
+    "assemblyLineSopRequired": true,
+    "directExecMaxTokens": 10000
+  }
+}

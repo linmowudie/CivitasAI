@@ -1,0 +1,34 @@
+{
+  "economy": {
+    "initialSupply": 1000000,
+    "defaultWalletBalance": 10000,
+    "tax": {
+      "baseRate": 0.05,
+      "dynamicEnabled": true,
+      "adjustmentIntervalSec": 300,
+      "maxRate": 0.20,
+      "minRate": 0.02,
+      "highLoadMultiplier": 1.5,
+      "lowLoadDiscount": 0.8,
+      "loadThresholdAgents": 10
+    },
+    "profitSharing": {
+      "qualityWeight": 0.5,
+      "quantityWeight": 0.3,
+      "efficiencyWeight": 0.2
+    },
+    "rollingWindow": {
+      "tokens": 10000,
+      "windowSec": 300,
+      "checkIntervalSec": 5,
+      "deviationMultiplierWarn": 3,
+      "deviationMultiplierCritical": 5,
+      "budgetWarnRatio": 0.8
+    },
+    "budgetLimits": {
+      "singleCallMaxTokens": 5000,
+      "globalTraceHardTokens": 200000,
+      "globalTraceSoftRatio": 0.6
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": "0.1.0",
+  "recordedAt": "2026-09-14T14:20:00.000Z",
+  "metrics": {
+    "testCount": 582,
+    "testPassRate": 1.0,
+    "testFilesCount": 24,
+    "e2eScenarios": 20,
+    "faultInjectionCoverage": "DUR-001~006",
+    "sixDimensions": {
+      "correctness": 1.0,
+      "resilience": 0.95,
+      "efficiency": 0.85,
+      "observability": 0.90,
+      "governance": 0.95,
+      "maintainability": 0.88
+    }
+  }
+}

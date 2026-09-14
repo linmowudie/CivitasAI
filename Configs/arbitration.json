@@ -1,0 +1,19 @@
+{
+  "arbitration": {
+    "coreArbitrators": 1,
+    "caseArbitratorCount": 3,
+    "minArbitrators": 1,
+    "maxArbitrators": 15,
+    "frequencyThreshold": 5,
+    "frequencyWindowSec": 300,
+    "scaleUpFactor": 2.0,
+    "scaleDownFactor": 0.5,
+    "monitoringIntervalSec": 60,
+    "consecutiveHighCount": 3,
+    "consecutiveLowCount": 3,
+    "deadlockTimeoutSec": 120,
+    "cpuPerArbitratorCores": 0.1,
+    "memoryPerArbitratorMb": 256,
+    "snapshotStore": "sqlite"
+  }
+}

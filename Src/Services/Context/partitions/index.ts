@@ -1,0 +1,18 @@
+export {
+  type PartitionId,
+  type ContextEntry,
+  type PartitionConfig,
+  type PartitionState,
+  PARTITION_CONFIG,
+  PARTITION_ORDER,
+  createEmptyPartition,
+  createEmptyContext,
+  appendEntry,
+  serializeEntry,
+  getTotalTokens,
+  getTotalEntries,
+  getPartitionRatio,
+  isPartitionOverBudget,
+  estimateTokens,
+  clearHighFreqPartition,
+} from './partitions.js';

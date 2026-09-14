@@ -1,0 +1,20 @@
+{
+  "memory": {
+    "conflictSimilarityThreshold": 0.85,
+    "capsuleBudgetTokens": 4000,
+    "capsuleMemoryTopK": 5,
+    "capsuleRecentOpsCount": 5,
+    "capsuleMessageBudgetTokens": 2000,
+    "longTermConsolidationDelayMs": 5000,
+    "privateStateTtlSec": 3600,
+    "vectorDim": 1536,
+    "supersedeGraceSec": 60
+  },
+  "eventBus": {
+    "maxQueueSize": 10000,
+    "consumerTimeoutMs": 30000,
+    "retryMaxAttempts": 1,
+    "deadLetterKeepDays": 7,
+    "store": "in-memory"
+  }
+}

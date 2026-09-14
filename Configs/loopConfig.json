@@ -1,0 +1,87 @@
+{
+  "loopDefaults": {
+    "model": "workerModel",
+    "max_iterations": 30,
+    "timeout_ms": 60000,
+    "temperature": 0.2,
+    "token_budget": 100000,
+    "stream": true
+  },
+  "hardLimits": {
+    "maxIterationsCeiling": 200,
+    "timeoutMsCeiling": 600000,
+    "maxWallClockMsCeiling": 3600000,
+    "tokenBudgetCeiling": 2000000
+  },
+  "roleOverrides": {
+    "prime_director": { "max_iterations": 100, "token_budget": 500000, "temperature": 0.3 },
+    "partner":         { "max_iterations": 50,  "token_budget": 200000, "temperature": 0.3 },
+    "worker":          { "max_iterations": 30,  "token_budget": 100000, "temperature": 0.2 },
+    "reviewer":        { "max_iterations": 5,   "token_budget": 50000,  "temperature": 0.0 },
+    "assembly_node":   { "max_iterations": 10,  "token_budget": 60000,  "temperature": 0.1 },
+    "arbitrator":      { "max_iterations": 5,   "token_budget": 50000,  "temperature": 0.0 },
+    "auditor":         { "max_iterations": 20,  "token_budget": 80000,  "temperature": 0.0 },
+    "regulator":       { "max_iterations": 15,  "token_budget": 80000,  "temperature": 0.1 }
+  },
+  "stopRules": {
+    "limits": {
+      "maxIterations": 30,
+      "maxWallClockMs": 900000,
+      "maxToolCalls": 100,
+      "maxConsecutiveErrors": 3
+    },
+    "budget": {
+      "softRatio": 0.6,
+      "warmRatio": 0.36,
+      "expandRequestRatio": 0.8,
+      "hardRatio": 1.0
+    },
+    "noProgress": {
+      "metric": "goal_distance",
+      "stagnationWindowRounds": 3,
+      "minDeltaRatio": 0.05,
+      "action": "switch_strategy"
+    },
+    "evaluationOrder": ["risk", "limits", "budget", "noProgress", "success"]
+  },
+  "verifier": {
+    "minLevelsRequired": 2,
+    "l3MinAgreementWithHuman": 0.85,
+    "l3CalibrationDataset": "Tests/GoldenSets/review-50",
+    "l3RecalibrateIntervalDay": 90,
+    "antiGamingMinRules": 1,
+    "antiGamingMaxChangedFiles": 8
+  },
+  "fingerprint": {
+    "singleIterationWarnThreshold": 2,
+    "consecutiveDuplicateRounds": 3,
+    "windowRounds": 5,
+    "windowHitThreshold": 3,
+    "crossAgentDuplicateThreshold": 2
+  },
+  "goalReanchor": {
+    "reanchorEveryRounds": 5,
+    "alwaysOnAfterCompression": true,
+    "injectRecentFailedStrategiesCount": 5
+  },
+  "failureFeedback": {
+    "evidenceExcerptMaxChars": 500,
+    "strategyTextMaxChars": 30,
+    "sameDefectCategoryEscalateRounds": 3,
+    "noImprovementAbortRounds": 2,
+    "improvementMinRatio": 0.05,
+    "unreasonableGoalEscalateCount": 5
+  },
+  "context": {
+    "partitionCeilingRatio": { "static": 0.15, "lowFreq": 0.15, "midFreq": 0.15, "highFreq": 0.45 },
+    "outputReserveTokens": 4096,
+    "tokenCoefficient": { "static": 0.05, "lowFreq": 0.5, "midFreq": 0.3, "highFreq": 1.0 },
+    "truncationUsageRatio": 0.92,
+    "summaryTriggerUsageRatio": 0.80,
+    "scoreCompressThreshold": 0.30
+  },
+  "efficiency": {
+    "invalidLoopRepeatRatio": 0.85,
+    "invalidLoopGoalDelta": 0.02
+  }
+}

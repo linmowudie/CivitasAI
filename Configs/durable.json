@@ -1,0 +1,40 @@
+{
+  "durable": {
+    "checkpoint": {
+      "everyIteration": true,
+      "afterEachEffect": true,
+      "beforeCompression": true,
+      "onExplicitPause": true,
+      "fallbackIntervalSec": 60,
+      "keepLastCount": 20,
+      "milestoneKeep": true,
+      "compactIntervalSec": 86400
+    },
+    "effect": {
+      "defaultTimeoutMs": 30000,
+      "journalRetentionDays": 180,
+      "pendingAlertThreshold": 100,
+      "unknownAlertThreshold": 1,
+      "writeSynchronous": "FULL"
+    },
+    "idempotency": {
+      "cacheTtlHour": 24,
+      "store": "sqlite"
+    },
+    "recovery": {
+      "autoResumeMaxUnknownEffects": 0,
+      "autoResumeMaxBudgetUsedRatio": 0.8,
+      "requireHumanOnArtifactDrift": true,
+      "startScanTimeoutSec": 10
+    },
+    "shutdown": {
+      "flushTimeoutSec": 30,
+      "journalFsyncTimeoutSec": 5
+    },
+    "metrics": {
+      "checkpointWriteDurationP99Ms": 500,
+      "recoveryHumanRequiredAlertPerHour": 5,
+      "idempotencyHitRatioMin": 0.3
+    }
+  }
+}

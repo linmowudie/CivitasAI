@@ -1,0 +1,117 @@
+{
+  "name": "civitas-ai",
+  "version": "0.1.0",
+  "description": "Civitas-AI — 社会驱动型自治智能体系统",
+  "type": "module",
+  "main": "dist/main/electron/main.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "build:client": "cd Client && npx vite build",
+    "build:server": "node Scripts/build.cjs",
+    "build:all": "npm run build:server && npm run build:client",
+    "start": "tsx Src/main.ts",
+    "start:electron": "electron .",
+    "dev": "concurrently -n BE,VITE -c blue,green \"tsx watch Src/main.ts\" \"cd Client && npx vite\"",
+    "dev:server": "tsx Src/main.ts",
+    "dev:electron": "concurrently -n BE,VITE,ELN -c blue,green,magenta \"tsx watch Src/main.ts\" \"cd Client && npx vite\" \"wait-on http://localhost:3000 http://localhost:5173 && electron .\"",
+    "gen:event-types": "tsx Scripts/genEventTypes.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint Src/ --ext .ts",
+    "lint:fix": "eslint Src/ --ext .ts --fix",
+    "layer-check": "eslint Src/ --ext .ts --rule '{\"import/no-restricted-paths\": [\"error\", {\"zones\": []}]}'",
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "npm run dev:electron",
+    "electron:build": "npm run build:all && electron-builder --win portable",
+    "electron:build:dir": "npm run build:all && electron-builder --win dir"
+  },
+  "build": {
+    "appId": "com.civitasai.app",
+    "productName": "CivitasAI",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/main/**/*",
+      "dist/renderer/**/*",
+      "Configs/**/*",
+      "Prompts/**/*",
+      "Skills/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "Configs",
+        "to": "app/Configs",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "Prompts",
+        "to": "app/Prompts",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "Skills",
+        "to": "app/Skills",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "CivitasAI-Portable.exe"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/better-sqlite3/**/*"
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "chokidar": "^4.0.0",
+    "uuid": "^10.0.0",
+    "ws": "^8.21.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "concurrently": "^10.0.5",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.31.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "wait-on": "^9.1.0"
+  }
+}

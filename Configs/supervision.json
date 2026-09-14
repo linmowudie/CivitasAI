@@ -1,0 +1,19 @@
+{
+  "supervision": {
+    "qualityThreshold": 0.60,
+    "agentConsecutiveFailuresToExpel": 3,
+    "patrolEnabled": true,
+    "broadcastAckTimeoutSec": 300,
+    "triggerDedupWindowSec": 300,
+    "triggerCooldownSec": 30,
+    "triggerIdempotencyTtlHour": 24,
+    "maxConcurrentLoopsGlobal": 20,
+    "maxConcurrentLoopsPerUser": 5,
+    "stormBreakerThresholdPerMin": 100,
+    "stormBreakerOpenSec": 60,
+    "lawyerLetterDedupWindowSec": 300,
+    "approvalTimeoutSec": 60,
+    "approvalDefaultOnTimeout": "reject",
+    "criticalApprovalRoles": 2
+  }
+}

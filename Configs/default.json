@@ -1,0 +1,31 @@
+{
+  "system": {
+    "name": "Civitas-AI",
+    "version": "0.1.0",
+    "logLevel": "info",
+    "dataDir": "Data/",
+    "logDir": "Logs/",
+    "promptDir": "Prompts/"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "httpPort": 3000,
+    "wsPort": 3001,
+    "corsOrigins": ["http://localhost:5173"]
+  },
+  "database": {
+    "mainPath": "Data/db/civitas_main.db",
+    "eventsPath": "Data/db/civitas_events.db",
+    "memoryPath": "Data/db/civitas_memory.db",
+    "walMode": true,
+    "busyTimeoutMs": 5000
+  },
+  "ui": {
+    "dashboardPollIntervalSec": 5,
+    "approvalQueueRefreshSec": 3,
+    "streamFlushIntervalMs": 100,
+    "maxEventBufferSize": 500,
+    "wsReconnectBackoffMs": 1000,
+    "wsReconnectMaxAttempts": 5
+  }
+}
