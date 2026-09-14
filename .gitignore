@@ -4,6 +4,10 @@ node_modules/
 # ===== 构建产物 =====
 dist/
 
+# ===== Vite 缓存 =====
+.vite/
+Client/.vite/
+
 # ===== 运行时数据 =====
 Data/
 Logs/
