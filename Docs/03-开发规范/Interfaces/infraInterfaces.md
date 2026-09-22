@@ -25,7 +25,8 @@
 | `idempotencyStore.ts` | `makeIdempotencyKey(tool, args, loopId) → string` | SHA-256 幂等键 |
 | `idempotencyStore.ts` | `lookup(key) → Result<IdempotencyLookup>` | 查询幂等缓存 |
 | `idempotencyStore.ts` | `store(key, loopId, result) → Result<void>` | 存储结果 |
-| `checkpointStore.ts` | `saveCheckpoint(data) → Result<string>` | 保存检查点 |
+| `checkpointStore.ts` | `createCheckpoint(input: CreateCheckpointInput) → Result<Checkpoint>` | 创建检查点（DB 事务原子写入，:35）**2026-09-22 校准**：无 `saveCheckpoint` |
+| `checkpointStore.ts` | `loadLatestCheckpoint(loopId)` / `loadCheckpoint(id)` / `listCheckpoints(loopId, limit)` / `pruneCheckpoints(loopId, keepLast)` → `Result<…>` | 读取与裁剪（:81,101,118,138） |
 | `recoveryScanner.ts` | `scanAndProposeRecovery() → Result<RecoveryPlan>` | 启动扫描 |
 
 ---

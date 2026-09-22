@@ -6,13 +6,15 @@
 
 ## 1. 职责边界
 
+> **v2.2 修订**：编排引擎不再限于 Prime Director 独占，所有 L1 入口级 Agent（Prime Director + Partner）均具备编排能力。治理三权（Regulator/Auditor/Arbitrator）不参与编排，仅在冲突时介入。
+
 | 职责 | 说明 |
 |------|------|
 | 需求解析 | 接收用户需求，理解意图 |
 | 复杂度评估 | 评估任务难度、Token 消耗、所需专业域 |
 | 路由决策 | 根据评估结果选择 6 种路由模式之一 |
 | 任务拆解 | 将复杂任务分解为可分配的子任务 |
-| Agent 招募 | 根据子任务需求招募/雇佣合适的 Agent |
+| Agent 招募 | 根据子任务需求招募/雇佣合适的 Agent（仅 L1 可操作） |
 | 进度追踪 | 监控各 Agent 的执行状态和进度 |
 | 质量验收 | 评估 Agent 交付物的质量 |
 | 结果汇总 | 整合各子任务结果，生成最终交付物 |
@@ -45,17 +47,21 @@
 └────────────────────────────────────────────────────────┘
 ```
 
+> 上图为**概念视图**，框内名称非真实类名（`AgentManager` / `QualityInspector` 全库不存在）。真实的函数名与模块路径见 §2.1。
+
 ### 2.1 组件定义
 
-| 组件 | 类名 | 职责 |
-|------|------|------|
-| 复杂度评估器 | `ComplexityAssessor` | 调用 LLM 分析任务复杂度，输出结构化评估报告 |
-| 路由决策器 | `RouteDecision` | 根据评估报告 + 可配规则选择路由模式 |
-| 任务拆解器 | `TaskDecomposer` | 将任务拆解为子任务，生成任务分配书 |
-| Agent 管理器 | `AgentManager` | 招募/开除/状态管理 Agent 实例 |
-| 进度追踪器 | `ProgressTracker` | 监控各 Agent 执行状态，检测超时/异常 |
-| 质量检查器 | `QualityInspector` | 评估 Agent 交付物质量（调用 LLM 判定） |
-| 结果聚合器 | `ResultAggregator` | 整合子任务结果，生成最终交付物 |
+> **2026-09-22 校准**：原表以「类名」列列出 `AgentManager`、`QualityInspector`，两者**全库不存在**；其余组件在代码中亦为**自由函数**而非类。现改列真实函数名与模块路径，并补「实现状态」列。
+
+| 组件 | 实现（函数 / 模块路径） | 职责 | 实现状态 |
+|------|----------------------|------|---------|
+| 复杂度评估器 | `assessComplexity()` · `Core/Decision/ComplexityAssessor/complexityAssessor.ts:51` | 分析任务复杂度，输出结构化评估报告 | ✅ 已实现，但为**关键词启发式**（Phase 0-2），尚未接 LLM；`Prompts/` 下亦无 `complexityAssessment.md` |
+| 路由决策器 | `decideRoute()` · `Core/Decision/RouteDecision/routeDecision.ts:26` | 根据评估报告 + 可配规则选择路由模式 | ✅ 已实现（纯函数，非类） |
+| 任务拆解器 | `decomposeTask()` · `Core/Decision/TaskDecomposer/taskDecomposer.ts:35` | 将任务拆解为子任务，生成任务分配书 | ✅ 已实现 |
+| Agent 生命周期管理 | 创建 `createAgent()` · `Core/AgentRuntime/agentFactory.ts:25`；注册/查询 `Core/AgentRuntime/agentRegistry.ts`；招募 `recruitAgent()` · `Services/Recruitment/recruiter.ts:26`；开除 `expelAgent()` · `:81` | 招募/开除/状态管理 Agent 实例 | ⚠️ 原类名 `AgentManager` 全库不存在；能力由上述函数式 API 分担 |
+| 进度追踪器 | `initProgressTracker()` / `registerAssignment()` / `updateProgress()` / `checkTimeouts()` / `checkStagnation()` / `checkConsecutiveFailures()` / `detectAllAnomalies()` · `Core/Decision/orchestrator/progressTracker.ts` | 监控各 Agent 执行状态，检测超时/异常 | ✅ 已实现（函数式，非 `ProgressTracker` 类；见 §6.1） |
+| 质量验收 | 四级 Verifier · `Services/LoopControl/verifier/`（`hardVerifier` / `ruleVerifier` / `llmJudge` / `humanGateCore` / `antiGaming`）+ Checker 实例 `performReview()` · `Services/ReviewerAgent/reviewerAgent.ts:42` | 评估 Agent 交付物质量（详见 §7） | ⚠️ 原类名 `QualityInspector` 全库不存在；且**编排器主流程未调用**（见 §3.1） |
+| 结果聚合器 | `aggregateResults()` · `Core/Decision/orchestrator/resultAggregator.ts:18` | 整合子任务结果，生成最终交付物 | ✅ 函数已实现；⚠️ `orchestrator.ts` 仅 import，**未接入主流程** |
 
 ---
 
@@ -63,46 +69,52 @@
 
 ### 3.1 主流程
 
+> **2026-09-22 校准**：下图按代码实际接线重绘（`Core/Decision/orchestrator/orchestrator.ts`）。
+> `[4]` 的 `switch` **仅落地 4 个模式**，其余 3 个落 `default` 直接返回错误；`[5]`~`[7]` 三步**当前均未接入主流程**——各已实现模式在 `[4]` 内即以 `status:'success'` 直接返回。
+
 ```
 用户输入需求
     │
     ▼
-[1] Orchestrator.receiveTask(userRequest)
+[1] receiveTask(params)                         ✅ orchestrator.ts:65（函数式入口，非 Orchestrator 类）
     │
     ▼
-[2] ComplexityAssessor.assess(userRequest)
-    │  → 调用 LLM（使用 complexityAssessment.md 提示词）
+[2] assessComplexity(input)                     ✅ complexityAssessor.ts:51
+    │  → 当前为「关键词启发式 + 文本长度估算」（Phase 0-2）
+    │    ⚠️ 未接 LLM，Prompts/ 下亦无 complexityAssessment.md
     │  → 输出 ComplexityReport
     │
     ▼
-[3] RouteDecision.decide(complexityReport)
-    │  → 匹配路由规则
-    │  → 输出 RouteDecision { mode, params }
+[3] decideRoute(report)                         ✅ routeDecision.ts:26
+    │  → 按 §3.3 优先级匹配路由规则
+    │  → 输出 RouteDecisionResult { mode, params }
     │
     ▼
-[4] 根据 mode 执行对应路由处理器
+[4] switch (route.mode)                         ⚠️ orchestrator.ts:97-108 —— 仅 4 个分支已接线
     │
-    ├── DIRECT → Orchestrator.executeDirectly(userRequest)
-    ├── DELEGATION → DelegationHandler.execute(taskPlan)
-    ├── CONSORTIUM → ConsortiumHandler.execute(taskPlan)
-    ├── ASSEMBLY_LINE → AssemblyLineHandler.execute(sop)
-    ├── LITIGATION → LitigationHandler.execute(dispute)
-    ├── REGULATION → RegulationHandler.handle(event)
-    └── AUDIT → AuditHandler.handle(alert)
+    │  ┌─ 已实现（4）：创建 Agent → 拆解 → 招募 → 注册进度 → 直接返回 status:'success'
+    ├── DIRECT         → executeDirect()         ✅ orchestrator.ts:113
+    ├── DELEGATION     → executeDelegation()     ✅ orchestrator.ts:140
+    ├── ASSEMBLY_LINE  → executeAssemblyLine()   ✅ orchestrator.ts:220
+    ├── CONSORTIUM     → executeConsortium()     ✅ orchestrator.ts:275
+    │
+    │  ┌─ S12 待接线（3）：无 Handler，落 default → err(`路由模式 X 尚未实现（S12）`)
+    ├── LITIGATION     → ⚠️ 待实现（S12）
+    ├── REGULATION     → ⚠️ 待实现（S12）
+    └── AUDIT          → ⚠️ 待实现（S12）；且不属于后端 RoutingMode（见 Docs/01 §4.1），
+    │                       由监管/稽查服务链路承载
+    ▼
+[5] aggregateResults(subtaskResults)            ⚠️ 未接线：函数已实现（resultAggregator.ts:18），
+    │                                              但 orchestrator 仅 import、主流程未调用
+    ▼
+[6] 质量验收                                     ⚠️ 未接线（桩）：全库无 QualityInspector 类
+    │  → 旧「LLM 打分 ≥ 60 才交付」已被 §7 四级 Verifier 取代
+    │  → 目标态：Services/LoopControl/verifier/ L1→L4 + Reviewer Agent（§7.1 Maker-Checker）
+    ▼
+[7] TokenEconomy.settle(traceId, contributions) ⚠️ 未接线：编排主流程中无任何 settle 调用（见 §7.7）
     │
     ▼
-[5] ResultAggregator.aggregate(subtaskResults)
-    │
-    ▼
-[6] QualityInspector.inspect(finalResult)
-    │  → 评分 ≥ 60 → 交付
-    │  → 评分 < 60 → 标记失败，触发重试/重分配
-    │
-    ▼
-[7] TokenEconomy.settle(traceId, contributions)
-    │
-    ▼
-[8] 返回最终结果给用户
+[8] 返回 OrchestrationResult                     ✅ 当前各已实现模式实际在 [4] 内即返回
 ```
 
 ### 3.2 复杂度评估报告（ComplexityReport）
@@ -162,7 +174,12 @@ interface RoutingRules {
 
 ---
 
-## 4. 六种路由模式处理器
+## 4. 路由模式处理器（7 种，4 已接线 / 3 待 S12）
+
+> **2026-09-22 校准**：原标题「六种路由模式处理器」与下列 4.1–4.7 共 **7** 个子节自相矛盾。按 `orchestrator.ts:97-108` 实际接线更正为：
+> - **已接线（4）**：`DIRECT` / `DELEGATION` / `ASSEMBLY_LINE` / `CONSORTIUM`；
+> - **S12 待接线（2）**：`LITIGATION` / `REGULATION`——在 `RoutingMode` 类型中存在，但 `switch` 落 `default` 返回"尚未实现（S12）"；
+> - **S12 待接线（1）**：`AUDIT`——**不属于后端 `RoutingMode`**，由监管/稽查服务链路（`Services/Audit/`）承载，见 Docs/01 §4.1。
 
 ### 4.1 DIRECT（直接执行）
 
@@ -196,6 +213,13 @@ Director 作为 PM
 └── [6] ResultAggregator 汇总
     └── 整合所有子任务结果 → 最终交付物
 ```
+
+> **2026-09-22 校准**（上图为目标态流程，组件名沿用旧称；真实实现与接线状态如下）：
+> `[1] TaskDecomposer` → `decomposeTask()` ✅｜`[2] AgentManager` → `createAgent()` + `recruitAgent()`（**无 `AgentManager` 类**）✅ 函数已实现｜
+> `[4] ProgressTracker` → `registerAssignment()` / `detectAllAnomalies()`（**非类**）✅｜
+> `[5] QualityInspector` → §7 四级 Verifier + Reviewer Agent —— ⚠️ **未接线**（**无 `QualityInspector` 类**）；"重试 2 次"旧机制已被 §7.5 `FailureFeedback` 取代｜
+> `[6] ResultAggregator` → `aggregateResults()` —— ⚠️ 函数已实现但 `orchestrator.ts` 未调用。
+> 当前 `executeDelegation()`（`orchestrator.ts:140`）实际执行到 `[4]` 招募与进度注册后，即以 `status:'success'` 返回。
 
 **TaskAssignment（任务分配书）结构：**
 
@@ -247,6 +271,11 @@ Director 作为项目负责人
 └── [6] Token 分润
     └── 按契约 + 贡献度自动结算
 ```
+
+> **2026-09-22 校准**：上图 `[2] AgentManager` / `[5] QualityInspector` / `ResultAggregator` 均为旧称（全库无同名类），真实函数见 §2.1。
+> 接线状态：`[1]`《联合开发契约》生成 ⚠️ 未实现｜`[2]` 招募 Partner ✅ 由 `createAgent({role:'partner'})` 完成（Prompt / 工具裁剪 / 契约签署 ⚠️ 未实现）｜
+> `[4]` 冲突触发 `LITIGATION` + 违约金划扣 ⚠️ 待接线（S12）｜`[5]` 质量验收 ⚠️ 未接线（见 §3.1 [6]）｜`[6]` Token 分润 ⚠️ 未接线（见 §3.1 [7]）。
+> 当前 `executeConsortium()`（`orchestrator.ts:275`）仅执行到"创建 Director → 拆解 → 逐子任务招募 Partner 并注册进度"，即以 `status:'success'` 返回。
 
 **ConsortiumContract 结构：**
 
@@ -307,17 +336,20 @@ interface PartnerEntry {
 └── [4] 最终节点输出 = 任务结果
 ```
 
-### 4.5 LITIGATION（司法仲裁）
+### 4.5 LITIGATION（司法仲裁）⚠️ 待接线（S12）
 
 > 详见 `Docs/05-仲裁系统/仲裁系统设计.md`
+> **实现状态**：`RoutingMode` 含此成员，但 `orchestrator.ts` 的 `switch` 无对应分支，命中即落 `default` 返回"尚未实现（S12）"。
 
-### 4.6 REGULATION（行政协调）
-
-> 详见 `Docs/06-监管与审计系统/监管与审计系统设计.md`
-
-### 4.7 AUDIT（税务稽查）
+### 4.6 REGULATION（行政协调）⚠️ 待接线（S12）
 
 > 详见 `Docs/06-监管与审计系统/监管与审计系统设计.md`
+> **实现状态**：同 §4.5——`RoutingMode` 含此成员，编排器落 `default` 返回"尚未实现（S12）"；`Services/Regulation/` 已有实现但尚未被编排链路调用。
+
+### 4.7 AUDIT（税务稽查）⚠️ 待接线（S12）
+
+> 详见 `Docs/06-监管与审计系统/监管与审计系统设计.md`
+> **实现状态**：**不是后端 `RoutingMode` 成员**（仅前端 `WorkingMode` 有 `AUDIT`，见 Docs/01 §4.1），不经编排路由，由 `Services/Audit/`（`resourceAuditBureau` / `anomalyDetector` / `freezeManager` / `patrolScheduler`）稽查服务链路承载，S12 接线。
 
 ---
 
@@ -325,42 +357,54 @@ interface PartnerEntry {
 
 ### 5.1 招募流程
 
+> **v2.2 修订**：招募权不再限于 Director，所有 L1 入口级 Agent（Prime Director + Partner）均可发起招募。L2 子 Agent 不可招募下级。
+>
+> **2026-09-22 校准**：实际 API 为**函数式** `recruitAgent(request: RecruitmentRequest)`（`Services/Recruitment/recruiter.ts:26`），非 `AgentRecruiter.recruit(requirements)`；实例创建为 `createAgent({ role, model }, traceId)`（`Core/AgentRuntime/agentFactory.ts:25`），非 `AgentFactory.create(config)`。下图逐步标注实现状态。
+
 ```
-Director 发起招募请求
+L1 入口级 Agent（Prime Director / Partner）发起招募请求
     │
     ▼
-AgentRecruiter.recruit(requirements)
+recruitAgent(request)                              ✅ Services/Recruitment/recruiter.ts:26
+    │  （入参 RecruitmentRequest：role / domain / requiredTools / tokenBudget /
+    │    maxIterations / timeLimitMs / traceId / parentAgentId）
+    │  校验：traceId、parentAgentId 非空，tokenBudget > 0
     │
-    ├── [1] 解析需求（专业域、工具集、Token 预算）
-    ├── [2] 生成 Agent 配置
-    │   ├── 选择角色 Prompt（partner.md / worker.md）
-    │   ├── 配置工具白名单（最小权限原则）
+    ├── [1] 解析需求（专业域、工具集、Token 预算）    ✅ 仅做入参校验
+    ├── [2] 生成 Agent 配置                          ⚠️ 待实现（S10）——当前不做下列任一项
+    │   ├── 选择角色 Prompt（partner.md / worker.md / reviewer.md 等）
+    │   ├── 工具可见性由 requiredRoles 白名单自动裁剪（最小权限原则）
     │   └── 分配初始 Token（从系统池划拨）
-    ├── [3] AgentFactory.create(config)
-    │   ├── 创建 AgentRuntime 实例
-    │   ├── 分配 agent_id（格式：{role}-{uuid8}）
-    │   ├── 创建私有上下文空间
-    │   └── 创建 Token 钱包
-    └── [4] 注册到 AgentRegistry
-        └── 状态设为 Ready
+    ├── [3] createAgent({ role, model }, traceId)     ✅ agentFactory.ts:25
+    │   ├── 创建 AgentInstance                        ⚠️ model 当前由调用方写死（'worker-model'）
+    │   ├── 分配 agent_id（实际格式：agent-{role}-{n}，进程内递增序号，非 {role}-{uuid8}）
+    │   ├── 创建私有上下文空间                        ⚠️ 未实现（createAgent 不建上下文空间）
+    │   └── 创建 Token 钱包                           ✅ createWallet()；失败不阻断（降级）
+    └── [4] 注册到 AgentRegistry                      ✅ registerAgent()，状态置为 ready（小写）
+        └── 发布 AGENT_RECRUITED 事件                 ✅
 ```
 
+> **工具层入口**：LLM 可调用的 `agent.recruit` 工具（`Tools/Custom/agentRecruiter.ts`）当前为**桩实现**，`execute` 直接返回 `NOT_IMPLEMENTED`——"agent.recruit 待 S10 实现"（`:37`）。上述 `recruitAgent()` 服务函数已可用，但**尚未与工具入口接线**。
+
 ### 5.2 Agent 配置模板
+
+> **v2.2 修订**：`role` 扩展为完整 8 角色（对齐 `UserRole` 类型），工具可见性由 `requiredRoles` 白名单决定（详见 Docs/11 §3.3.1），不再使用 `allowedTools` 手动指定。
 
 ```typescript
 interface AgentConfig {
   agentId: string;
-  role: 'partner' | 'worker' | 'assembly_node';
+  role: 'prime_director' | 'partner' | 'regulator' | 'auditor' | 'arbitrator'
+      | 'worker' | 'reviewer' | 'assembly_node';
   traceId: string;                   // 关联的全局 trace_id
-  parentAgentId: string;             // 招募者的 agent_id（通常是 Director）
+  parentAgentId: string;             // 招募者的 agent_id（入口级为 'self'）
   
   // Prompt 配置
   systemPrompt: string;              // 角色 Prompt 内容
   taskPrompt?: string;               // 任务特定 Prompt
   
-  // 工具配置
-  allowedTools: string[];            // 工具白名单
-  deniedTools: string[];             // 显式禁止的工具
+  // 工具配置（v2.2：由 requiredRoles 白名单自动裁剪，此处仅用于额外覆盖）
+  additionalTools?: string[];        // 额外允许的工具名（覆盖默认 requiredRoles 限制）
+  excludedTools?: string[];          // 显式禁止的工具名
   
   // 资源限制
   tokenBudget: number;               // Token 预算
@@ -375,20 +419,25 @@ interface AgentConfig {
 
 ### 5.3 开除与重新招募
 
+> **2026-09-22 校准**：实际 API 为**函数式** `expelAgent(params)`（`Services/Recruitment/recruiter.ts:81`），入参是对象 `{ agentId, taskId, traceId, reason, evidence, decidedBy }`，非 `AgentManager.expel(agentId, reason)`；重新招募为 `recruitAgent(originalRequest)`，二者已组合为 `expelAndReplace()`（`:134`）。
+
 ```
 Director 检测到 Worker 连续 3 次失败
     │
     ▼
-AgentManager.expel(agentId, reason)
-    ├── [1] 冻结 Agent（状态 → Expelled）
-    ├── [2] 回收剩余 Token（退回系统池）
-    ├── [3] 保存操作历史（失败原因、历史记录）
-    ├── [4] 清理私有上下文
-    └── [5] 广播 AGENT_EXPELLED 事件
+expelAgent({ agentId, taskId, traceId, reason, evidence, decidedBy })   ✅ recruiter.ts:81
+    │   reason ∈ { capability | laziness | goal_unreasonable | external_error }
+    ├── [0] 记录 TerminationRationale                  ✅ 必须在开除前（terminationRationale.ts）
+    ├── [1] 冻结 Agent（状态 → expelled，小写）         ✅ handleAgentEvent(type:'EXPEL')
+    ├── [2] 回收剩余 Token（退回系统池）                ⚠️ 待实现（S10）——代码未做 Token 回收
+    ├── [3] 保存操作历史（失败原因、历史记录）           ⚠️ 部分：仅落终止理由 + 事件
+    ├── [4] 清理私有上下文                             ⚠️ 待实现（S10）
+    └── [5] 广播 AGENT_EXPELLED 事件                    ✅
     │
     ▼
-AgentRecruiter.recruit(原需求)  // 重新招募
-    └── 新 Agent 继承原任务上下文（从共享记忆获取）
+recruitAgent(originalRequest)  // 重新招募（或直接用 expelAndReplace）
+    └── 新 Agent 继承原任务上下文（从共享记忆获取）      ⚠️ 待实现（S10）：expelAndReplace 仅按原
+                                                           RecruitmentRequest 新建，未做上下文继承
 ```
 
 ---

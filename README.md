@@ -63,16 +63,23 @@ CivitasAI/
 │   ├── Interface/      # 交互层（WebSocket / RestApi / WebServer / InputDeduplication）
 │   └── main.ts         # 启动入口
 ├── Client/             # React 前端
-├── Configs/            # 14 个 JSON 配置文件（空配置可启动）
+├── Configs/            # 15 个 JSON 配置文件（空配置可启动）
 ├── Docs/               # 设计文档 + 审查记录 + CHANGELOG
-├── Tests/              # 26 spec 文件 / 609+ 测试
+├── Tests/              # 36 spec / 609+ 测试
 ├── Prompts/            # 提示词外置（roles / system / tasks / versions）
 ├── Skills/             # 策略与评分标准（playbooks / rubrics / rules / strategies）
-├── ADR/                # 架构决策记录（0001~0005）
-└── Benchmarks/         # 基准评估（baselines / datasets）
+├── ADR/                # 架构决策记录（0001~0006）
+├── Benchmarks/         # 基准评估（实验矩阵 / baselines / datasets）
+├── Scripts/            # 构建 / 生成 / 诊断脚本
+├── electron/           # Electron 桌面壳
+├── Data/               # 运行时数据（SQLite / 会话 / 检查点 / 沙箱，不入库）
+├── Logs/               # JSON Lines 日志（不入库）
+└── Imgs/               # 验证截图归档（不入库）
 ```
 
 ## 文档索引
+
+完整索引见 [Docs/README](Docs/README.md)。
 
 | 文档 | 说明 |
 |------|------|
@@ -81,7 +88,13 @@ CivitasAI/
 | [Loop 控制系统设计](Docs/12-循环控制系统/循环控制系统设计.md) | Verifier / StopRules / Fingerprint / ApprovalGate |
 | [持久执行与恢复](Docs/13-持久执行与恢复/持久执行与恢复设计.md) | EffectJournal / Checkpoint / Recovery |
 | [项目构建顺序](Docs/14-构建与实施/项目构建顺序.md) | S0~S14 十四阶段 + 验证门禁 |
-| [CHANGELOG](Docs/CHANGELOG.md) | 完整变更记录 |
+| [使用指南](Docs/04-使用指南/quickStart.md) | 快速上手 / 配置 / 完整指南 / 排障 |
+| [部署运维](Docs/05-部署运维/Deployment/local.md) | 本地 / Windows / Docker + Runbook |
+| [CHANGELOG](Docs/CHANGELOG.md) | 完整变更记录（唯一事实源） |
+
+### 目录 README
+
+[Src](Src/README.md)（五层与启动 18 步）· [Client](Client/README.md) · [Configs](Configs/README.md) · [Tests](Tests/README.md) · [Prompts](Prompts/README.md) · [Skills](Skills/README.md) · [Benchmarks](Benchmarks/README.md) · [ADR](ADR/README.md) · [Scripts](Scripts/README.md) · [electron](electron/README.md) · [Data](Data/README.md) · [Logs](Logs/README.md) · [Imgs](Imgs/README.md)
 
 ## 开发
 

@@ -11,8 +11,14 @@
 | 指令下发 | Director → Worker/Partner | 直接函数调用 + 事件 | 单向 |
 | 状态上报 | Worker/Partner → Director | 事件总线 | 单向 |
 | 广播 | Regulation/Audit → 所有 Agent | 事件总线（Pub/Sub） | 一对多 |
-| 仲裁通信 | WriteGuard ↔ Arbitration ↔ Agent | 事件总线 + 直接调用 | 双向 |
+| 仲裁通信 | 冲突检测（Orchestrator/conflictPrecheck）↔ Arbitration ↔ Agent | 事件总线 + 直接调用 | 双向 |
 | 用户交互 | 用户 ↔ Interface | WebSocket + REST | 双向 |
+
+> **2026-09-22 校准**：上表第 4 行原写 `WriteGuard ↔ Arbitration ↔ Agent`，**检测发起方不成立**——
+> `CONFLICT_DETECTED` 的唯一发布点是 `Src/Core/Decision/orchestrator/conflictPrecheck.ts:55`（合并前由
+> `orchestrator/mergePhase.ts:62` 调用，检测维度为"多 Agent 修改同一文件"），
+> `Services/SharedMemory/writeGuard.ts` 现态只做**红线 key / 乐观锁版本 / assertion** 三项拦截，
+> 语义向量冲突检测为 ⚠️ 未实现目标态。同口径见 `Docs/07 §3.2、§4.3、§5`（2026-09-22 校准）。
 
 ---
 
@@ -108,12 +114,18 @@ Director                Worker-A             Worker-B
 
 ### 3.2 仲裁序列（Litigation）
 
+> **⚠️ 目标态（2026-09-22 校准）**：下图第二泳道原标 `WriteGuard`，实际不成立——`CONFLICT_DETECTED`
+> 由 `Src/Core/Decision/orchestrator/conflictPrecheck.ts:55`（`orchestrator/mergePhase.ts:62` 合并前调用）发布，
+> 此处记作 `WriteGuard*`；`Services/SharedMemory/writeGuard.ts` 现态只发布 `MEMORY_VERSION_CONFLICT`（:54）。
+> 另：`Src/` 中**无 `CONFLICT_DETECTED` 订阅方**，`Services/Arbitration/*` 除 REST 只读查询（`Interface/RestApi/loopApi.ts:10-11`）
+> 外也无执行入口调用，故"立案 → 律师函 → 裁决 → 恢复"整条闭环**尚未接线**；同口径见 `Docs/07 §5`、`Docs/05 Step 1`。
+
 ```
-Agent-A      WriteGuard     Arbitration     Agent-B     Restorer
+Agent-A      WriteGuard*    Arbitration     Agent-B     Restorer
    │              │               │              │            │
    │── write ──→  │               │              │            │
-   │              │── CONFLICT ─→ │              │            │
-   │              │   DETECTED    │              │            │
+   │              │── CONFLICT ─→ │              │            │   ← ⚠️ 实际发起方：conflictPrecheck.ts:55
+   │              │   DETECTED    │              │            │      （按"同文件多 Agent 修改"，非语义向量）
    │              │               │── SUSPEND ──→│            │
    │              │               │   (律师函)    │            │
    │              │               │── SUSPEND ──→│            │
@@ -216,7 +228,11 @@ interface ServerMessage {
 > 本节与 `Docs/07 §4.3` 的 EventBus 事件名属**两个层级**，旧写法存在冲突，现裁决如下：
 >
 > 1. **事件帧的 `type` 直接取 `EventType` 成员值**（与现有 `wsServer.ts` 实现 `type: event.eventType` 一致），不另造帧名；
->    因此旧写法 `stream_chunk` → **`agent:stream_chunk`**（已登记 Docs/07 §4.3，待 F0.6 实现）；`task_update` / `agent_update` 属聚合语义帧，**裁决作废**，一律改用具体事件名（如 `task:progress`、`agent:ready`），见 `Docs/16` F0.5b。
+>    因此旧写法 `stream_chunk` → **`agent:stream_chunk`**（✅ 2026-09-22 校准：原写"待 F0.6 实现"已过期——
+>    `agent:stream_chunk` / `agent:stream_end` / `agent:chat_message` / `agent:iteration_complete` 均已发布，
+>    见 `wsHandler.ts:281 / 159…`、`RestApi/chatApi.ts:90`；惟"按 `ui.streamFlushIntervalMs` 合批"**仍未实现**，
+>    现态为逐 chunk 直接 publish，详见 `Docs/07 §4.3` 2026-09-22 校准）；
+>    `task_update` / `agent_update` 属聚合语义帧，**裁决作废**，一律改用具体事件名（如 `task:progress`、`agent:ready`），见 `Docs/16` F0.5b。
 > 2. `response` / `error` 保留为 **RPC 应答帧**（与 EventBus 无关）。
 > 3. **客户端 → 服务端五值（`submit_task` 等）均未实现**：代码现态为 `subscribe` / `unsubscribe` / `get_dashboard` / `get_approvals` / `ping`（`wsHandler.ts`）。
 >    裁决：写操作（提交/取消任务）**走 REST**，WS 仅承担订阅与查询；本表客户端帧集合按 `Docs/16` **F0.5b** 定稿，且 `subscribe` 应支持多事件订阅（现仅订阅 `subscriptions[0]`，属 bug）。

@@ -71,18 +71,26 @@
 
 ### agentRuntime.ts
 
+> **2026-09-22 校准**：`submitForReview` / `reviewSubmission` 实际均为**对象入参**，返回 `Result<SubmitResult>`（`SubmitResult` 定义于 `Core/AgentRuntime/types.ts`）；`assignTask` 为位置参数且第三参为 `traceId`，返回 `Result<AgentInstance>`。
+
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `submitForReview` | `(taskId, producerOutput, producerModel) → Result<Task>` | Maker 提交审查 |
-| `reviewSubmission` | `(taskId, approved, reviewerModel, reason?) → Result<Task>` | Checker 审查 |
-| `assignTask` | `(agentId, task) → Result<void>` | 任务分配 |
+| `submitForReview` | `(params: { taskId, workerAgentId, payload }) → Result<SubmitResult>` | Worker 提交审查（:38-42），成功后 `awaitingApproval=true` 并广播 `loop:approval_requested` |
+| `reviewSubmission` | `(params: { taskId, reviewerAgentId, accepted, comment? }) → Result<SubmitResult>` | Reviewer 审查（:81-86），广播 `loop:approval_decided`（通过时另发 `task:completed`）；无待审记录/重复审核返回 `err` |
+| `assignTask` | `(agentId, taskId, traceId) → Result<AgentInstance>` | 任务分配，`ready → running`（:206） |
 
 ---
 
 ## 5. Decision 子模块 (`Src/Core/Decision/`)
 
-### orchestrator.ts
+### orchestrator/orchestrator.ts
+
+> **2026-09-22 校准**：原列 `orchestrate()` **不存在**；实际路径为 `Src/Core/Decision/orchestrator/orchestrator.ts`（目录名小写），编排入口为同步函数 `receiveTask(params)`（:65），端到端流程「评估 → 路由 → 拆解 → 招募 → 执行 → 聚合」，由 `taskApi.submitTask()` 经 `queueMicrotask` 异步触发（taskApi.ts:44-46）。
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `orchestrate` | `(input: OrchestrationInput) → Promise<Result<OrchestrationResult>>` | 多 Agent 编排入口 |
+| `receiveTask` | `(params: { taskId, traceId, taskDescription, tokenBudget?, timeLimitMs? }) → Result<OrchestrationResult>` | 多 Agent 编排入口（:65） |
+| `configureOrchestrator` | `(partial: Partial<OrchestratorConfig>) → void` | 覆盖编排配置（:55） |
+| `resetOrchestrator` | `() → void` | 重置内部状态（:324） |
+
+同目录其余子模块：`progressTracker.ts`（进度/异常检测）、`resultAggregator.ts`（`aggregateResults` / `calculateQualityScore`）、`mergePhase.ts`（`executeMergePhase` / `deterministicMerge`）、`conflictPrecheck.ts`（`precheckConflicts`）。

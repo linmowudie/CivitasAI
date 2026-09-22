@@ -122,12 +122,13 @@ Agent 发起 LLM 调用
     │  → 获得响应 + 实际 Token 用量
     │
     ▼
-[3] TokenLedger.recordConsumption(consumption)
-    ├── [3a] 计算消耗：totalTokens × unitCostPer1K / 1000
+[3] ConsumptionRecorder.recordConsumption(input)          // Src/Services/TokenEconomy/consumptionRecorder.ts:59
+    ├── [3a] 计算消耗：promptTokens × costPer1kInput/1000 + completionTokens × costPer1kOutput/1000
     ├── [3b] 计算税额：consumption × currentTaxRate
-    ├── [3c] 扣减钱包：balance -= (consumption + tax)
-    ├── [3d] 写入交易记录（LLM_CONSUMPTION + TAX_PAYMENT）
-    └── [3e] 广播 TOKEN_CONSUMED 事件
+    ├── [3c] 扣减钱包：WalletManager.debit(agentId, consumption + tax, ...)
+    ├── [3d] 写入交易记录（LLM_CONSUMPTION + TAX_PAYMENT，内存账本）
+    └── [3e] 广播 TOKEN_CONSUMED 事件   // ⚠️ 未实现（2026-09-22 校准）：TokenEconomy 全模块无 publish 调用
+    │                                 // TokenLedger 仅提供 appendTransaction / verifyLedgerConservation 等账本读写，不含 recordConsumption
     │
     ▼
 [4] 返回响应给 Agent
@@ -143,15 +144,16 @@ Director 确认任务完成
     │
     ▼
 [2] TokenEconomy.calculateReward(taskAssignment, qualityScore)
+    ├── ⚠️ 未实现（2026-09-22 校准）：Src 中不存在 calculateReward，以下为设计目标态
     ├── 基础奖励 = taskTokenBudget × (qualityScore / 100)
     ├── 效率加成 = 基础奖励 × efficiencyBonus(实际耗时/预算耗时)
     └── 最终奖励 = 基础奖励 + 效率加成
     │
     ▼
-[3] WalletManager.credit(agentId, reward, 'TASK_REWARD')
-    ├── 增加钱包余额
-    ├── 写入交易记录
-    └── 广播 TOKEN_EARNED 事件
+[3] WalletManager.credit(agentId, amount, traceId, 'TASK_REWARD', metadata)   // walletManager.ts:130
+    ├── 增加钱包余额（并同步扣减系统池 systemPool）
+    ├── 写入交易记录（内存账本）
+    └── 广播 TOKEN_EARNED 事件   // ⚠️ 未实现（2026-09-22 校准）：TokenEconomy 无事件发布
 ```
 
 ### 3.3 Consortium 分润流程
@@ -160,23 +162,24 @@ Director 确认任务完成
 Consortium 任务完成
     │
     ▼
-[1] ProfitDistributor.calculate(contract, contributions)
+[1] calculateDistribution(contributions, tokenPool, weights)   // profitDistributor.ts:50
+    │   （原写法 `ProfitDistributor.calculate(contract, contributions)` 无此签名，2026-09-22 校准）
     │
-    ├── 对每个 Partner 计算三维贡献分：
-    │   ├── 质量分 = QualityInspector 评估的采纳率
+    ├── 对每个 Partner（PartnerContribution = { agentId, qualityScore, outputTokens, elapsedMs }）计算三维贡献分：
+    │   ├── 质量分 = QualityInspector 评估的采纳率（0.0–1.0）
     │   ├── 数量分 = 有效输出 Token 数 / 总输出 Token 数
     │   └── 效率分 = (1 / 实际耗时) / Σ(1 / 各Partner耗时)
     │
     ├── 综合分 = Wq×质量分 + Wn×数量分 + We×效率分
-    │   默认权重：Wq=0.5, Wn=0.3, We=0.2
+    │   默认权重：Wq=0.5, Wn=0.3, We=0.2（校验三者和 = 1，偏差 > 0.01 直接报错）
     │
     └── 各 Partner 分润 = tokenPool × (综合分 / Σ所有综合分)
     │
     ▼
-[2] 对每个 Partner 执行钱包入账
-    ├── WalletManager.credit(partnerId, share, 'PROFIT_SHARING')
+[2] executeDistribution(results, traceId, contractId) → 对每个 Partner 执行钱包入账   // profitDistributor.ts:112
+    ├── WalletManager.credit(partnerId, share, traceId, 'PROFIT_SHARING', { contractId, compositeScore })
     ├── 写入交易记录（关联 contractId）
-    └── 广播 TOKEN_DISTRIBUTED 事件
+    └── 广播 TOKEN_DISTRIBUTED 事件   // ⚠️ 未实现（2026-09-22 校准）：TokenEconomy 无事件发布
 ```
 
 ---
@@ -186,35 +189,38 @@ Consortium 任务完成
 ### 4.1 税率模型
 
 ```typescript
+// 与 Src/Services/TokenEconomy/types.ts:79 及 Configs/economyRules.json → economy.tax.* 逐字对齐
 interface TaxConfig {
   // 基础税率
   baseRate: number;                  // 默认 0.05（5%）
   
   // 动态调整
   dynamicEnabled: boolean;           // 是否启用动态税率
-  adjustmentInterval: number;        // 调整间隔（秒），默认 300
+  adjustmentIntervalSec: number;     // 调整间隔（秒），默认 300；原名 adjustmentInterval 已废弃
   maxRate: number;                   // 最高税率，默认 0.20
   minRate: number;                   // 最低税率，默认 0.02
   
   // 调整规则
   highLoadMultiplier: number;        // 系统高负载时税率乘数，默认 1.5
   lowLoadDiscount: number;           // 系统低负载时税率折扣，默认 0.8
-  loadThreshold: number;             // 负载阈值（活跃 Agent 数），默认 10
+  loadThresholdAgents: number;       // 负载阈值（活跃 Agent 数），默认 10；原名 loadThreshold 已废弃
 }
 ```
 
 ### 4.2 动态税率调整算法
 
 ```
-每 adjustmentInterval 秒执行一次：
+每 adjustmentIntervalSec 秒执行一次（taxCollector.adjustTaxRate，未到间隔直接返回原税率）：
 
 currentLoad = activeAgentCount
-if currentLoad > loadThreshold:
+if dynamicEnabled == false:
+    currentRate = baseRate
+elif currentLoad > loadThresholdAgents:
     currentRate = min(baseRate × highLoadMultiplier, maxRate)
 else:
     currentRate = max(baseRate × lowLoadDiscount, minRate)
 
-广播 TAX_RATE_UPDATED 事件
+广播 TAX_RATE_UPDATED 事件   // ⚠️ 未实现（2026-09-22 校准）：TokenEconomy 无事件发布
 ```
 
 ### 4.3 税收用途
@@ -251,6 +257,13 @@ Audit Bureau 的 AnomalyDetector 检测到异常（发布 ANOMALY_DETECTED）
         ├── 写入 CONFISCATION 交易记录
         └── 发布 TOKEN_CONFISCATED
 ```
+
+> **2026-09-22 校准（现状 + 待办，不改代码）**：上图为目标态，当前实现只落了"记账"一半：
+> - `freezeWallet` / `unfreezeWallet` / `confiscate`（`walletManager.ts:164,189,214`）确实存在，但只写 `token_transactions`（`FREEZE` / `UNFREEZE` / `CONFISCATION`），**不发布任何事件**，且在 Src 生产链路中**无调用方**（仅 Tests）；
+> - 实际的冻结标记由 `Audit/freezeManager.freezeAgent` 维护内存 `frozenAgents` 并以 `source='Audit/freezeManager'` 发布 `WALLET_FROZEN` / `WALLET_UNFROZEN`（`freezeManager.ts:61,94`），与本节"发布方口径"不一致；**`TOKEN_CONFISCATED` 至今无人发布**；
+> - "后续 LLM 调用被拒"一句：Src 中**不存在 `TokenBudgetMiddleware`**，承担该职责的是 `Core/Middleware/builtin/budgetSentinel.ts`（`main.ts:188` 注册），它只按 `ctx.data.tokenBudget / tokensConsumed` 的比值截断，**不读钱包 `status='frozen'`**。
+>
+> 待办：① 审计侧改为调用 TokenEconomy 的钱包接口，事件发布权收回本子系统（对齐 Docs/06 §3）；② 冻结状态接入预算中间件，否则"冻结"对运行中的 Agent 无实际约束力。
 
 ### 5.2 消耗预算控制（v2 修订：双预算）
 
@@ -327,7 +340,7 @@ interface ModelPricing {
 实际扣减 = 消耗 Token + 税额
 ```
 
-> **单位口径**：系统内部统一以 **Token** 计量钱包余额与扣减（`token_wallets.balance` / `token_transactions.amount` 均为 INTEGER Token）；
+> **单位口径**：系统内部统一以 **Token** 计量钱包余额与扣减（`token_wallets.balance` / `token_transactions.amount` 数值语义为 Token，列型为 **REAL**——见 `Src/Infra/Db/migrations.ts` v5 `create_token_wallets` / v6 `create_token_transactions`，2026-09-22 校准；原写 INTEGER 与迁移不符）；
 > USD 仅用于观测与 `loops.budget_used_usd`（REAL）。两者不得混用同一字段（见 Docs/10 §1.1 “金额列”行）。
 
 ### 6.3 定价示例

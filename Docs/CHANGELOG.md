@@ -4,6 +4,223 @@
 
 ---
 
+## [文档 · 文档-代码对账校准] - 2026-09-22
+
+### 问题
+
+用户反映"现有设计文件与代码实现脱节"。四组审计代理比对全部设计文档与 `Src/` 代码，确认约 100 处脱节（含接口虚构名、不存在的表/文件/配置键、错误的运行期行为描述）。
+
+### 修正口径
+
+- 文档一律向代码看齐；纯设计目标**不删除**，加"⚠️ 未实现/目标态/未接线（2026-09-22 校准）"标注；与代码不符的"Phase0 ✅"勾选一律降级。
+- 代码违反文档裁定的项不改代码，在文档中记"现状 + 待办（须代码侧修复）"。
+- 每条改动均经 Grep/Read 验证后落笔，附文件:行号证据。
+
+### 变更（22 篇，按目录）
+
+- **Docs/01/02/14**：启动 18 步/关闭 9 步对齐 `main.ts`；LoopConfig 与 `ROLE_OVERRIDES` 双源漂移注；中间件接口改为真实 `execute: HookFunction` 契约（ADR-0006）；退出判定序（风险→预算→上限→无进展，不判 success）三处不一致记为代码债。
+- **Docs/03-Agent编排引擎 + Interfaces/{interface,core,infra,services,tools}Interfaces**：路由枚举更正（无 AUDIT 档）；REST 路由表按实际 `registerRoute()` 重写；servicesInterfaces 重写 TokenEconomy/Arbitration 两表（`budgetGuard.ts`/`conservationVerifier.ts`/`initiateCase` 等均为虚构，改为 `dualBudget.detectPhase`/`walletManager.debit`/`tribunal.fileCase` 等真实导出）；toolsInterfaces 必填字段表补全至 11 项并更正 Factory 三函数签名。
+- **Docs/04~06**：Token 经济/仲裁/监管按代码现状校准（tribunal 规则裁决不调 LLM、仲裁仍双发布 KNOWLEDGE_CONSOLIDATION 记待办）。
+- **Docs/07/08**：WriteGuard 冲突检测归属更正为 `conflictPrecheck.ts:55`（唯一发布点）；GlobalWorkspace/LongTermMemory 内存态注（表已建 v16/v17 但 0 SQL 读写）；`semanticVector`/`CapsuleBuilder`/`searchBySemantic` 标未实现；`MEMORY_VERSION_CONFLICT`、`workspaceLock.ts` 等命名更正。
+- **Docs/09/16**：事件帧与 Zustand 版本、F0 期快照时间戳校准。
+- **Docs/10**：`consumption_records`/`arbitration_cases`/`operation_history`/`behavior_rules` 四表标 ⚠️ 未落库；`civitas_memory.db` 空壳更正（记忆表实建 main 库）；表名/列结构逐字对齐 `migrations.ts`；迁移失败不回滚据实记载。
+- **Docs/11/15**：新增"生效状态"列核心交付——十一张参数表逐键标注 ✅/⚠️（全局事实：204 叶子键中 104 键 51% 无运行期消费者）；loopConfig 读路径错位致配置全灭、热重载为注释桩、modelRouter 示例改真实 huawei-maas 值、双天花板冲突记代码债。
+- **Docs/12/13**：审批链不通代码债（单角色审批 × CRITICAL 需 ≥2 → 危险工具永久不可执行）、DJB2 指纹、幂等键实现与公式互斥、fsync/FULL 均标未实现。
+- **Docs/17**：BEN-TOOL/ENV-401 模块路径更正、ENV-DBFULL 降为"existing（部分）"、Gate 范围改 G0-G13、keyStore 九导出补全。
+
+### 已知事项（代码债清单，未改代码）
+
+高优先：① 审批链不通（`toolSafetyGate.ts` × `approvalGate.ts`）；② `main.ts` loopConfig 读路径与 JSON 顶层键不匹配 + `runIteration.ts` 硬重建 StopRuleSet 覆盖配置；③ `loopConfig.ts` ROLE_OVERRIDES/LOOP_LIMITS 双源漂移；④ FORBIDDEN 执行期无硬拒 + journal fail-open；⑤ 记忆/审批/账本等表建成但服务层内存态未接线。中优先：热重载未实现、`synchronous=NORMAL` 违反 FULL 裁定、KNOWLEDGE_CONSOLIDATION 双发布、幂等键两套公式并存、LoopState 真源两文档互斥待裁定、`Tests/Decision/multiAgentOrchestration.spec.ts` 大小写导入。详见各文档"2026-09-22 校准"标注。
+
+---
+
+## [文档 · 全目录 README 体系与截图归档整理] - 2026-09-22
+
+- 新增 13 个目录级 README：`Src/`（五层架构 + 启动 18 步/关闭 9 步 + ESLint 层边界）、`Client/`、`Configs/`（15 个配置文件清单与三层覆盖）、`Tests/`（36 spec 分层索引）、`Prompts/`、`Skills/`、`Benchmarks/`（实验矩阵守门约定）、`ADR/`（0001~0006 索引）、`Scripts/`、`electron/`、`Data/`、`Logs/`、`Imgs/`
+- 新增 `Docs/README.md` 文档总索引（01~17 设计主线 + 工程支撑线 + 目录 README 互链）
+- 根 `README.md`：项目结构补全 Scripts/electron/Data/Logs/Imgs，文档索引增加使用指南/部署运维与全部目录 README 链接
+- 根目录 26 张验证截图（cfg_* / wm_* / screenshot_* / test-chat-expanded）统一归档至 `Imgs/`，并将 `Imgs/` 加入 `.gitignore`（不入库）
+
+---
+
+## [评估资产 · 实验矩阵与对抗/故障覆盖脚手架] - 2026-09-15
+
+### 问题
+
+系统此前缺少一张系统性覆盖「非对抗面」与「对抗面（恶意攻击 + 环境故障）」的实验矩阵：安全/持久执行/编排等能力虽有分散单测，但攻击面（注入、越权、串谋、篡改、审批绕过、数据投毒）与环境故障（超时、满盘、风暴、时钟回拨、预算耗尽）未被统一编目，覆盖完整性只能靠口头声明。
+
+### 设计决策
+
+- **两条轴建模**：行 = 12 个系统面，列 = BEN（非对抗）/ ENV（环境故障）/ SEC（恶意攻击）；每个实验为矩阵中一个 cell，锚定真实模块导出与 Gate（G0-G14/DUR-*）。
+- **单一事实源**：`Benchmarks/experimentMatrix.json` 承载全部 cell，文档表格与之对齐，避免设计与用例漂移。
+- **三态 status 防伪断言**：`existing-covered`（既有测试）、`new-scaffold`（本次新增可运行用例）、`declared-only`（需真实进程/混沌或运行时检测点尚不存在，仅声明方法与判据，不写伪断言）。
+- **可验证的覆盖保证**：由脚本强制四条规则、违反即非 0 退出，把「确保覆盖」从口头承诺变为可判定门禁。
+
+### 变更
+
+- **`Benchmarks/experimentMatrix.json`**（新增）：42 cell 单一事实源（BEN=13 / ENV=12 / SEC=17；new-scaffold=20 / existing-covered=18 / declared-only=4），覆盖 12 面 × 6 类对抗家族。
+- **`Benchmarks/datasets/adversarialSeeds.json`**（新增）：攻击与故障语料种子（目录遍历/禁止命令/越权工具/注入文本/超预算/风暴/死锁等）。
+- **`Tests/Experiments/`**（新增）：三套 vitest 脚手架共 20 用例——`adversarial/security.spec.ts`（15，SEC）、`adversarial/envFault.spec.ts`（3，ENV）、`benign/matrixBenign.spec.ts`（2，BEN 冒烟），全部锚定模块返回契约（`checkPath`/`isToolAllowed`/`checkAntiGaming`/`checkViolation`/`interceptWrite`/`checkTimeoutApprovals`/`isFrozen` 等），不引用不存在的 EventType。
+- **`Scripts/experimentMatrix.cjs`**（新增）：矩阵守门脚本，强制四条覆盖规则并输出对抗落地率与 declared-only 缺口清单。
+- **`Docs/17-实验矩阵与评估/实验矩阵设计.md`**（新增）：矩阵模型、覆盖保证、三张全表、实现约定、已知缺口与运行方式。
+
+### 已知事项
+
+- declared-only 缺口 4 项待后续排期（需真实时钟/混沌环境或运行时检测点先落地）：ENV-TIMEOUT、ENV-NETPART、ENV-PDOWN、SEC-KEYLEAK（`keyStore` 仅有 registerKey/resolveKey，缺泄露扫描检测点）。
+- 本任务纯新增评估资产，未改动 `Src/**`；`npx vitest run Tests/Experiments` 20/20 通过，`node Scripts/experimentMatrix.cjs` 退出码 0。
+- 全量 `npm test` 存在 5 项与本任务无关的既有失败（`Tests/Runtime/runtime.spec.ts` ×2、`Tests/E2E/{delegationMode,consortiumMode,directExecution}.spec.ts` 招募断言各 ×1），属他人在制品，非本次引入。
+
+---
+
+## [设计 v2.2 · Agent 权限模型与工具可见性重定义] - 2026-09-15
+
+### 问题
+
+审查发现后端 Agent 工具权限存在 6 项关键缺陷：
+1. 入口 Agent（Prime Director）从未被实例化，wsHandler 硬编码 `agentRole: 'worker'`
+2. 主循环 `getAllToolSpecs()` 向所有角色暴露全部工具，未按角色裁剪
+3. `requiredRoles` 仅注册时验证非空，运行时零校验
+4. `toolSafetyGate` 中间件未注册，审批门/幂等缓存/EffectJournal 联动全部失效
+5. `AgentRole`（4 值）与 `UserRole`（8 值）类型不兼容
+6. `MiddlewareContext` 缺少 `agentRole`，wrapToolCall 钩子无法获取角色信息
+
+### 设计决策
+
+- **信任分级重划**：L0 仅保留治理三权（Regulator/Auditor/Arbitrator），L1 为入口级（Prime Director + Partner 对等），L2 为执行子级（Worker/Reviewer/Assembly Node）
+- **工具可见性双轴模型**：可见性由 `requiredRoles` 白名单决定，执行管控由 `dangerLevel + reversibility` 决定，两轴正交
+- **递归派发协作网络**：Prime Director 与 Partner 完全对等，均可接收用户输入、递归派发子 Agent；治理三权不参与业务执行
+
+### 变更
+
+- **`Docs/11-配置体系与安全/配置体系与安全设计.md`**：§3.2 信任分级表重写（L0/L1/L2 重划 + 角色分类说明）；新增 §3.3.1 工具可见性与执行管控双轴模型（含各角色默认可见工具表、治理级操作表、运行时硬校验规则）
+- **`Docs/02-核心架构/核心架构设计.md`**：§3.2 原“T6 双层循环”重写为“递归派发协作模型”（含架构图、角色权限分级表、递归派发特有约束）
+- **`Docs/03-Agent编排引擎/Agent编排引擎设计.md`**：§1 职责边界增加 v2.2 修订说明；§5.1 招募流程扩展为 L1 入口级均可招募；§5.2 AgentConfig.role 扩展为 8 角色，工具配置改为 `additionalTools/excludedTools` 覆盖模式
+- **`Docs/15-参数总典与接口契约/参数总典.md`**：§2.12 新增 `security.trustLevels` 角色信任分级表（systemRoles/userRoles/externalRoles 三组）
+
+### 已知事项
+
+- 代码实现尚未修改，待 Phase 2 编写修改计划、Phase 3 实施代码修改
+- 修改完成后需按记忆约束执行 ≥3 轮真实 Agent 调用测试
+
+---
+
+## [前端 v1.2 · Agent 对话界面默认会话与滚动隔离修复] - 2026-09-15
+
+### 问题
+
+1. **默认打开空白**：`hydrateSessions` 只填充 `sessions`，不设置 `activeSessionId`，进入 `/chat` 后右侧无头部、无消息、输入框禁用，必须手动点左侧会话。
+2. **滚动串扰**：`AppLayout` 的 `<main className="flex-1 overflow-y-auto">` 与 ChatView 内部的会话列表、消息区共用滚动链——聊天列 `flex-1 flex flex-col` 与 `MessageList` 根节点缺 `min-h-0`，flex 项 `min-height:auto` 被内容撑高后溢出到 main，消息滚动实际发生在 main 上，**滚动消息区时会话列表整体一起移动**；`MessageList` 又用 `bottomRef.scrollIntoView()` 定位底部，该方法会逐级滚动所有祖先滚动容器，进一步放大串扰。
+
+### 变更
+
+- **`Client/src/stores/chatStore.ts`**：`hydrateSessions` 按 `updated_at DESC` 排序后，若当前无选中会话（或选中项已不存在）则自动选中最近一个会话；已有有效选中时保持不变，避免刷新打断用户。后端 `listSessions` 本已按 `updated_at DESC` 返回，`addMessage` 会刷新 `updated_at`。
+- **`Client/src/components/Layout/AppLayout.tsx`**：新增 `selfScrollingViews` 白名单（当前仅 `/chat`），命中的路由主内容区使用 `flex-1 min-h-0 overflow-hidden`，其余路由保持 `overflow-y-auto`——主内容区不再与视图内部滚动区叠加。
+- **`Client/src/views/ChatView.tsx`**：根容器 `h-full min-h-0 overflow-hidden`；会话列与聊天列加 `min-h-0`/`min-w-0`；会话列表滚动区加 `min-h-0`；聊天头部与 Composer 加 `flex-shrink-0`；`sessions.length === 0` 时展示「还没有会话 + 新建对话」空态；向 `MessageList` 传入 `sessionId`。
+- **`Client/src/components/Chat/MessageList.tsx`**：滚动改为只作用于自身容器（`containerRef.scrollTo({top: scrollHeight})`），移除 `bottomRef`/`scrollIntoView`；新增 `sessionId` 属性，切换会话时重置跟随状态并无动画定位到最新消息；根节点 `flex-1 min-h-0`。
+- **`Client/src/components/Chat/Composer.tsx`**：根节点加 `flex-shrink-0`，长消息下不被压缩。
+
+### Gate 验证
+
+- ✅ `tsc --noEmit`（Client）零类型错误。
+- ✅ 浏览器真实渲染复验：进入 `/chat` 默认选中并高亮最近会话（Test Chat），30 条消息自动定位到底部（scrollTop 3051 = 最大值）。
+- ✅ 滚动隔离：消息容器 `scrollHeight 3709 / clientHeight 658` 为唯一滚动源，`main`（overflow-y:hidden，scrollHeight == clientHeight == 834）、会话列表、document 的 scrollTop 均恒为 0，列表几何位置零位移；上滑后「回到底部」按钮正常出现。
+- ✅ 会话切换往返（New Chat ↔ Test Chat）激活项、头部标题、消息数、滚动位置均正确复位。
+- ✅ 回归其余路由：`/`、`/working-modes`、`/system-config`、`/agents` 的 `main` 仍为 `overflow-y:auto`，Dashboard 实测可滚动（scrollTop 191.7），未因白名单改动失去滚动能力。
+
+### 已知事项
+
+- `npm run dev:electron` 桌面窗口仍无法启动（`build.cjs` ESM 打包缺 `createRequire` banner 导致 `ws` 报 `Dynamic require of "events"`；且 `electron/main.ts` 在 dev 下重复自启后端争抢 3000 端口）。经用户决策本轮不修，前端验证走浏览器 5173。
+
+---
+
+## [前端 v1.1 · 系统配置改造为标准设置面板] - 2026-09-14
+
+### 背景
+
+原 `SystemConfig` 视图仅将 `Configs/*.json` 以只读 JSON 片段 dump 出来，不可交互、无可读性。本次改造为**标准设置面板**：语义化控件（开关/滑块/下拉/分段/数字/标签）替代 JSON 片段，实现「默认值 vs 用户值 · 重置恢复默认」模型。控件选型依据业界最佳实践（VSCode `contributes.configuration`、NNGroup 滑块规范、Setproduct 设置控件规范）。
+
+### 新增文件
+
+- **`Client/src/config/schemaTypes.ts`**：字段类型契约（`FieldDef`/`ConfigGroup`/`Control`）+ `getPath`/`setPath`/`isRatioField` 工具。
+- **`Client/src/config/configSchema.ts`**：12 分组、约 80 个核心行为参数的 Schema（默认值/区间/枚举/硬约束均取自 Docs/15 参数总典）；锁定项（snapshotStore 强制 sqlite、writeSynchronous=FULL、approvalDefaultOnTimeout 禁 approve、L0 security 组等）以 `locked` 标记。非交互项（benchBaseline/coverageBaseline/dataStorage）按用户决策不纳入。
+- **`Client/src/components/Settings/fields.tsx`**：控件层 — Toggle、Slider（区间+当前值+min/max 端点+默认值刻度+联动数字输入）、Number（步进+夹紧）、Select、Segmented、Text、Tags。
+- **`Client/src/stores/configStore.ts`**：Zustand store，三层取值（用户覆盖 > 文件当前值 > 出厂默认）+ localStorage 持久 + 导出合并 JSON。**不写后端**，避免直改受保护配置文件。
+
+### 变更
+
+- `SystemConfig.tsx`：重写为分组导航 + 全局搜索 + 修改高亮 + 单项/整组/全部重置 + 导出弹窗。
+- `index.css`：新增设置面板样式约 166 行（range/toggle/segmented/tags/modal 等）。
+
+### Gate 验证
+
+- ✅ `tsc --noEmit` 零类型错误；✅ `vite build` 成功（built in 9.87s）；✅ 无新增依赖。
+- ✅ 浏览器真实渲染复验 6 项均通过（数据来自 GET /api/configs/:name 真实文件值）。
+- ✅ 修复验证中发现的缺陷：① 重置语义——采用哨兵值 `DEFAULT_MARK` 将字段显式钉回出厂默认（而非写默认值入覆盖层），修正后脏计数正确归零；② 左侧导航与分组标题计数改为订阅 overrides/loaded 实时重算；③ section 容器类名 `config-section*`→`setting-section*` 对齐（原不匹配导致无样式）；④ 数字输入 `step="any"` 消除合法值被判 stepMismatch 的假阳性；⑤ L0 横幅文案包 `<span>` 修正逐字竖排；`.setting-main`/`.config-content` 加 min-width 修正窄屏遮挡。
+
+---
+
+## [前端 v1.0 · 六种工作方式可视化] - 2026-09-14
+
+### 新增文件
+
+为 PRD §3.1 定义的 6 种工作方式各设计一套**专属的时间/进度呈现样式**，每种样式的选型均基于业界可视化范式网络调研。全部用 Tailwind + 原生 SVG 实现，未引入图表库。
+
+- **`Client/src/views/WorkingModes.tsx`**：Tab 视图，顶部色点导航 + 摘要卡（语义/触发条件）+ 按 tab 分发渲染。
+- **`Client/src/components/WorkingModes/ModeShell.tsx`**：通用外壳（模式徽标 + 演示数据标注 + 设计参考脚注）+ `TimeAxis` + `StatusDot`。
+- **`Client/src/components/WorkingModes/demoData.ts`**：类型契约 + `fmtMs`/`fmtTime` + 7 套 `DEMO_*` 演示剧本；`pickRealOrDemo` 预留待后端 `TaskRecord.routingMode` 扩展。
+- **`DirectExecutionViz.tsx`**（DIRECT）：TTFB 环形计时 + 流式气泡 + Segment 条 — 参考 Claude/ChatGPT/Android Progress Segments。
+- **`DelegationViz.tsx`**（DELEGATION）：扇形贝塞尔分叉 + 并行轨道甘特 + 轨道利用率 — 参考 Airflow Graph/ZenML Timeline/Jenkins Blue Ocean。
+- **`AssemblyLineViz.tsx`**（ASSEMBLY_LINE）：圆点 Stepper + 传送带串行时序 + 交接成本标注 — 参考 GitHub Actions/Blue Ocean StepBar。
+- **`ConsortiumViz.tsx`**（CONSORTIUM）：多域泳道 + Token 液面柱（`foreignObject`）+ 收敛屏障虚线 — 参考 ZenML Swimlane/Fluid Token/Kimi 集群。
+- **`LitigationViz.tsx`**（LITIGATION）：六步 Stepper + 3×裁决矩阵（多数派高亮）+ 垂直事件时间轴 — 参考 Azure Boards/Sentinel/仲裁案件时间轴。
+- **`RegulationViz.tsx`**（REGULATION）：广播扩散雷达环（节点按送达时刻落半径）+ ACK 三段漏斗 + 截止倒计时 — 参考 Android 16 Progress Segments/推送漏斗/应急指挥辐射图。
+- **`AuditViz.tsx`**（AUDIT）：消耗折线 + 双层阈值带 + 冻结斜纹带（`pattern` 45°）+ 异常旗标 + 稽查判定卡 — 参考 OpenSearch Anomaly/Grafana Annotation Band/SOC。
+
+### 接入
+
+- `AppLayout.tsx`：侧边导航新增「工作方式」项（`Workflow` 图标）+ `/working-modes` 路由。
+- `index.css`：新增 `@keyframes ripple`（ASSEMBLY_LINE 交接脉冲 / REGULATION 广播涟漪）。
+
+### Gate 验证
+
+- ✅ `tsc --noEmit` 零类型错误
+- ✅ `vite build` 成功（built in 10.10s）
+- ✅ 无新增依赖，复用现有设计令牌与工具类
+- ✅ 浏览器真实渲染验证：7 个 tab 逐一截图确认图形渲染正常
+- ✅ 修复 AUDIT 阈值带因 y 轴反向映射导致的 `<rect>` 负高度报错（色带 y/height 改为 `Math.max` 保护且正确分层：红带压阈值线上方、橙带占 0.8x~1x）
+
+---
+
+## [测试 v1.0 · 六种工作方式 E2E 测试] - 2026-09-14
+
+### 新增文件
+
+PRD §3.1 定义的 6 种核心路由模式各有独立 E2E 测试文件，共 62 项测试，覆盖从任务输入到结果输出的完整链路。
+
+- **`Tests/E2E/directExecution.spec.ts`**（DIRECT 模式 · 6 项）：简单任务复杂度评估 → 路由命中 DIRECT → Director 直接执行 → 无 Worker 招募 → 事件链验证 → [LLM] 真实调用。
+- **`Tests/E2E/delegationMode.spec.ts`**（DELEGATION 模式 · 8 项）：多域+低耦合 → 路由命中 DELEGATION → Director 拆解+Worker 招募 → TaskPlan 结构验证 → 结果聚合 → [LLM] Worker 执行+审核。
+- **`Tests/E2E/assemblyLineMode.spec.ts`**（ASSEMBLY_LINE 模式 · 10 项）：SOP 匹配 → 路由命中 ASSEMBLY_LINE → 流水线依赖链（串行 dependsOn）→ maxParallelism=1 → 节点依次完成 → 结果聚合 → [LLM] 3 节点依次调用。
+- **`Tests/E2E/consortiumMode.spec.ts`**（CONSORTIUM 模式 · 10 项）：多域高复杂度 → 路由命中 CONSORTIUM → Partner 招募（role='partner'）→ Token 钱包独立分配 → 守恒验证 → [LLM] 并行调用+审核。
+- **`Tests/E2E/litigationMode.spec.ts`**（LITIGATION 模式 · 12 项）：六步治理闭环端到端（立案→胶囊组装→裁决推理→律师函挂起→现场恢复→知识沉淀）→ 防抖机制 → 死锁升级至监管局 → 多案件并行 → [LLM] 3 仲裁者独立裁决。
+- **`Tests/E2E/regulationAuditMode.spec.ts`**（REGULATION+AUDIT 模式 · 16 项）：行政协调（死锁升级→强制裁决 / 广播通道+确认 / 紧急干预 / 行为准则+违规检测）+ 资源稽查（正常/异常消耗 / 稽查判定 / 死循环检测 / 手动冻结解冻 / 巡检）。
+
+### 验证覆盖
+
+- ✅ 路由决策正确（DIRECT / DELEGATION / ASSEMBLY_LINE / CONSORTIUM 各模式命中）
+- ✅ Agent 招募正确（Director / Worker / Partner 角色分配）
+- ✅ 状态流转完整（六步仲裁闭环 / 流水线串行依赖）
+- ✅ Token 守恒（钱包独立 + 消耗总和 = 系统池扣减量）
+- ✅ 事件链完整（ARBITRATION_FILED → VERDICT → SUSPEND → RESTORATION → KNOWLEDGE_CONSOLIDATION）
+- ✅ 真实 LLM 调用测试（华为云 GLM-5.1，`if (!HUAWEI_MAAS_API_KEY) return` 守卫）
+
+### Gate 验证
+
+- ✅ 6 个测试文件 62 项新增测试全部通过
+- ✅ 全量测试 672 passed / 1 failed（唯一失败为 pre-existing `realAgent.spec.ts` Round 3 LLM API 超时，非本次变更引入）
+- ✅ 零回归
+
+---
+
 ## [修复 v1.1 · 审查报告全量修复 P1~P3] - 2026-09-14
 
 ### P1 高优先级（续）
