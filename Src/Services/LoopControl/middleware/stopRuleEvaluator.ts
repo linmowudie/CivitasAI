@@ -7,7 +7,7 @@
  * 挂载点：afterAgent（Agent 一轮执行结束后）。
  */
 
-import type { AgentMiddleware, MiddlewareContext } from '../../../Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState } from '../loopState.js';
 import type { StopRuleSet, LoopRuntimeSnapshot, StopDecision } from '../stopRules.js';
 import { evaluateStopRules } from '../stopRules.js';

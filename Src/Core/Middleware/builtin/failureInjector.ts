@@ -6,7 +6,7 @@
  * 挂载点：wrapToolCall（priority=100）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../types.js';
+import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 
 export interface FailureInjectionConfig {
   /** 是否启用 */

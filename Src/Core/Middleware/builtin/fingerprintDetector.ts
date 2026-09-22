@@ -6,7 +6,7 @@
  * 挂载点：afterModel（priority=10）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ModelCallOutput } from '../types.js';
+import type { AgentMiddleware, MiddlewareContext, ModelCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 
 export function computeOutputFingerprint(output: string): string {
   // 去除空白后取 hash

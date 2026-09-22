@@ -31,7 +31,7 @@ export const codeSandbox: ToolDefinition = {
     idempotencyKeyFields: ['code'],
     reversibility: 'IRREVERSIBLE',
     sideEffectScope: 'process',
-    requiredRoles: ['prime_director', 'arbitrator', 'worker'],
+    requiredRoles: ['prime_director', 'arbitrator', 'partner', 'worker'],
     sandboxMode: 'strict',
     timeoutMs: 10_000,
   },

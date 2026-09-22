@@ -7,9 +7,9 @@
  * - 提供信任级别查询与权限判定
  *
  * 信任级别：
- * - L0 系统级：Prime Director, Arbitrator, Regulator, Auditor — 全局读写、规则修改
- * - L1 用户级：Partner, Worker, Assembly Node, Reviewer — 任务执行、共享记忆读写
- * - L2 外部级：外部输入内容（用户消息、检索结果）— 只读，隔离标记包裹
+ * - L0 治理级：Regulator, Auditor, Arbitrator — 监管、审计、仲裁，最高权限
+ * - L1 入口级：Prime Director, Partner — 接收用户输入、递归派发子 Agent、协作
+ * - L2 执行子级：Worker, Reviewer, Assembly Node — 仅执行上级派发任务
  *
  * 枚举三处同形（Docs/11 §1.2.1）：TS / DB / 配置文件不做大小写转换。
  */
@@ -50,24 +50,24 @@ export interface DangerLevelInfo {
 const TRUST_LEVEL_INFO: Record<TrustLevel, TrustLevelInfo> = {
   L0: {
     level: 'L0',
-    name: '系统级',
-    description: '全局读写、规则修改、Agent 管理',
+    name: '治理级',
+    description: '全局读写、规则修改、Agent 管理、冲突裁决',
     canModifyConfig: true,
     canManageAgents: true,
     canGlobalReadWrite: true,
   },
   L1: {
     level: 'L1',
-    name: '用户级',
-    description: '任务执行、共享记忆读写、私有上下文',
+    name: '入口级',
+    description: '接收用户输入、递归派发子 Agent、搭建工作流',
     canModifyConfig: false,
     canManageAgents: false,
     canGlobalReadWrite: false,
   },
   L2: {
     level: 'L2',
-    name: '外部级',
-    description: '只读，内容按隔离标记包裹',
+    name: '执行子级',
+    description: '仅执行上级派发任务，不可接收外部输入',
     canModifyConfig: false,
     canManageAgents: false,
     canGlobalReadWrite: false,
@@ -125,17 +125,23 @@ let initialized = false;
 export function initTrustLevels(config: {
   systemRoles?: string[];
   userRoles?: string[];
+  externalRoles?: string[];
 }): void {
   roleTrustMap.clear();
 
-  // L0 系统级角色
-  for (const role of config.systemRoles ?? ['prime_director', 'arbitrator', 'regulator', 'auditor']) {
+  // L0 治理级角色
+  for (const role of config.systemRoles ?? ['regulator', 'auditor', 'arbitrator']) {
     roleTrustMap.set(role, 'L0');
   }
 
-  // L1 用户级的角色
-  for (const role of config.userRoles ?? ['partner', 'worker', 'assembly_node', 'reviewer']) {
+  // L1 入口级角色
+  for (const role of config.userRoles ?? ['prime_director', 'partner']) {
     roleTrustMap.set(role, 'L1');
+  }
+
+  // L2 执行子级角色
+  for (const role of config.externalRoles ?? ['worker', 'reviewer', 'assembly_node']) {
+    roleTrustMap.set(role, 'L2');
   }
 
   initialized = true;

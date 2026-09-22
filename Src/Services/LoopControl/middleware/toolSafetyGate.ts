@@ -11,7 +11,7 @@
  * 所有非 SAFE 工具执行前检查幂等缓存（IdempotencyStore DUR-005）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 import { getTool } from '../../../Tools/Registry/toolRegistry.js';
 import { recordIntent, updateEffectStatus, hashPayload } from '../../../Infra/DurableExecution/effectJournal.js';
 import { makeIdempotencyKey, lookup as lookupIdempotency, store as storeIdempotency } from '../../../Infra/DurableExecution/idempotencyStore.js';

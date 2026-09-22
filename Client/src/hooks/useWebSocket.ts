@@ -39,6 +39,22 @@ export function useWebSocket() {
             useChatStore.getState().finalizeStream(data.messageId, data.tokensUsed);
           }
         }
+      } else if (msg.type === EventType.AGENT_ITERATION_COMPLETE) {
+        const data = msg.data as {
+          messageId?: string;
+          iteration: number;
+          totalIterations: number;
+          toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+          toolResults: Array<{ tool_call_id: string; status: string; content?: string; error?: { code: string; message: string } }>;
+        };
+        if (data.messageId && data.toolCalls?.length) {
+          useChatStore.getState().applyIterationComplete(data.messageId, {
+            iteration: data.iteration,
+            totalIterations: data.totalIterations,
+            toolCalls: data.toolCalls,
+            toolResults: data.toolResults,
+          });
+        }
       }
 
       // 大屏数据随事件刷新

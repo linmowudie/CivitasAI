@@ -33,9 +33,9 @@ export type SideEffectScope = 'none' | 'workspace' | 'filesystem' | 'network' | 
 /** 沙箱模式 */
 export type SandboxMode = 'strict' | 'standard' | 'none';
 
-/** 用户角色 */
-export type UserRole = 'prime_director' | 'arbitrator' | 'regulator' | 'auditor'
-  | 'partner' | 'worker' | 'assembly_node' | 'reviewer';
+/** 用户角色（v2.2：统一引用 Infra 层 UserRole） */
+export type { UserRole } from '../../Infra/types.js';
+import type { UserRole } from '../../Infra/types.js';
 
 /** 限流配置 */
 export interface RateLimit {

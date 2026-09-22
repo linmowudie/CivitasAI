@@ -7,7 +7,7 @@
  */
 
 import type { RecruitmentRequest } from '../Decision/types.js';
-import type { AgentInstance, AgentRole } from '../../Core/AgentRuntime/types.js';
+import type { AgentInstance } from '../../Core/AgentRuntime/types.js';
 import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
 import { getAgent, updateAgent, getAgentsByRole } from '../../Core/AgentRuntime/agentRegistry.js';
 import { handleAgentEvent } from '../../Core/AgentRuntime/agentRuntime.js';

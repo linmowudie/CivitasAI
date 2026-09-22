@@ -94,6 +94,17 @@ export async function executeTool(
     };
   }
 
+  // requiredRoles 硬校验：调用者角色必须在工具白名单中
+  if (!tool.spec.requiredRoles.includes(context.agentRole)) {
+    return {
+      role: 'tool',
+      tool_call_id: context.operationId,
+      status: 'error',
+      recoverable: false,
+      error: { code: 'ROLE_FORBIDDEN', message: `角色 ${context.agentRole} 无权调用 ${name}` },
+    };
+  }
+
   // 超时控制
   const timeoutMs = tool.spec.timeoutMs;
   const timeoutPromise = new Promise<ToolResult>((resolve) => {

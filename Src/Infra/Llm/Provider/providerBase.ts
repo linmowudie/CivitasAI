@@ -61,6 +61,15 @@ export interface CallResult {
     readonly total_tokens: number;
   };
   readonly model: string;
+  /** 模型返回的工具调用（OpenAI 兼容格式） */
+  readonly tool_calls?: Array<{
+    readonly id: string;
+    readonly type: string;
+    readonly function: {
+      readonly name: string;
+      readonly arguments: string;
+    };
+  }>;
 }
 
 /** 流式 chunk */

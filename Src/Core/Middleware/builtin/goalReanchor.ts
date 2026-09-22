@@ -6,7 +6,7 @@
  * 挂载点：beforeModel（priority=10，最先执行）。
  */
 
-import type { AgentMiddleware, MiddlewareContext } from '../types.js';
+import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { Result } from '../../../Infra/types.js';
 import { ok } from '../../../Infra/types.js';
 

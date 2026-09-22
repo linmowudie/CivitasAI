@@ -117,7 +117,7 @@ function executeDirect(
   startedAt: number,
 ): Result<OrchestrationResult> {
   // Director 直接执行——创建 Director Agent
-  const directorResult = createAgent({ role: 'director', model: config.directorModel }, params.traceId);
+  const directorResult = createAgent({ role: 'prime_director', model: config.directorModel }, params.traceId);
   if (!directorResult.ok) return directorResult;
 
   const director = directorResult.value;
@@ -144,7 +144,7 @@ function executeDelegation(
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director
-  const directorResult = createAgent({ role: 'director', model: config.directorModel }, params.traceId);
+  const directorResult = createAgent({ role: 'prime_director', model: config.directorModel }, params.traceId);
   if (!directorResult.ok) return directorResult;
   const director = directorResult.value;
 
@@ -224,7 +224,7 @@ function executeAssemblyLine(
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director
-  const directorResult = createAgent({ role: 'director', model: config.directorModel }, params.traceId);
+  const directorResult = createAgent({ role: 'prime_director', model: config.directorModel }, params.traceId);
   if (!directorResult.ok) return directorResult;
   const director = directorResult.value;
 
@@ -279,7 +279,7 @@ function executeConsortium(
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director
-  const directorResult = createAgent({ role: 'director', model: config.directorModel }, params.traceId);
+  const directorResult = createAgent({ role: 'prime_director', model: config.directorModel }, params.traceId);
   if (!directorResult.ok) return directorResult;
   const director = directorResult.value;
 

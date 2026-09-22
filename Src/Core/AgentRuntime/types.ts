@@ -39,7 +39,9 @@ export type StoppedReason =
 
 // ── Agent 角色 ──────────────────────────────────────────────────────
 
-export type AgentRole = 'worker' | 'reviewer' | 'director' | 'partner';
+/** v2.2：统一引用 Infra 层 UserRole（8 角色单一真相源） */
+export type { UserRole } from '../../Infra/types.js';
+export type AgentRole = import('../../Infra/types.js').UserRole;
 
 // ── Agent 实例 ──────────────────────────────────────────────────────
 

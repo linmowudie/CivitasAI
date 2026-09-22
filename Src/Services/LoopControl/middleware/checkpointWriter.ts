@@ -8,7 +8,7 @@
  * 挂载点：afterAgent（在 StopRuleEvaluator 之后）。
  */
 
-import type { AgentMiddleware, MiddlewareContext } from '../../../Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState } from '../loopState.js';
 import { hashGoal } from '../loopState.js';
 

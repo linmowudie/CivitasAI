@@ -1,8 +1,19 @@
 /**
- * @module Middleware/types
+ * @module Infra/Contracts/middlewareTypes
  * @description
- * 中间件类型定义——Docs/02 §4。
- * 六钩子 + AgentMiddleware 接口。
+ * 跨层共享内核契约——中间件类型单一真相源。
+ *
+ * 依据 Docs/02 §1.1 五层单向依赖红线：Core 可依赖 Services/Tools/Infra，
+ * Services 可依赖 Tools/Infra，下层绝对不可引用上层。
+ *
+ * 中间件引擎实现位于 Core/Middleware（registry / 六钩子执行器），
+ * 但类型契约需被 Core 与 Services 双方共同引用。若契约留在 Core，
+ * 则 Services 层中间件实现（如 LoopControl/middleware/*）将形成
+ * Services → Core 的反向依赖违规。故将纯类型契约下沉至 Infra 共享内核，
+ * 使 Core→Infra、Services→Infra 均为合规的向下依赖。
+ *
+ * 约束：本模块必须保持零 import（自洽纯类型），以满足 Infra
+ * 「禁止依赖所有上层」红线。运行时引擎仍在 Core，禁止在此添加任何实现逻辑。
  */
 
 // ── 钩子类型 ──────────────────────────────────────────
@@ -20,6 +31,8 @@ export type MiddlewareHook =
 export interface MiddlewareContext {
   /** Agent ID */
   agentId: string;
+  /** Agent 角色 */
+  agentRole: string;
   /** 会话 ID */
   sessionId: string;
   /** 当前迭代 */

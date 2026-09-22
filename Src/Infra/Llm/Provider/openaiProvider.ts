@@ -12,7 +12,7 @@ import type { Result } from '../../types.js';
 import { ok, err } from '../../types.js';
 import { LlmProvider, ProviderError } from './providerBase.js';
 import type {
-  ProviderConfig, CallOptions, CallResult, StreamChunk, ChatMessage,
+  ProviderConfig, CallOptions, CallResult, StreamChunk,
 } from './providerBase.js';
 
 // ===== 类型定义 =====
@@ -24,6 +24,7 @@ interface OpenAIRequest {
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
+  tools?: unknown[];
 }
 
 /** OpenAI API 响应体 */
@@ -37,10 +38,27 @@ interface OpenAIResponse {
       role: string;
       content: string | null;
       reasoning_content?: string;
+      tool_calls?: Array<{
+        id: string;
+        type: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
     };
     delta?: {
       content?: string;
       reasoning_content?: string;
+      tool_calls?: Array<{
+        index: number;
+        id?: string;
+        type?: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
     };
     finish_reason: string | null;
   }>;
@@ -72,6 +90,7 @@ export class OpenAIProvider extends LlmProvider {
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: false,
+        tools: options.tools,
       };
 
       const response = await fetch(url, {
@@ -98,6 +117,7 @@ export class OpenAIProvider extends LlmProvider {
         finish_reason: choice.finish_reason ?? 'stop',
         usage: data.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
         model: data.model,
+        tool_calls: choice.message?.tool_calls,
       });
     } catch (e) {
       if (e instanceof ProviderError) {
@@ -133,6 +153,7 @@ export class OpenAIProvider extends LlmProvider {
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: true,
+        tools: options.tools,
       };
 
       const response = await fetch(url, {
@@ -162,6 +183,8 @@ export class OpenAIProvider extends LlmProvider {
       let finishReason = 'stop';
       let usage: CallResult['usage'] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
       let buffer = '';
+      // 流式工具调用累积
+      const toolCallMap = new Map<number, { id: string; type: string; name: string; arguments: string }>();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -194,6 +217,27 @@ export class OpenAIProvider extends LlmProvider {
                   finish_reason: choice.finish_reason ?? undefined,
                 });
               }
+
+              // 累积流式工具调用
+              if (choice.delta.tool_calls) {
+                for (const tc of choice.delta.tool_calls) {
+                  const idx = tc.index;
+                  const existing = toolCallMap.get(idx);
+                  if (existing) {
+                    // 追加片段
+                    if (tc.function?.name) existing.name += tc.function.name;
+                    if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+                  } else {
+                    // 新工具调用
+                    toolCallMap.set(idx, {
+                      id: tc.id ?? '',
+                      type: tc.type ?? 'function',
+                      name: tc.function?.name ?? '',
+                      arguments: tc.function?.arguments ?? '',
+                    });
+                  }
+                }
+              }
             }
 
             if (choice?.finish_reason) {
@@ -208,12 +252,23 @@ export class OpenAIProvider extends LlmProvider {
         }
       }
 
+      // 构造 tool_calls
+      const toolCalls = Array.from(toolCallMap.values()).map(tc => ({
+        id: tc.id,
+        type: tc.type,
+        function: {
+          name: tc.name,
+          arguments: tc.arguments,
+        },
+      }));
+
       return ok({
         content: fullContent,
         reasoning_content: fullReasoning || undefined,
         finish_reason: finishReason,
         usage,
         model: options.model,
+        tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       });
     } catch (e) {
       if (e instanceof ProviderError) {

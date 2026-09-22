@@ -26,13 +26,18 @@ import { evaluateStopRules, type StopRuleSet, type LoopRuntimeSnapshot, type Sto
 import { dispatchHook } from '../../Services/Hook/hookRegistry.js';
 
 // ── Core 层 ──
-import { executePrePostHooks, executeWrapHooks } from '../Middleware/middlewareRegistry.js';
-import type { MiddlewareContext, ModelCallInput, ModelCallOutput, ToolCallInput, ToolCallOutput } from '../Middleware/types.js';
+import { executePrePostHooks, executeWrapHooks, registerMiddleware, unregisterMiddleware } from '../Middleware/middlewareRegistry.js';
+import type { MiddlewareContext, ModelCallInput, ModelCallOutput, ToolCallInput, ToolCallOutput } from '../../Infra/Contracts/middlewareTypes.js';
 import { callModel, callModelStream, type ChatMessage, type CallResult, type StreamChunk } from '../Model/modelCaller.js';
+
+// ── Services 层中间件 ──
+import { createToolSafetyGateMiddleware } from '../../Services/LoopControl/middleware/toolSafetyGate.js';
 
 // ── Tools 层 ──
 import { executeTool } from '../../Tools/Registry/toolRegistry.js';
+import { getVisibleToolsForRole } from '../../Tools/Factory/toolFactory.js';
 import type { ToolExecutionContext, ToolResult } from '../../Tools/Traits/toolSpec.js';
+import type { UserRole } from '../../Infra/types.js';
 
 // ── Infra 层 ──
 import type { Result } from '../../Infra/types.js';
@@ -195,6 +200,7 @@ export async function runIteration(
 
   const mwCtx: MiddlewareContext = {
     agentId: ctx.agentId,
+    agentRole: ctx.agentRole,
     sessionId: ctx.sessionId,
     iteration: ctx.currentIteration,
     traceId: loopState.traceId,
@@ -277,14 +283,39 @@ export async function runIteration(
       });
     }
 
-    // ── ④ 上下文组装 ────────────────────────────────────
+    // ── ④ 上下文组装 ───────────────────────────────────
     recordStep(loopState, '④ ContextAssembly');
 
-    // 当前降级：直接使用对话历史（S/L/M/H 全量装配需 PartitionState 初始化后启用）
-    const messages: ChatMessage[] = ctx.chatMessages.map(m => ({
-      role: m.role as ChatMessage['role'],
-      content: m.content,
+    // 将 ToolSpec 转换为 OpenAI 兼容的工具格式（按角色裁剪）
+    const toolSpecs = getVisibleToolsForRole(ctx.agentRole as UserRole);
+    const tools = toolSpecs.map(spec => ({
+      type: 'function' as const,
+      function: {
+        name: spec.name,
+        description: spec.description,
+        parameters: {
+          type: 'object',
+          properties: spec.inputSchema.properties,
+          required: spec.inputSchema.required ?? [],
+          additionalProperties: spec.inputSchema.additionalProperties ?? false,
+        },
+      },
     }));
+
+    // 系统提示：告知模型可以使用工具
+    const systemPrompt = `You are Civitas-AI, an autonomous agent system. You have access to the following tools. Use them when appropriate to complete tasks. If you need to use a tool, respond with a tool call. After receiving tool results, continue your response.
+
+Available tools:
+${toolSpecs.map(s => `- ${s.name}: ${s.description}`).join('\n')}`;
+
+    // 当前降级：直接使用对话历史（S/L/M/H 全量装配需 PartitionState 初始化后启用）
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...ctx.chatMessages.map(m => ({
+        role: m.role as ChatMessage['role'],
+        content: m.content,
+      })),
+    ];
 
     // TODO: 当 PartitionState 完整初始化后，启用 assembleContext 装配路径
 
@@ -305,6 +336,13 @@ export async function runIteration(
       stream: ctx.config.stream,
     };
 
+    // 工具参数（供模型调用）
+    const modelCallOptions = {
+      temperature: modelInput.temperature,
+      signal: ctx.signal,
+      tools: tools.length > 0 ? tools : undefined,
+    };
+
     let modelOutput: ModelCallOutput;
 
     if (ctx.config.stream && ctx.onStreamChunk) {
@@ -316,7 +354,7 @@ export async function runIteration(
             input.model,
             input.messages as ChatMessage[],
             ctx.onStreamChunk!,
-            { temperature: input.temperature, signal: ctx.signal },
+            modelCallOptions,
           );
         },
       );
@@ -344,7 +382,7 @@ export async function runIteration(
           const result = await callModel(
             input.model,
             input.messages as ChatMessage[],
-            { temperature: input.temperature, signal: ctx.signal },
+            modelCallOptions,
           );
           if (result.ok) {
             callResult = result.value;
@@ -535,6 +573,16 @@ export async function executeLoop(
   const startResult = startLoop(loopState);
   if (!startResult.ok) return startResult;
 
+  // 注册 toolSafetyGate 中间件（Loop 实例级）
+  const safetyGate = createToolSafetyGateMiddleware(
+    () => loopState.loopId,
+    () => loopState.iteration.current,
+    () => loopState.traceId,
+  );
+  registerMiddleware(safetyGate);
+
+  try {
+
   const allIterations: IterationResult[] = [];
   const allEvents: LoopEvent[] = [];
   let totalTokens = 0;
@@ -612,4 +660,9 @@ export async function executeLoop(
     totalMs: Date.now() - t0,
     allEvents,
   });
+
+  } finally {
+    // 无论成功/失败/异常，始终注销 toolSafetyGate 中间件
+    unregisterMiddleware('ToolSafetyGate');
+  }
 }

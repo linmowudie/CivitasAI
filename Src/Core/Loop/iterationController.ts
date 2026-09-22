@@ -62,16 +62,16 @@ export function decideIteration(state: IterationState, input: IterationDecisionI
     state.exitMessage = `Max iterations reached (${state.current}/${state.max})`;
     return { shouldContinue: false, exitReason: 'max_iterations', exitMessage: state.exitMessage };
   }
+  // 连续多轮无工具调用且无输出 → 无进展退出
   if (state.consecutiveNoToolCalls >= 5 && !input.hasOutput) {
     state.terminated = true; state.exitReason = 'no_progress';
     state.exitMessage = `No progress for ${state.consecutiveNoToolCalls} rounds`;
     return { shouldContinue: false, exitReason: 'no_progress', exitMessage: state.exitMessage };
   }
-  if (input.hasOutput && !input.hadToolCall) {
-    state.terminated = true; state.exitReason = 'success';
-    state.exitMessage = 'Task completed';
-    return { shouldContinue: false, exitReason: 'success', exitMessage: state.exitMessage };
-  }
+  // 注意：不再因「有文本输出但无工具调用」而立即退出。
+  // 在对话场景中，模型可能先输出中间文本（如"好的，我先看看文件"），
+  // 随后才调用工具。过早退出会导致"聊着聊着就不干活了"。
+  // 循环将在 max_iterations / budget_exhausted / no_progress 时自然终止。
   return { shouldContinue: true };
 }
 

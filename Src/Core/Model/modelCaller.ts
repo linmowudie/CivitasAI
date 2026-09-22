@@ -30,6 +30,7 @@ export async function callModel(
     temperature?: number;
     max_tokens?: number;
     signal?: AbortSignal;
+    tools?: unknown[];
   },
 ): Promise<Result<CallResult>> {
   const resolved = resolveModel(qualifiedModel);
@@ -45,6 +46,7 @@ export async function callModel(
     max_tokens: options?.max_tokens,
     stream: false,
     signal: options?.signal,
+    tools: options?.tools,
   };
 
   // 创建超时 AbortController
@@ -101,6 +103,7 @@ export async function callModelStream(
     temperature?: number;
     max_tokens?: number;
     signal?: AbortSignal;
+    tools?: unknown[];
   },
 ): Promise<Result<CallResult>> {
   const resolved = resolveModel(qualifiedModel);
@@ -115,6 +118,7 @@ export async function callModelStream(
     max_tokens: options?.max_tokens,
     stream: true,
     signal: options?.signal,
+    tools: options?.tools,
   };
 
   return provider.chatStream(callOpts, onChunk);

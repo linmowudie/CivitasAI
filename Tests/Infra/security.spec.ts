@@ -37,23 +37,27 @@ describe('S1-④ Security 模块', () => {
   describe('trustLevels', () => {
     beforeEach(() => {
       initTrustLevels({
-        systemRoles: ['prime_director', 'arbitrator', 'regulator', 'auditor'],
-        userRoles: ['partner', 'worker', 'assembly_node', 'reviewer'],
+        systemRoles: ['regulator', 'auditor', 'arbitrator'],
+        userRoles: ['prime_director', 'partner'],
+        externalRoles: ['worker', 'reviewer', 'assembly_node'],
       });
     });
 
-    it('系统角色为 L0', () => {
-      expect(getTrustLevel('prime_director')).toBe('L0');
-      expect(getTrustLevel('arbitrator')).toBe('L0');
+    it('治理级角色为 L0', () => {
       expect(getTrustLevel('regulator')).toBe('L0');
       expect(getTrustLevel('auditor')).toBe('L0');
+      expect(getTrustLevel('arbitrator')).toBe('L0');
     });
 
-    it('用户角色为 L1', () => {
+    it('入口级角色为 L1', () => {
+      expect(getTrustLevel('prime_director')).toBe('L1');
       expect(getTrustLevel('partner')).toBe('L1');
-      expect(getTrustLevel('worker')).toBe('L1');
-      expect(getTrustLevel('assembly_node')).toBe('L1');
-      expect(getTrustLevel('reviewer')).toBe('L1');
+    });
+
+    it('执行子级角色为 L2', () => {
+      expect(getTrustLevel('worker')).toBe('L2');
+      expect(getTrustLevel('reviewer')).toBe('L2');
+      expect(getTrustLevel('assembly_node')).toBe('L2');
     });
 
     it('未知角色默认 L2', () => {
@@ -62,10 +66,11 @@ describe('S1-④ Security 模块', () => {
     });
 
     it('hasTrustLevel 层级判定', () => {
-      expect(hasTrustLevel('prime_director', 'L0')).toBe(true);
-      expect(hasTrustLevel('prime_director', 'L1')).toBe(true); // L0 >= L1
-      expect(hasTrustLevel('worker', 'L1')).toBe(true);
-      expect(hasTrustLevel('worker', 'L0')).toBe(false); // L1 < L0
+      expect(hasTrustLevel('regulator', 'L0')).toBe(true);
+      expect(hasTrustLevel('prime_director', 'L1')).toBe(true);
+      expect(hasTrustLevel('prime_director', 'L0')).toBe(false); // L1 < L0
+      expect(hasTrustLevel('worker', 'L2')).toBe(true);
+      expect(hasTrustLevel('worker', 'L1')).toBe(false); // L2 < L1
       expect(hasTrustLevel('unknown', 'L2')).toBe(true);
       expect(hasTrustLevel('unknown', 'L1')).toBe(false); // L2 < L1
     });

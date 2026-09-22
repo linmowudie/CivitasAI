@@ -74,7 +74,7 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
 
   // ④ 安全基础
   const securityConfig = getConfigValueOr<Record<string, unknown>>(config, 'security', {});
-  const trustConfig = (securityConfig['trustLevels'] ?? {}) as { systemRoles?: string[]; userRoles?: string[] };
+  const trustConfig = (securityConfig['trustLevels'] ?? {}) as { systemRoles?: string[]; userRoles?: string[]; externalRoles?: string[] };
   initTrustLevels(trustConfig);
   initWhitelist({
     forbiddenPaths: (securityConfig['forbiddenPaths'] ?? ['Data/Auth/']) as string[],

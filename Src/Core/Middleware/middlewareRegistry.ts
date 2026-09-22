@@ -5,7 +5,7 @@
  * Manages registration, sorting, and execution of six-hook middleware.
  */
 
-import type { AgentMiddleware, MiddlewareHook, MiddlewareContext, HookFunction } from './types.js';
+import type { AgentMiddleware, MiddlewareHook, MiddlewareContext, HookFunction } from '../../Infra/Contracts/middlewareTypes.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
@@ -49,6 +49,14 @@ export function getAllMiddlewares(): AgentMiddleware[] {
 
 export function clearMiddlewares(): void {
   middlewares.length = 0;
+}
+
+/**
+ * 注销指定名称的中间件
+ */
+export function unregisterMiddleware(name: string): void {
+  const idx = middlewares.findIndex(m => m.name === name);
+  if (idx >= 0) middlewares.splice(idx, 1);
 }
 
 export function getMiddlewareCount(): number {

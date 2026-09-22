@@ -19,6 +19,7 @@ export const EventType = {
   AGENT_STREAM_CHUNK: 'agent:stream_chunk' as const,
   AGENT_STREAM_END: 'agent:stream_end' as const,
   AGENT_CHAT_MESSAGE: 'agent:chat_message' as const,
+  AGENT_ITERATION_COMPLETE: 'agent:iteration_complete' as const,
   TOKEN_CONSUMED: 'token:consumed' as const,
   TOKEN_EARNED: 'token:earned' as const,
   TOKEN_DISTRIBUTED: 'token:distributed' as const,

@@ -31,7 +31,7 @@ export const shellRunner: ToolDefinition = {
     idempotency: 'NO',
     reversibility: 'IRREVERSIBLE',
     sideEffectScope: 'process',
-    requiredRoles: ['prime_director', 'arbitrator', 'worker'],
+    requiredRoles: ['prime_director', 'arbitrator', 'partner', 'worker'],
     sandboxMode: 'strict',
     timeoutMs: 30_000,
   },

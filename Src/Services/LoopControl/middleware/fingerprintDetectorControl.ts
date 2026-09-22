@@ -8,7 +8,7 @@
  * 挂载点：wrapToolCall（工具调用前后拦截）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState, FingerprintRecord } from '../loopState.js';
 import { computeFingerprint, detectFingerprintAction, recordFingerprint, type FingerprintConfig, type FingerprintAction } from '../actionFingerprint.js';
 

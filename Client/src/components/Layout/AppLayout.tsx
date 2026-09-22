@@ -2,10 +2,10 @@
  * AppLayout——侧边导航 + 离线横幅 + 底部状态栏 + 主内容区。
  * F1.6：从 App.tsx 抽出布局骨架。
  */
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import {
   MessageSquare, LayoutDashboard, Cpu, ListTodo, ShieldCheck, Bug,
-  Scale, GitBranch, Activity, Wallet, Settings,
+  Scale, GitBranch, Activity, Wallet, Settings, Workflow,
 } from 'lucide-react';
 import ChatView from '@/views/ChatView';
 import Dashboard from '@/views/Dashboard';
@@ -17,6 +17,7 @@ import ArbitrationView from '@/views/ArbitrationView';
 import TraceReplay from '@/views/TraceReplay';
 import TokenLedger from '@/views/TokenLedger';
 import SystemConfig from '@/views/SystemConfig';
+import WorkingModes from '@/views/WorkingModes';
 import OfflineBanner from './OfflineBanner';
 import StatusBar from './StatusBar';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: '总控大屏' },
   { to: '/agents', icon: Cpu, label: 'Agent 监控' },
   { to: '/tasks', icon: ListTodo, label: '任务面板' },
+  { to: '/working-modes', icon: Workflow, label: '工作方式' },
   { to: '/approvals', icon: ShieldCheck, label: '审批队列' },
   { to: '/loop-debug', icon: Bug, label: 'Loop 调试' },
   { to: '/arbitration', icon: Scale, label: '仲裁中心' },
@@ -34,9 +36,17 @@ const navItems = [
   { to: '/system-config', icon: Settings, label: '系统配置' },
 ];
 
+/**
+ * 自带内部滚动容器的视图（左右分栏 / 全屏画布类）。
+ * 这些路由的主内容区必须 overflow-hidden，否则主内容区会成为第二个滚动容器，
+ * 与内部滚动区叠在一起导致「滚消息区时会话列表跟着一起滚」。
+ */
+const selfScrollingViews = ['/chat'];
+
 export default function AppLayout() {
   // 全局 WS 连接（仅挂载一次）
   useWebSocket();
+  const location = useLocation();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -74,12 +84,17 @@ export default function AppLayout() {
       {/* ── 主内容区 ──────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <OfflineBanner />
-        <main className="flex-1 overflow-y-auto">
+        <main
+          className={selfScrollingViews.includes(location.pathname)
+            ? 'flex-1 min-h-0 overflow-hidden'
+            : 'flex-1 overflow-y-auto'}
+        >
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/chat" element={<ChatView />} />
             <Route path="/agents" element={<AgentMonitor />} />
             <Route path="/tasks" element={<TaskPanel />} />
+            <Route path="/working-modes" element={<WorkingModes />} />
             <Route path="/approvals" element={<ApprovalQueue />} />
             <Route path="/loop-debug" element={<LoopDebugger />} />
             <Route path="/arbitration" element={<ArbitrationView />} />

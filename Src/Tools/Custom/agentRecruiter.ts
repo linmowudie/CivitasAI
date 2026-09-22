@@ -27,7 +27,7 @@ export const agentRecruiter: ToolDefinition = {
     idempotency: 'NO',
     reversibility: 'IRREVERSIBLE',
     sideEffectScope: 'external',
-    requiredRoles: ['prime_director'],
+    requiredRoles: ['prime_director', 'partner'],
     sandboxMode: 'none',
     timeoutMs: 30_000,
   },

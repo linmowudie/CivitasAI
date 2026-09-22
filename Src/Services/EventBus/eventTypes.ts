@@ -28,6 +28,7 @@ export enum EventType {
   AGENT_STREAM_CHUNK = 'agent:stream_chunk',   // LLM 增量输出片；按 ui.streamFlushIntervalMs 合批
   AGENT_STREAM_END = 'agent:stream_end',       // 一轮流式结束
   AGENT_CHAT_MESSAGE = 'agent:chat_message',   // 会话消息落库完成
+  AGENT_ITERATION_COMPLETE = 'agent:iteration_complete', // 单次迭代完成（含工具调用/结果）
 
   // Token 经济
   TOKEN_CONSUMED = 'token:consumed',

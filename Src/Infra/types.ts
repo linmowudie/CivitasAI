@@ -26,6 +26,16 @@ export enum MutabilityLevel {
 // ===== 信任级别（Docs/11 §3.2）=====
 export type TrustLevel = 'L0' | 'L1' | 'L2';
 
+// ===== 用户角色（Docs/11 §3.2 / Docs/02 §3.2）=====
+/**
+ * 8 角色单一真相源。
+ * L0 治理级: regulator, auditor, arbitrator
+ * L1 入口级: prime_director, partner
+ * L2 执行子级: worker, reviewer, assembly_node
+ */
+export type UserRole = 'prime_director' | 'partner' | 'regulator' | 'auditor' | 'arbitrator'
+  | 'worker' | 'reviewer' | 'assembly_node';
+
 // ===== 全局 ID 类型 =====
 
 /** session_key: SHA-256 前 16 位 hex */

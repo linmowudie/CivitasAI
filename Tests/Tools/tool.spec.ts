@@ -269,16 +269,23 @@ describe('S4 Tools 层', () => {
   describe('Factory', () => {
     beforeEach(() => { registerBuiltinTools(); });
 
-    it('L0 角色（prime_director）可见所有非 FORBIDDEN 工具', () => {
-      const visible = getVisibleToolNames({ role: 'prime_director' });
+    it('L0 治理级角色（regulator）可见所有非 FORBIDDEN 工具', () => {
+      const visible = getVisibleToolNames({ role: 'regulator' });
       expect(visible.length).toBe(11); // 全部可见
     });
 
-    it('L1 角色（worker）可见 SAFE + CONTROLLED', () => {
-      const visible = getVisibleToolNames({ role: 'worker' });
+    it('L1 入口级（prime_director）可见 SAFE + CONTROLLED', () => {
+      const visible = getVisibleToolNames({ role: 'prime_director' });
       expect(visible).toContain('file.read');   // SAFE
       expect(visible).toContain('file.write');  // CONTROLLED
       expect(visible).not.toContain('shell.exec'); // DANGEROUS
+    });
+
+    it('L2 执行子级（worker）仅可见 SAFE', () => {
+      const visible = getVisibleToolNames({ role: 'worker' });
+      expect(visible).toContain('file.read');   // SAFE
+      expect(visible).not.toContain('file.write');  // CONTROLLED → L2 不可见
+      expect(visible).not.toContain('shell.exec'); // DANGEROUS → L2 不可见
     });
 
     it('excludedTools 强制排除', () => {

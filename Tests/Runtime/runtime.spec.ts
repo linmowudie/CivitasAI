@@ -49,7 +49,7 @@ import {
 import { goalReanchorMiddleware } from '../../Src/Core/Middleware/builtin/goalReanchor.js';
 import { fingerprintDetectorMiddleware, computeOutputFingerprint } from '../../Src/Core/Middleware/builtin/fingerprintDetector.js';
 import { budgetSentinelMiddleware } from '../../Src/Core/Middleware/builtin/budgetSentinel.js';
-import type { AgentMiddleware, MiddlewareContext } from '../../Src/Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext } from '../../Src/Infra/Contracts/middlewareTypes.js';
 
 // ── Hook ──────────────────────────────────────────────
 

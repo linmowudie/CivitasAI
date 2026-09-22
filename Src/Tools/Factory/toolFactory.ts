@@ -8,10 +8,10 @@
  * 工具可见性由角色信任级别 + 工具 dangerLevel 决定。
  */
 
-import type { ToolSpec, UserRole } from '../Traits/toolSpec.js';
+import type { ToolSpec } from '../Traits/toolSpec.js';
+import type { UserRole } from '../../Infra/types.js';
 import { getAllToolSpecs } from '../Registry/toolRegistry.js';
-import { isToolAllowed } from '../../Infra/Security/trustLevels.js';
-import { getTrustLevel } from '../../Infra/Security/trustLevels.js';
+import { isToolAllowed, getTrustLevel } from '../../Infra/Security/trustLevels.js';
 
 // ===== 类型定义 =====
 
@@ -62,6 +62,27 @@ export function getVisibleTools(config: RoleToolConfig): ToolSpec[] {
  */
 export function getVisibleToolNames(config: RoleToolConfig): string[] {
   return getVisibleTools(config).map(t => t.name);
+}
+
+/**
+ * 按 requiredRoles 主门禁获取指定角色可见的工具列表
+ *
+ * 规则：
+ * - 工具的 requiredRoles 包含当前角色 → 可见
+ * - 当前角色为 L0 治理级 → 所有工具可见（除 FORBIDDEN）
+ * - 否则不可见
+ */
+export function getVisibleToolsForRole(role: UserRole): ToolSpec[] {
+  const allTools = getAllToolSpecs();
+  const trustLevel = getTrustLevel(role);
+
+  return allTools.filter(tool => {
+    // requiredRoles 主门禁
+    if (tool.requiredRoles.includes(role)) return true;
+    // L0 治理级兜底：可使用所有非 FORBIDDEN 工具
+    if (trustLevel === 'L0' && tool.dangerLevel !== 'FORBIDDEN') return true;
+    return false;
+  });
 }
 
 /**

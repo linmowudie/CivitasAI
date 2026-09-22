@@ -4,9 +4,9 @@
  * F2.10：思维链（CoT）区块——流式时展开展示，流结束后默认折叠、可点击切换。
  */
 import { useState, useEffect } from 'react';
-import { Bot, User, Zap, AlertCircle, RefreshCw, Brain, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, User, Zap, AlertCircle, RefreshCw, Brain, ChevronDown, ChevronRight, Wrench, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
-import type { ChatMessage, MessageStatus } from '@/stores/chatStore';
+import type { ChatMessage, MessageStatus, ToolCallEntry } from '@/stores/chatStore';
 
 const statusIcon: Record<MessageStatus, React.ReactNode> = {
   queued: <span className="w-2 h-2 rounded-full bg-text-muted animate-pulse" />,
@@ -35,10 +35,15 @@ export default function MessageBubble({ msg, onCopy, onRegenerate, onThumbUp, on
   const isSystem = msg.role === 'system';
   const isStreaming = msg.status === 'streaming' || msg.status === 'regenerating';
   const hasReasoning = !isUser && !!msg.reasoning;
+  const hasToolCalls = !isUser && !!msg.toolCalls?.length;
+  const totalIterations = msg.totalIterations ?? 0;
 
   // 思维链折叠状态：流式期间强制展开，结束后默认折叠
   const [reasoningOpen, setReasoningOpen] = useState(isStreaming);
   useEffect(() => { setReasoningOpen(isStreaming); }, [isStreaming]);
+
+  // 工具调用折叠状态
+  const [toolCallsOpen, setToolCallsOpen] = useState(true);
 
   if (isSystem) {
     return (
@@ -76,6 +81,11 @@ export default function MessageBubble({ msg, onCopy, onRegenerate, onThumbUp, on
               <Zap size={9} /> {msg.tokens_used} tok
             </span>
           )}
+          {totalIterations > 0 && !isUser && (
+            <span className="text-[10px] text-brand-400 font-mono">
+              {totalIterations} 轮迭代
+            </span>
+          )}
           {/* 状态指示 */}
           {msg.status !== 'complete' && (
             <span className="flex items-center gap-1 text-[10px] text-text-muted">
@@ -105,6 +115,33 @@ export default function MessageBubble({ msg, onCopy, onRegenerate, onThumbUp, on
               )}
             </div>
           )}
+
+          {/* 工具调用区块 */}
+          {hasToolCalls && (
+            <div className="mb-2 rounded-lg bg-surface-800/60 border border-surface-700 overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] text-text-muted hover:bg-surface-700/40 transition-colors"
+                onClick={() => setToolCallsOpen(o => !o)}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Wrench size={12} className="text-brand-400" />
+                  <span>工具调用</span>
+                  {totalIterations > 1 && (
+                    <span className="text-[9px] bg-surface-700 px-1 rounded">{totalIterations} 轮</span>
+                  )}
+                  <span className="text-[9px] text-text-muted">{msg.toolCalls!.length} 次</span>
+                </div>
+                {toolCallsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+              {toolCallsOpen && (
+                <div className="border-t border-surface-700/60">
+                  {msg.toolCalls!.map((tc, i) => (
+                    <ToolCallItem key={`${tc.id}-${i}`} tc={tc} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {isUser ? (
             <div className="chat-content">{msg.content}</div>
           ) : (
@@ -123,6 +160,64 @@ export default function MessageBubble({ msg, onCopy, onRegenerate, onThumbUp, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── 工具调用条目子组件 ─────────────────────────────────────────────
+
+function ToolCallItem({ tc }: { tc: ToolCallEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const argsStr = Object.keys(tc.arguments).length > 0
+    ? JSON.stringify(tc.arguments, null, 2)
+    : '';
+
+  return (
+    <div className="border-b border-surface-700/40 last:border-b-0">
+      <button
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-surface-700/30 transition-colors"
+        onClick={() => setExpanded(o => !o)}
+      >
+        {tc.status === 'success' ? (
+          <CheckCircle2 size={12} className="text-success flex-shrink-0" />
+        ) : tc.status === 'error' ? (
+          <XCircle size={12} className="text-danger flex-shrink-0" />
+        ) : (
+          <Loader2 size={12} className="text-warning flex-shrink-0 animate-spin" />
+        )}
+        <span className="font-mono font-semibold text-text-primary truncate">{tc.name}</span>
+        {argsStr && (
+          <span className="text-[9px] text-text-muted ml-auto flex-shrink-0">
+            {expanded ? '收起' : '参数'}
+          </span>
+        )}
+      </button>
+
+      {expanded && argsStr && (
+        <div className="px-3 pb-2">
+          <div className="text-[10px] text-text-muted mb-1 font-mono">参数：</div>
+          <pre className="text-[10px] text-text-secondary font-mono bg-surface-900 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">
+            {argsStr}
+          </pre>
+        </div>
+      )}
+
+      {expanded && tc.content && (
+        <div className="px-3 pb-2">
+          <div className="text-[10px] text-text-muted mb-1 font-mono">结果：</div>
+          <pre className="text-[10px] text-text-secondary font-mono bg-surface-900 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap">
+            {tc.content}
+          </pre>
+        </div>
+      )}
+
+      {expanded && tc.error && (
+        <div className="px-3 pb-2">
+          <div className="text-[10px] text-danger font-mono">
+            {tc.error.code}: {tc.error.message}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

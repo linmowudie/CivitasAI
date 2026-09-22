@@ -8,7 +8,7 @@
  * 挂载点：afterModel（模型调用后检查预算消耗）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ModelCallOutput } from '../../../Core/Middleware/types.js';
+import type { AgentMiddleware, MiddlewareContext, ModelCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState } from '../loopState.js';
 import type { StopRuleSet } from '../stopRules.js';
 import { detectBudgetPhase } from '../stopRules.js';

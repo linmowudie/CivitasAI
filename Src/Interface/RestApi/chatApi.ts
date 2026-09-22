@@ -11,6 +11,7 @@ import { getMainDb } from '../../Infra/Db/index.js';
 import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
 import { EventType } from '../../Services/EventBus/eventTypes.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getRegisteredModels } from '../../Infra/Llm/Router/modelRouter.js';
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
@@ -54,6 +55,13 @@ export function createSession(title?: string): ChatSessionRow {
 export function getSession(sessionId: string): ChatSessionRow | undefined {
   const db = getMainDb();
   return db.prepare('SELECT * FROM chat_sessions WHERE session_id = ?').get(sessionId) as ChatSessionRow | undefined;
+}
+
+/** 更新会话标题（用于自动命名） */
+export function updateSessionTitle(sessionId: string, title: string): void {
+  const db = getMainDb();
+  db.prepare('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE session_id = ?')
+    .run(title, Date.now(), sessionId);
 }
 
 // ── 消息操作 ────────────────────────────────────────────────────────
@@ -130,5 +138,25 @@ export function registerChatRoutes(): void {
       trace_id: req.body?.trace_id as string | undefined,
     });
     return json(msg, 201);
+  });
+
+  // PATCH /api/sessions/:sessionId — 更新会话（标题等）
+  registerRoute('PATCH', '/api/sessions/:sessionId', async (req) => {
+    const sessionId = req.params.sessionId;
+    if (!sessionId) return apiError('sessionId is required', 400);
+    const session = getSession(sessionId);
+    if (!session) return apiError('Session not found', 404);
+
+    const title = req.body?.title as string | undefined;
+    if (title !== undefined) {
+      updateSessionTitle(sessionId, title);
+    }
+    return json(getSession(sessionId));
+  });
+
+  // GET /api/models — 获取可用模型列表
+  registerRoute('GET', '/api/models', async () => {
+    const models = getRegisteredModels();
+    return json(models);
   });
 }

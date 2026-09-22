@@ -3,7 +3,7 @@ export type {
   ToolCallInput, ToolCallOutput, HookFunction,
   BeforeAgentHook, BeforeModelHook, WrapModelCallHook, WrapToolCallHook,
   AfterModelHook, AfterAgentHook, AgentMiddleware,
-} from './types.js';
+} from '../../Infra/Contracts/middlewareTypes.js';
 export {
   registerMiddleware, registerMiddlewares, getMiddlewaresForHook,
   getAllMiddlewares, clearMiddlewares, getMiddlewareCount,
