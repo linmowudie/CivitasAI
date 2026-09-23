@@ -10,7 +10,7 @@
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
-import type { ToolSpec, ToolDefinition, ToolExecutor, ToolExecutionContext, ToolResult } from '../Traits/toolSpec.js';
+import type { ToolSpec, ToolDefinition, ToolExecutionContext, ToolResult } from '../Traits/toolSpec.js';
 import { validateToolSpec } from '../Traits/specValidator.js';
 
 // ===== 内部状态 =====

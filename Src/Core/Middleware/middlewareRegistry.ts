@@ -5,7 +5,7 @@
  * Manages registration, sorting, and execution of six-hook middleware.
  */
 
-import type { AgentMiddleware, MiddlewareHook, MiddlewareContext, HookFunction } from '../../Infra/Contracts/middlewareTypes.js';
+import type { AgentMiddleware, MiddlewareHook, MiddlewareContext } from '../../Infra/Contracts/middlewareTypes.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
@@ -71,7 +71,7 @@ export async function executePrePostHooks(
   const hooks = getMiddlewaresForHook(hook);
 
   for (const mw of hooks) {
-    const result = await (mw.execute as Function)(ctx, ...args);
+    const result = await (mw.execute as (...args: any[]) => Promise<any>)(ctx, ...args);
     if (result && typeof result === 'object' && 'shortCircuit' in result && result.shortCircuit) {
       return { shortCircuited: true, result: result.result };
     }
@@ -93,7 +93,7 @@ export async function executeWrapHooks<TInput, TOutput>(
     const mw = hooks[i];
     const prev = current;
     current = ((inp: TInput) =>
-      (mw.execute as Function)(ctx, inp, prev)
+      (mw.execute as (...args: any[]) => Promise<any>)(ctx, inp, prev)
     ) as (input: TInput) => Promise<TOutput>;
   }
 

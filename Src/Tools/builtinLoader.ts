@@ -5,9 +5,10 @@
  * 启动 ⑫ 步调用。
  */
 
+import type { Result } from '../Infra/types.js';
+
 import type { ToolDefinition } from './Traits/toolSpec.js';
 import { registerTools } from './Registry/toolRegistry.js';
-import type { Result } from '../Infra/types.js';
 
 // Builtin/Read
 import { fileReader } from './Builtin/Read/fileReader.js';

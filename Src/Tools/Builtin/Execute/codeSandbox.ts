@@ -5,10 +5,11 @@
  * 当前实现为 Node.js vm 模块的简化封装。
  */
 
+import { runInNewContext } from 'node:vm';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
-import { runInNewContext } from 'node:vm';
 
 export const codeSandbox: ToolDefinition = {
   spec: {

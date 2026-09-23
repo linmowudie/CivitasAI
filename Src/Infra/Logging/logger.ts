@@ -26,7 +26,9 @@
  */
 
 import { resolve } from 'node:path';
+
 import type { LogLevel } from '../types.js';
+
 import { LogWriter, createLogWriter } from './logWriter.js';
 import type { LogTrack, LogWriterConfig } from './logWriter.js';
 import { currentContext, currentTraceId, currentSpanId, currentOperationId } from './traceContext.js';
@@ -214,7 +216,7 @@ function log(level: LogLevel, message: string, data?: LogData): void {
  * error/fatal → system 轨道（系统级事件）
  * 其他 → business 轨道（默认）
  */
-function routeTrack(level: LogLevel, data?: LogData): LogTrack {
+function routeTrack(level: LogLevel, _data?: LogData): LogTrack {
   // error 和 fatal 默认走系统轨道
   if (level === 'error' || level === 'fatal') {
     return 'system';
@@ -228,6 +230,7 @@ function routeTrack(level: LogLevel, data?: LogData): LogTrack {
 function extractData(data?: LogData): Record<string, unknown> | undefined {
   if (!data) return undefined;
 
-  const { track: _track, source: _source, ...rest } = data;
+  const EXCLUDE = new Set(['track', 'source']);
+  const rest = Object.fromEntries(Object.entries(data).filter(([k]) => !EXCLUDE.has(k)));
   return Object.keys(rest).length > 0 ? rest : undefined;
 }

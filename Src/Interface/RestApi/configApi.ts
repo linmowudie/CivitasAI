@@ -5,9 +5,10 @@
  * 读取 Configs/ 目录下的 JSON 配置文件。
  */
 
-import { json, apiError, registerRoute } from './router.js';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+
+import { json, apiError, registerRoute } from './router.js';
 
 const CONFIGS_DIR = join(process.cwd(), 'Configs');
 

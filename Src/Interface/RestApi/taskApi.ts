@@ -6,9 +6,11 @@
  * F0.5：POST 触发 orchestrator.receiveTask()；DELETE 取消任务。
  */
 
-import { json, apiError, registerRoute } from './router.js';
-import { receiveTask } from '../../Core/Decision/orchestrator/orchestrator.js';
 import { v4 as uuidv4 } from 'uuid';
+
+import { receiveTask } from '../../Core/Decision/orchestrator/orchestrator.js';
+
+import { json, apiError, registerRoute } from './router.js';
 
 // ── 任务提交 ────────────────────────────────────────────────────────
 

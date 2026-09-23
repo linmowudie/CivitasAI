@@ -10,10 +10,11 @@
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
 import type {
   LoopPhase, FailureCategory, VerifierLevel, DefectCategory,
   RiskLevel, ApprovalKind, DecisionPolicy, ApprovalStatus,
-  NextAction, EvidenceKind, UserRole,
+  UserRole,
 } from './types.js';
 
 // ── VerifierSpec（Docs/12 §3.2）────────────────────────────────────

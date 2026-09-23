@@ -5,11 +5,9 @@
  * 监控各 Agent 的执行状态，检测超时/停滞/循环/连续失败。
  */
 
-import type { AgentProgress, TaskAssignment, AssignmentStatus } from '../types.js';
+import type { AgentProgress, TaskAssignment } from '../types.js';
 import { EventType } from '../../../Services/EventBus/eventTypes.js';
 import { subscribe, type Subscription } from '../../../Services/EventBus/eventBus.js';
-import type { Result } from '../../../Infra/types.js';
-import { ok, err } from '../../../Infra/types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

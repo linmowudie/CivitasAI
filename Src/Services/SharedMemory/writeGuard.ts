@@ -8,11 +8,12 @@
  * assertion='inferred' 的内容不进入 L 低频分区与长期记忆。
  */
 
-import type { WorkspaceEntry, WriteResult, VersionConflict } from './versionedEntry.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { WorkspaceEntry, WriteResult, VersionConflict } from './versionedEntry.js';
 
 // ── 禁止写入的键（Docs/07 §8.1 红线）───────────────────────────────
 

@@ -5,10 +5,11 @@
  * DANGEROUS + IRREVERSIBLE → 需要 L4 HumanGate（S6 补全）。
  */
 
+import { execSync } from 'node:child_process';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
-import { execSync } from 'node:child_process';
 import { isCommandForbidden } from '../../../Infra/Security/whitelist.js';
 
 export const shellRunner: ToolDefinition = {

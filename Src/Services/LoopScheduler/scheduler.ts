@@ -5,10 +5,11 @@
  * 整合去重 + 熔断，防止事件风暴。
  */
 
+import type { Result } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
+
 import { checkDedup } from './dedupStore.js';
 import { checkBreaker } from './circuitBreaker.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
 
 // ── 调度决策 ────────────────────────────────────────────────────────
 

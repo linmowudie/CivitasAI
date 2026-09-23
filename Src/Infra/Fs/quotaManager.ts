@@ -9,8 +9,6 @@
 
 import { statSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
 
 // ===== 类型定义 =====
 

@@ -6,9 +6,10 @@
  * 每次消耗产生 ConsumptionRecord + 钱包扣减 + 交易记录。
  */
 
-import type { ConsumptionRecord, ModelPricing } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { ConsumptionRecord, ModelPricing } from './types.js';
 import { debit, recordTaxPayment } from './walletManager.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────

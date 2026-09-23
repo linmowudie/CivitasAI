@@ -18,8 +18,9 @@
  *       └── config.json       # 日志元数据（当前轮转索引等）
  */
 
-import { appendFileSync, mkdirSync, existsSync, renameSync, statSync, writeFileSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { appendFileSync, mkdirSync, existsSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import type { LogLevel } from '../types.js';
 
 // ===== 类型定义 =====

@@ -18,13 +18,10 @@ import {
   cleanAgentWorkspace,
   type AgentWorkspace,
 } from '../../../Infra/Sandbox/workspaceIsolator.js';
-import {
-  mergeWorktrees,
-  type MergeResult as WorktreeMergeResult,
-} from '../../../Infra/Sandbox/gitWorktreeManager.js';
-import { precheckConflicts, type ConflictReport, type FileConflict } from './conflictPrecheck.js';
 import { EventType } from '../../../Services/EventBus/eventTypes.js';
 import { createEvent, publish } from '../../../Services/EventBus/eventBus.js';
+
+import { precheckConflicts, type ConflictReport, type FileConflict } from './conflictPrecheck.js';
 
 // ── 合并结果 ────────────────────────────────────────────────────────
 

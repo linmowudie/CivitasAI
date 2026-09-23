@@ -1,26 +1,26 @@
 /**
  * @module Cache/toolResultCache
  * @description
- * 工具结果缓存——幂等工具的结果可缓存复用，减少重复执行�?
- * 仅缓�?idempotency='YES' 的工具结果�?
+ * 工具结果缓存——幂等工具的结果可缓存复用，减少重复执行�?
+ * 仅缓�?idempotency='YES' 的工具结果�?
  */
 
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
 /** 工具结果缓存条目 */
 export interface ToolResultCacheEntry {
-  /** 缓存键（工具�?+ 输入 hash�?*/
+  /** 缓存键（工具�?+ 输入 hash�?*/
   key: string;
-  /** 工具�?*/
+  /** 工具�?*/
   toolName: string;
-  /** 缓存的结�?*/
+  /** 缓存的结�?*/
   result: unknown;
   /** 创建时间 */
   createdAt: number;
-  /** TTL（ms�?*/
+  /** TTL（ms�?*/
   ttlMs: number;
   /** 命中次数 */
   hitCount: number;
@@ -28,7 +28,7 @@ export interface ToolResultCacheEntry {
 
 /** 缓存配置 */
 export interface ToolResultCacheConfig {
-  /** 最大条目数，默�?200 */
+  /** 最大条目数，默�?200 */
   maxEntries: number;
   /** 默认 TTL（ms），默认 5 分钟 */
   defaultTtlMs: number;
@@ -44,7 +44,7 @@ const DEFAULT_CONFIG: ToolResultCacheConfig = {
 const store = new Map<string, ToolResultCacheEntry>();
 let config: ToolResultCacheConfig = { ...DEFAULT_CONFIG };
 
-/** 初始化工具结果缓�?*/
+/** 初始化工具结果缓�?*/
 export function initToolResultCache(userConfig?: Partial<ToolResultCacheConfig>): void {
   if (userConfig) {
     config = { ...DEFAULT_CONFIG, ...userConfig };
@@ -52,7 +52,7 @@ export function initToolResultCache(userConfig?: Partial<ToolResultCacheConfig>)
   store.clear();
 }
 
-/** 生成缓存�?*/
+/** 生成缓存�?*/
 export function makeCacheKey(toolName: string, input: Record<string, unknown>): string {
   const inputHash = simpleHash(JSON.stringify(input));
   return `${toolName}:${inputHash}`;
@@ -83,7 +83,7 @@ export function cacheToolResult(
   });
 }
 
-/** 查询缓存的工具结�?*/
+/** 查询缓存的工具结�?*/
 export function getCachedToolResult(
   toolName: string,
   input: Record<string, unknown>,
@@ -93,7 +93,7 @@ export function getCachedToolResult(
 
   if (!entry) return null;
 
-  // 检�?TTL
+  // 检�?TTL
   if (Date.now() - entry.createdAt > entry.ttlMs) {
     store.delete(key);
     return null;
@@ -103,7 +103,7 @@ export function getCachedToolResult(
   return ok(entry.result);
 }
 
-/** 使缓存失�?*/
+/** 使缓存失�?*/
 export function invalidateCache(toolName: string, input: Record<string, unknown>): boolean {
   const key = makeCacheKey(toolName, input);
   return store.delete(key);

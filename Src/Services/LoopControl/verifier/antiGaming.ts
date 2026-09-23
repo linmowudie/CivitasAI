@@ -45,7 +45,7 @@ export function validateAntiGaming(
 export function checkAntiGaming(
   primaryResult: VerifierResult,
   antiGamingResults: VerifierResult[],
-  config: AntiGamingConfig,
+  _config: AntiGamingConfig,
 ): { passed: boolean; violations: string[] } {
   const violations: string[] = [];
 

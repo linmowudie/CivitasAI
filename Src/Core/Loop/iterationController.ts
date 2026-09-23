@@ -4,9 +4,6 @@
  * Iteration controller - Docs/02 3 step 10.
  */
 
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
-
 export type ExitReason = 'success' | 'max_iterations' | 'budget_exhausted' | 'no_progress' | 'risk';
 
 export interface IterationState {

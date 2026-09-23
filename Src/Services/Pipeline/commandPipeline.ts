@@ -1,12 +1,12 @@
 /**
  * @module Pipeline/commandPipeline
  * @description
- * 命令管道——处理用户命令的标准化管道�?
- * 支持命令解析、验证、执行�?
+ * 命令管道——处理用户命令的标准化管道�?
+ * 支持命令解析、验证、执行�?
  */
 
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { err } from '../../Infra/types.js';
 
 /** 系统命令 */
 export type SystemCommand =
@@ -34,12 +34,12 @@ export interface CommandResult {
   data?: Record<string, unknown>;
 }
 
-/** 命令处理�?*/
+/** 命令处理�?*/
 export type CommandHandler = (request: CommandRequest) => Promise<Result<CommandResult>>;
 
 const commandHandlers = new Map<SystemCommand, CommandHandler>();
 
-/** 注册命令处理�?*/
+/** 注册命令处理�?*/
 export function registerCommandHandler(command: SystemCommand, handler: CommandHandler): void {
   commandHandlers.set(command, handler);
 }
@@ -58,12 +58,12 @@ export async function executeCommand(request: CommandRequest): Promise<Result<Co
   }
 }
 
-/** 获取已注册命令列�?*/
+/** 获取已注册命令列�?*/
 export function getRegisteredCommands(): SystemCommand[] {
   return Array.from(commandHandlers.keys());
 }
 
-/** 清空命令处理�?*/
+/** 清空命令处理�?*/
 export function clearCommandHandlers(): void {
   commandHandlers.clear();
 }

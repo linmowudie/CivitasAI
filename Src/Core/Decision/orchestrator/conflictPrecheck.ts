@@ -7,9 +7,8 @@
  */
 
 import type { Result } from '../../../Infra/types.js';
-import { ok, err } from '../../../Infra/types.js';
+import { ok } from '../../../Infra/types.js';
 import { getTaskWorkspaces, type AgentWorkspace } from '../../../Infra/Sandbox/workspaceIsolator.js';
-import { detectConflicts as detectWorktreeConflicts } from '../../../Infra/Sandbox/gitWorktreeManager.js';
 import { EventType } from '../../../Services/EventBus/eventTypes.js';
 import { createEvent, publish } from '../../../Services/EventBus/eventBus.js';
 

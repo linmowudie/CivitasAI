@@ -7,6 +7,7 @@
  */
 
 import { resolve } from 'node:path';
+
 import { loadConfig, getConfigValueOr } from './Infra/Config/configLoader.js';
 import { initLogger, logger, shutdownLogger } from './Infra/Logging/logger.js';
 import { Time } from './Infra/Time/timeService.js';
@@ -16,24 +17,23 @@ import { initPathGuard } from './Infra/Security/pathGuard.js';
 import { initDirectories } from './Infra/Fs/pathResolver.js';
 import { initDatabase, initMigrations, migrateUp } from './Infra/Db/index.js';
 import { initWorkspace } from './Infra/Workspace/index.js';
-import { initEffectJournal, initIdempotencyStore, initRecoveryScanner, scanAndProposeRecovery, getHumanRequiredPlans } from './Infra/DurableExecution/index.js';
+import { initEffectJournal, initIdempotencyStore, initRecoveryScanner, scanAndProposeRecovery } from './Infra/DurableExecution/index.js';
 import { OpenAIProvider, registerProvider, setRoutingConfig } from './Infra/Llm/index.js';
-import { registerBuiltinTools, getToolCount } from './Tools/index.js';
+import { registerBuiltinTools } from './Tools/index.js';
 import { initPromptCache } from './Services/Cache/promptCache.js';
 import { initToolResultCache } from './Services/Cache/toolResultCache.js';
 import { initSessionManager } from './Services/Session/sessionManager.js';
 import { initArchiveManager } from './Services/Session/archiveManager.js';
 import { initHookExecutor } from './Infra/Hook/hookExecutor.js';
-import { registerMiddleware, getMiddlewareCount } from './Core/Middleware/middlewareRegistry.js';
+import { registerMiddleware } from './Core/Middleware/middlewareRegistry.js';
 import { goalReanchorMiddleware } from './Core/Middleware/builtin/goalReanchor.js';
 import { fingerprintDetectorMiddleware } from './Core/Middleware/builtin/fingerprintDetector.js';
 import { budgetSentinelMiddleware } from './Core/Middleware/builtin/budgetSentinel.js';
-import { createInitialLoopState, buildStopRuleSet } from './Services/LoopControl/index.js';
+import { buildStopRuleSet } from './Services/LoopControl/index.js';
 import { initWalletManager, initTaxCollector, initDualBudget } from './Services/TokenEconomy/index.js';
 import { initEventBus } from './Services/EventBus/index.js';
 import { initDedupStore, initCircuitBreaker } from './Services/LoopScheduler/index.js';
 import { initConfigWatcher } from './Infra/Watcher/index.js';
-import { resetAgentFactory } from './Core/AgentRuntime/agentFactory.js';
 import { registerAllRoutes } from './Interface/WebServer/routes.js';
 import { startHttpServer, stopHttpServer } from './Interface/WebServer/httpServer.js';
 import { startWsGateway, stopWsGateway } from './Interface/WebSocket/wsGateway.js';

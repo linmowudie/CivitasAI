@@ -9,11 +9,11 @@
  */
 
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { err } from '../../Infra/types.js';
 import { resolveModel, getFallbackProviders, getRoutingConfig } from '../../Infra/Llm/Router/modelRouter.js';
-import { LlmProvider, ProviderError } from '../../Infra/Llm/Provider/providerBase.js';
+import { LlmProvider } from '../../Infra/Llm/Provider/providerBase.js';
 import type { CallOptions, CallResult, StreamChunk, ChatMessage } from '../../Infra/Llm/Provider/providerBase.js';
-import { getRetryDecision, delay, classifyNetworkError } from '../../Infra/Llm/Provider/retryPolicy.js';
+import { getRetryDecision, delay } from '../../Infra/Llm/Provider/retryPolicy.js';
 
 // ===== 类型导出 =====
 export type { CallResult, StreamChunk, ChatMessage };

@@ -14,6 +14,7 @@ import { resolve, join } from 'node:path';
 
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
+
 import { validateAllConfigs } from './configValidator.js';
 
 /** 配置加载选项 */

@@ -6,7 +6,7 @@
  * 挂载点：wrapModelCall（priority=50，最外层包裹）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ModelCallInput, ModelCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
+import type { AgentMiddleware } from '../../../Infra/Contracts/middlewareTypes.js';
 
 export const BUDGET_WARNING_THRESHOLD = 0.8;
 export const BUDGET_CRITICAL_THRESHOLD = 0.95;

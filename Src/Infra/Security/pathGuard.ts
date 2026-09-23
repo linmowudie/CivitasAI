@@ -13,7 +13,8 @@
  * - 路径规范化后比对，防止编码绕过
  */
 
-import { resolve, normalize, isAbsolute, relative } from 'node:path';
+import { resolve, isAbsolute, relative } from 'node:path';
+
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
 

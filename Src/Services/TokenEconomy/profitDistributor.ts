@@ -6,9 +6,10 @@
  * 质量分(0.5) + 数量分(0.3) + 效率分(0.2)。
  */
 
-import type { ProfitSharingConfig } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { ProfitSharingConfig } from './types.js';
 import { credit } from './walletManager.js';
 
 // ── 贡献度输入 ──────────────────────────────────────────────────────

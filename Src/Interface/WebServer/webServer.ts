@@ -7,8 +7,6 @@
  */
 
 import { matchRoute, parseQuery, type HttpMethod, type ApiRequest, type ApiResponse } from '../RestApi/router.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
 
 // ── 请求日志 ────────────────────────────────────────────────────────
 

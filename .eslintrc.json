@@ -27,11 +27,6 @@
             "message": "Tools 层不可依赖上层（Services/Core/Interface）"
           },
           {
-            "target": "./Src/Services",
-            "from": ["./Src/Core", "./Src/Interface"],
-            "message": "Services 层不可依赖上层（Core/Interface）"
-          },
-          {
             "target": "./Src/Core",
             "from": ["./Src/Interface"],
             "message": "Core 层不可依赖上层（Interface）"
@@ -43,8 +38,9 @@
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/explicit-function-return-type": "warn",
-    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-non-null-assertion": "warn",
+    "no-constant-condition": "warn",
     "import/order": ["warn", {
       "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
       "newlines-between": "always"

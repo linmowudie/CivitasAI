@@ -7,12 +7,14 @@
  */
 
 import { WebSocketServer, type WebSocket } from 'ws';
+
+import { EventType } from '../../Services/EventBus/eventTypes.js';
+
 import {
   connectClient, disconnectClient, attachSocket, detachSocket,
   initWsServer, pushToClient, type WsServerConfig,
 } from './wsServer.js';
 import { handleClientMessage, type ClientMessage } from './wsHandler.js';
-import { EventType } from '../../Services/EventBus/eventTypes.js';
 
 // ── 配置 ────────────────────────────────────────────────────────────
 

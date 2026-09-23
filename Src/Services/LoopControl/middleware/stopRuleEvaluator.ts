@@ -30,7 +30,7 @@ export function createStopRuleEvaluatorMiddleware(
     priority: 1,  // 最先执行
     canShortCircuit: false,
 
-    execute: async (ctx: MiddlewareContext, result: unknown) => {
+    execute: async (ctx: MiddlewareContext, _result: unknown) => {
       const state = getLoopState();
       const rules = getStopRules();
       const snapshot = getSnapshot();

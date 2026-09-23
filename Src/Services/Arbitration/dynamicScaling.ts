@@ -7,11 +7,12 @@
  * 连续 3 个窗口低于阈值一半 → 缩容。
  */
 
-import { resizeAuxiliaryPool, getPoolStats } from './arbitratorPool.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
+
+import { resizeAuxiliaryPool, getPoolStats } from './arbitratorPool.js';
 
 // ── 配置 ────────────────────────────────────────────────────────────
 

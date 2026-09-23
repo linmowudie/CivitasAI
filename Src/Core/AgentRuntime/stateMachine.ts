@@ -6,9 +6,10 @@
  * Loop 级状态（awaiting_approval）不影响 Agent 态。
  */
 
-import type { AgentStatus, AgentEvent } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { AgentStatus, AgentEvent } from './types.js';
 
 // ── 合法转换表（Docs/02 §6.1）──────────────────────────────────────
 

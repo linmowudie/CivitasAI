@@ -46,7 +46,7 @@ export function aggregateResults(params: {
   const totalTokensUsed = subtaskResults.reduce((sum, r) => sum + r.tokensUsed, 0);
 
   // 4. 检测冲突（§7A.2 合并阶段）
-  const conflicts = detectConflicts(subtaskResults);
+  detectConflicts(subtaskResults);
 
   return ok({
     taskId: taskPlan.taskId,

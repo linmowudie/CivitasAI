@@ -6,9 +6,10 @@
  * 最小信息原则：仲裁者绝不加载全局上下文，只看到"案卷"。
  */
 
-import type { ContextCapsule, OperationRecord } from './types.js';
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
+
+import type { ContextCapsule, OperationRecord } from './types.js';
 
 // ── 证据拉取接口 ────────────────────────────────────────────────────
 

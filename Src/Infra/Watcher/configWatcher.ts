@@ -21,7 +21,6 @@ export interface ConfigWatcherConfig {
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
-let watchDir = '';
 let pollIntervalMs = 5000;
 let onChangeHandler: ConfigChangeHandler | null = null;
 let polling = false;
@@ -32,7 +31,6 @@ const changeListeners: ConfigChangeHandler[] = [];
 // ── 初始化 ──────────────────────────────────────────────────────────
 
 export function initConfigWatcher(config: ConfigWatcherConfig): void {
-  watchDir = config.watchDir;
   pollIntervalMs = config.pollIntervalMs ?? 5000;
   onChangeHandler = config.onChange ?? null;
 }

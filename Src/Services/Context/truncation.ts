@@ -1,11 +1,14 @@
 /**
  * @module Context/truncation
  * @description
- * 上下文截断策略——Docs/02 §5.4�?
+ * 上下文截断策略——Docs/02 §5.4�?
  *
- * 只在上下文使用率 �?92% 时触发实际截断�?
- * 截断后必须触�?GoalReanchorMiddleware（下轮开头）�?
+ * 只在上下文使用率 �?92% 时触发实际截断�?
+ * 截断后必须触�?GoalReanchorMiddleware（下轮开头）�?
  */
+
+import type { Result } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
 
 import {
   type PartitionId,
@@ -15,34 +18,32 @@ import {
   getTotalTokens,
 } from './partitions/index.js';
 import { scoreAllEntries } from './scoring.js';
-import type { Result } from '../../Infra/types.js';
-import { ok } from '../../Infra/types.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
 /** 截断结果 */
 export interface TruncationResult {
-  /** 是否执行了截�?*/
+  /** 是否执行了截�?*/
   truncated: boolean;
-  /** 丢弃的条�?ID 列表 */
+  /** 丢弃的条�?ID 列表 */
   droppedEntryIds: string[];
-  /** 截断前�?token */
+  /** 截断前�?token */
   tokensBefore: number;
-  /** 截断后�?token */
+  /** 截断后�?token */
   tokensAfter: number;
-  /** 是否需要触�?GoalReanchor（压缩后必须触发�?*/
+  /** 是否需要触�?GoalReanchor（压缩后必须触发�?*/
   needsGoalReanchor: boolean;
 }
 
 /** 截断选项 */
 export interface TruncationOptions {
-  /** 上下�?*/
+  /** 上下�?*/
   context: Record<PartitionId, PartitionState>;
-  /** �?token 预算 */
+  /** �?token 预算 */
   budgetTokens: number;
-  /** 触发阈值（默认 0.92�?*/
+  /** 触发阈值（默认 0.92�?*/
   threshold?: number;
-  /** 目标比例（截断到此比例以下），默�?0.80 */
+  /** 目标比例（截断到此比例以下），默�?0.80 */
   targetRatio?: number;
   /** 是否保护 S 区（默认 true，S 区不可丢弃） */
   protectStatic?: boolean;
@@ -51,8 +52,8 @@ export interface TruncationOptions {
 // ── 截断函数 ──────────────────────────────────────────
 
 /**
- * 执行延迟截断�?
- * 仅在使用�?�?threshold 时触发，按评分从低到高丢弃�?
+ * 执行延迟截断�?
+ * 仅在使用�?�?threshold 时触发，按评分从低到高丢弃�?
  */
 export function truncateContext(options: TruncationOptions): Result<TruncationResult> {
   const {
@@ -66,7 +67,7 @@ export function truncateContext(options: TruncationOptions): Result<TruncationRe
   const tokensBefore = getTotalTokens(context);
   const usageRatio = tokensBefore / budgetTokens;
 
-  // 未达阈值，不截�?
+  // 未达阈值，不截�?
   if (usageRatio < threshold) {
     return ok({
       truncated: false,
@@ -85,7 +86,7 @@ export function truncateContext(options: TruncationOptions): Result<TruncationRe
   for (const score of scores) {
     if (currentTokens <= targetTokens) break;
 
-    // 保护 S �?
+    // 保护 S �?
     if (protectStatic && score.partition === 'S') continue;
 
     const partition = context[score.partition];
@@ -115,7 +116,7 @@ export function truncateContext(options: TruncationOptions): Result<TruncationRe
 }
 
 /**
- * 检查是否需要截断（使用�?�?阈值）�?
+ * 检查是否需要截断（使用�?�?阈值）�?
  */
 export function needsTruncation(
   context: Record<PartitionId, PartitionState>,
@@ -126,7 +127,7 @@ export function needsTruncation(
 }
 
 /**
- * 按分区预算裁剪：如果某分区超出其 ceilingRatio，丢弃该分区内低分条目�?
+ * 按分区预算裁剪：如果某分区超出其 ceilingRatio，丢弃该分区内低分条目�?
  */
 export function trimPartitionToBudget(
   context: Record<PartitionId, PartitionState>,

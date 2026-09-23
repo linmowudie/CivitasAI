@@ -1,14 +1,11 @@
 /**
  * @module Cache/promptCache
  * @description
- * Prompt Cache 管理——Docs/02 §5.1�?
+ * Prompt Cache 管理——Docs/02 §5.1�?
  *
- * S 区因 Prompt Cache 命中而实际只�?5% 价格（分件系�?0.05）�?
- * 通过前缀 hash 检�?Cache 命中情况�?
+ * S 区因 Prompt Cache 命中而实际只�?5% 价格（分件系�?0.05）�?
+ * 通过前缀 hash 检�?Cache 命中情况�?
  */
-
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
@@ -16,11 +13,11 @@ import { ok, err } from '../../Infra/types.js';
 export interface CacheEntry {
   /** 前缀 hash */
   prefixHash: string;
-  /** 缓存�?token �?*/
+  /** 缓存�?token �?*/
   cachedTokens: number;
   /** 创建时间 */
   createdAt: number;
-  /** 最后命中时�?*/
+  /** 最后命中时�?*/
   lastHitAt: number;
   /** 命中次数 */
   hitCount: number;
@@ -37,7 +34,7 @@ export interface CacheStats {
 
 /** Cache 配置 */
 export interface PromptCacheConfig {
-  /** 最大缓存条目数，默�?100 */
+  /** 最大缓存条目数，默�?100 */
   maxEntries: number;
   /** 条目 TTL（ms），默认 1 小时 */
   entryTtlMs: number;
@@ -58,7 +55,7 @@ let config: PromptCacheConfig = { ...DEFAULT_CACHE_CONFIG };
 let totalLookups = 0;
 let totalHits = 0;
 
-/** 初始�?Prompt Cache */
+/** 初始�?Prompt Cache */
 export function initPromptCache(userConfig?: Partial<PromptCacheConfig>): void {
   if (userConfig) {
     config = { ...DEFAULT_CACHE_CONFIG, ...userConfig };
@@ -79,7 +76,7 @@ export function registerCacheEntry(prefixHash: string, cachedTokens: number): vo
     existing.hitCount++;
     existing.cachedTokens = cachedTokens;
   } else {
-    // 如果已满，淘汰最旧条�?
+    // 如果已满，淘汰最旧条�?
     if (cacheStore.size >= config.maxEntries) {
       evictOldest();
     }
@@ -99,7 +96,7 @@ export function lookupCache(prefixHash: string): CacheEntry | null {
   const entry = cacheStore.get(prefixHash);
   if (!entry) return null;
 
-  // 检�?TTL
+  // 检�?TTL
   if (Date.now() - entry.createdAt > config.entryTtlMs) {
     cacheStore.delete(prefixHash);
     return null;
@@ -137,7 +134,7 @@ function evictExpired(): void {
   }
 }
 
-/** 淘汰最旧条�?*/
+/** 淘汰最旧条�?*/
 function evictOldest(): void {
   let oldestKey: string | null = null;
   let oldestTime = Infinity;

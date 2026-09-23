@@ -5,12 +5,13 @@
  * idempotency='NO' → 必须先写 INTENT。
  */
 
+import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { safeWriteFile } from '../../../Infra/Fs/fsSafe.js';
 import { contentOutputSchema } from '../_shared.js';
-import { createHash } from 'node:crypto';
-import { statSync } from 'node:fs';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
 
 export const fileWriter: ToolDefinition = {

@@ -6,24 +6,24 @@
  * 职责：全局规则维护 / 跨域协调 / 最终裁决 / 紧急干预。
  */
 
-import {
-  initBehaviorCode, getCurrentCode, getRules, checkViolation,
-  addRule, removeRule, updateVersion,
-  type BehaviorRule, type BehaviorCode,
-} from './behaviorCode.js';
-import {
-  broadcast, acknowledge, getBroadcast, getBroadcasts, getUnacknowledged,
-  type BroadcastMessage, type BroadcastType,
-} from './broadcastChannel.js';
-import {
-  issueFinalVerdict, getIntervention, getInterventionsByCase, getAllInterventions,
-  type RegulatoryIntervention,
-} from './finalArbiter.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { ArbitrationCase } from '../Arbitration/types.js';
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
+
+import {
+  issueFinalVerdict, getAllInterventions,
+} from './finalArbiter.js';
+import {
+  broadcast, acknowledge,
+  type BroadcastType,
+} from './broadcastChannel.js';
+import {
+  initBehaviorCode, getCurrentCode, getRules, checkViolation,
+  addRule, removeRule,
+  type BehaviorRule, type BehaviorCode,
+} from './behaviorCode.js';
 
 // ── 紧急干预类型 ────────────────────────────────────────────────────
 

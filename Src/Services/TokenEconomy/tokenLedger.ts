@@ -6,9 +6,10 @@
  * 每次交易后验证守恒，异常时广播 LEDGER_MISMATCH。
  */
 
-import type { TokenTransaction, TransactionType } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { TokenTransaction, TransactionType } from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

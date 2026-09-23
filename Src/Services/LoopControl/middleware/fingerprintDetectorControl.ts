@@ -8,9 +8,9 @@
  * 挂载点：wrapToolCall（工具调用前后拦截）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
-import type { LoopState, FingerprintRecord } from '../loopState.js';
-import { computeFingerprint, detectFingerprintAction, recordFingerprint, type FingerprintConfig, type FingerprintAction } from '../actionFingerprint.js';
+import type { AgentMiddleware, MiddlewareContext, ToolCallInput } from '../../../Infra/Contracts/middlewareTypes.js';
+import type { LoopState } from '../loopState.js';
+import { detectFingerprintAction, recordFingerprint, type FingerprintConfig, type FingerprintAction } from '../actionFingerprint.js';
 
 /** 创建控制级指纹检测中间件 */
 export function createFingerprintDetectorControlMiddleware(

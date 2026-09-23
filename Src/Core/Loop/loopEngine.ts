@@ -4,10 +4,11 @@
  * Main loop engine - Docs/02 3 ten-step sequence.
  */
 
-import type { LoopConfig } from './loopConfig.js';
-import { createIterationState, type IterationState, type IterationDecision } from './iterationController.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { LoopConfig } from './loopConfig.js';
+import { createIterationState, type IterationState } from './iterationController.js';
 
 export type LoopPhase = 'idle' | 'running' | 'paused' | 'completed' | 'failed';
 
@@ -70,11 +71,11 @@ export function resumeLoop(state: LoopState): Result<LoopState> {
   state.phase = 'running'; state.lastActivityAt = Date.now(); return ok(state);
 }
 
-export function terminateLoop(state: LoopState, reason: string): Result<LoopState> {
+export function terminateLoop(state: LoopState, _reason: string): Result<LoopState> {
   state.phase = 'completed'; state.lastActivityAt = Date.now(); return ok(state);
 }
 
-export function failLoop(state: LoopState, reason: string): Result<LoopState> {
+export function failLoop(state: LoopState, _reason: string): Result<LoopState> {
   state.phase = 'failed'; state.lastActivityAt = Date.now(); return ok(state);
 }
 

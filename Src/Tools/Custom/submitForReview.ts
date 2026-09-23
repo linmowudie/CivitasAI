@@ -6,7 +6,7 @@
  */
 
 import type { ToolDefinition } from '../Traits/toolSpec.js';
-import { toolSuccess, toolError } from '../Traits/toolSpec.js';
+import { toolError } from '../Traits/toolSpec.js';
 import { contentOutputSchema } from '../Builtin/_shared.js';
 
 export const submitForReview: ToolDefinition = {

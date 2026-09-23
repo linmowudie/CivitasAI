@@ -4,12 +4,12 @@
  * 通过查找替换编辑文件。走 EffectJournal。
  */
 
+import { createHash } from 'node:crypto';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { safeReadFile, safeWriteFile } from '../../../Infra/Fs/fsSafe.js';
 import { contentOutputSchema } from '../_shared.js';
-import { createHash } from 'node:crypto';
-import { checkPath } from '../../../Infra/Security/pathGuard.js';
 
 export const fileEditor: ToolDefinition = {
   spec: {
@@ -70,7 +70,6 @@ export const fileEditor: ToolDefinition = {
     } else {
       // 全文替换
       replacements = 0;
-      let idx = 0;
       modified = '';
       let remaining = original;
       while (true) {

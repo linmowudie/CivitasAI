@@ -6,10 +6,11 @@
  * 每次失败都必须产出：具体失败证据 + 已试策略 + 剩余预算。
  */
 
-import type { FailureCategory, NextAction } from './types.js';
-import type { VerifierResult } from './loopState.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { FailureCategory, NextAction } from './types.js';
+import type { VerifierResult } from './loopState.js';
 
 // ── FailureFeedback（Docs/12 §7.2）─────────────────────────────────
 

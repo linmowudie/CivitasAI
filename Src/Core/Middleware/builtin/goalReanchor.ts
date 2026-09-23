@@ -7,8 +7,6 @@
  */
 
 import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
-import type { Result } from '../../../Infra/types.js';
-import { ok } from '../../../Infra/types.js';
 
 export const goalReanchorMiddleware: AgentMiddleware = {
   name: 'GoalReanchor',

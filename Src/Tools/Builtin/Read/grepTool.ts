@@ -4,11 +4,12 @@
  * 在指定目录中按正则/文本搜索文件内容。
  */
 
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
 
 export const grepTool: ToolDefinition = {

@@ -5,11 +5,12 @@
  * 通过 Infra/Fs 的安全文件操作执行。
  */
 
+import { statSync } from 'node:fs';
+
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
-import { safeReadFile, safeExists } from '../../../Infra/Fs/fsSafe.js';
+import { safeReadFile } from '../../../Infra/Fs/fsSafe.js';
 import { contentOutputSchema } from '../_shared.js';
-import { statSync } from 'node:fs';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
 
 export const fileReader: ToolDefinition = {

@@ -6,9 +6,10 @@
  * 消费者幂等（同一 eventId 重复发布只处理一次）。
  */
 
-import type { DomainEvent, EventType, EventHandler, Subscription, EventPriority } from './eventTypes.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { DomainEvent, EventType, EventHandler, Subscription, EventPriority } from './eventTypes.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@
  * 每 K 轮或上下文压缩后，强制重新锚定目标。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ModelCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
+import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState } from '../loopState.js';
 
 /** 控制级 GoalReanchor 配置 */

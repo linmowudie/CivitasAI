@@ -5,9 +5,10 @@
  * 管理所有 Agent 实例的生命周期，提供 CRUD + 查询。
  */
 
-import type { AgentInstance, AgentStatus, AgentRole } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { AgentInstance, AgentStatus, AgentRole } from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

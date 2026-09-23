@@ -11,7 +11,7 @@ import { getAgent } from '../../Core/AgentRuntime/agentRegistry.js';
 import { getPendingReview } from '../../Core/AgentRuntime/agentRuntime.js';
 import type { SubmitResult } from '../../Core/AgentRuntime/types.js';
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { err } from '../../Infra/types.js';
 
 // ── 审核策略 ────────────────────────────────────────────────────────
 

@@ -6,7 +6,6 @@
  */
 
 import { EventType } from '../../Services/EventBus/eventTypes.js';
-import { pushToClient, type WsMessage } from './wsServer.js';
 import { getDashboardOverview } from '../RestApi/loopApi.js';
 import { listPendingApprovals } from '../RestApi/approvalApi.js';
 import { listMessages, addMessage, getSession, updateSessionTitle } from '../RestApi/chatApi.js';
@@ -19,6 +18,8 @@ import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
 import { logger } from '../../Infra/Logging/logger.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import { pushToClient, type WsMessage } from './wsServer.js';
 
 // ── 客户端消息类型 ──────────────────────────────────────────────────
 
@@ -198,7 +199,6 @@ async function startStreamGeneration(
 ): Promise<void> {
   const abortController = new AbortController();
   let fullContent = '';
-  const genT0 = Date.now();
 
   // 注册活跃流
   activeStreams.set(streamMessageId, {

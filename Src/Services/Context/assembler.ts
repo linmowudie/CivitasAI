@@ -1,11 +1,14 @@
 /**
  * @module Context/assembler
  * @description
- * 上下文装配器——Docs/02 §5 步骤④�?
+ * 上下文装配器——Docs/02 §5 步骤④�?
  *
- * �?S→L→M→H 顺序装配上下文，检查分区预算上限，
- * 处理 Cache 命中（S/L 区不变内容可�?Prompt Cache 缓存）�?
+ * �?S→L→M→H 顺序装配上下文，检查分区预算上限，
+ * 处理 Cache 命中（S/L 区不变内容可�?Prompt Cache 缓存）�?
  */
+
+import type { Result } from '../../Infra/types.js';
+import { ok, err } from '../../Infra/types.js';
 
 import {
   type PartitionId,
@@ -14,25 +17,23 @@ import {
   PARTITION_ORDER,
   getTotalTokens,
 } from './partitions/index.js';
-import { scoreAllEntries, type EntryScore } from './scoring.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { scoreAllEntries } from './scoring.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
 /** 装配结果 */
 export interface AssemblyResult {
-  /** 装配后的消息列表（按 S→L→M→H 排序�?*/
+  /** 装配后的消息列表（按 S→L→M→H 排序�?*/
   messages: AssembledMessage[];
-  /** �?token 估算 */
+  /** �?token 估算 */
   totalTokens: number;
-  /** 各分�?token 分布 */
+  /** 各分�?token 分布 */
   partitionTokens: Record<PartitionId, number>;
-  /** 是否触发了截�?*/
+  /** 是否触发了截�?*/
   truncated: boolean;
-  /** 被截断的条目�?*/
+  /** 被截断的条目�?*/
   droppedCount: number;
-  /** Cache 命中前缀 hash（S+L 区内�?hash�?*/
+  /** Cache 命中前缀 hash（S+L 区内�?hash�?*/
   cachePrefixHash: string;
 }
 
@@ -48,21 +49,21 @@ export interface AssembledMessage {
 
 /** 装配选项 */
 export interface AssemblyOptions {
-  /** �?token 预算（输入侧�?*/
+  /** �?token 预算（输入侧�?*/
   budgetTokens: number;
-  /** 上下�?*/
+  /** 上下�?*/
   context: Record<PartitionId, PartitionState>;
-  /** 是否启用截断（默�?true�?*/
+  /** 是否启用截断（默�?true�?*/
   enableTruncation?: boolean;
-  /** 截断触发阈值（上下文使用率 �?此值时触发），默认 0.92 */
+  /** 截断触发阈值（上下文使用率 �?此值时触发），默认 0.92 */
   truncationThreshold?: number;
 }
 
 // ── 装配函数 ──────────────────────────────────────────
 
 /**
- * 装配上下文为消息列表�?
- * �?S→L→M→H 顺序拼接，检查分区预算，必要时截断�?
+ * 装配上下文为消息列表�?
+ * �?S→L→M→H 顺序拼接，检查分区预算，必要时截断�?
  */
 export function assembleContext(options: AssemblyOptions): Result<AssemblyResult> {
   const {
@@ -76,7 +77,7 @@ export function assembleContext(options: AssemblyOptions): Result<AssemblyResult
     return err('INVALID_ARGUMENT', 'budgetTokens 必须 > 0');
   }
 
-  // 检查是否需要截�?
+  // 检查是否需要截�?
   const totalTokens = getTotalTokens(context);
   const usageRatio = totalTokens / budgetTokens;
   let truncated = false;
@@ -99,7 +100,7 @@ export function assembleContext(options: AssemblyOptions): Result<AssemblyResult
     for (const entry of context[p].entries) {
       if (entry.markedForDrop) continue;
 
-      // 检查分区预�?
+      // 检查分区预�?
       if (partitionTokens[p] + entry.tokenEstimate > partitionBudget) {
         continue; // 跳过此条目（分区超预算）
       }
@@ -141,8 +142,8 @@ function partitionToRole(partition: PartitionId): AssembledMessage['role'] {
 }
 
 /**
- * 计算 S+L 区内容的 hash（用�?Prompt Cache 命中检测）�?
- * 压缩后必须保�?S 区前缀 hash 不变（Gate G5 要求）�?
+ * 计算 S+L 区内容的 hash（用�?Prompt Cache 命中检测）�?
+ * 压缩后必须保�?S 区前缀 hash 不变（Gate G5 要求）�?
  */
 export function computeCachePrefixHash(
   context: Record<PartitionId, PartitionState>,
@@ -157,7 +158,7 @@ export function computeCachePrefixHash(
     }
   }
 
-  // 简�?hash（FNV-1a�?
+  // 简�?hash（FNV-1a�?
   const str = prefixParts.join('|');
   return fnv1aHash(str);
 }
@@ -173,8 +174,8 @@ function fnv1aHash(str: string): string {
 }
 
 /**
- * 截断至预算内：按评分从低到高丢弃，直到使用率低于阈值�?
- * 注意：S 区条目不丢弃（静态区不可变）�?
+ * 截断至预算内：按评分从低到高丢弃，直到使用率低于阈值�?
+ * 注意：S 区条目不丢弃（静态区不可变）�?
  */
 function truncateToFit(
   context: Record<PartitionId, PartitionState>,
@@ -183,7 +184,7 @@ function truncateToFit(
 ): { modified: boolean; droppedCount: number } {
   const scores = scoreAllEntries(context);
   let droppedCount = 0;
-  const targetTokens = budgetTokens * threshold * 0.95; // �?5% 余量
+  const targetTokens = budgetTokens * threshold * 0.95; // �?5% 余量
 
   let currentTokens = getTotalTokens(context);
 

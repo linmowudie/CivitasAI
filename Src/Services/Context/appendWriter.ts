@@ -1,9 +1,12 @@
 /**
  * @module Context/appendWriter
  * @description
- * 追加式写入器——强制所有上下文写入遵循四段式格式（Docs/02 §5.2）�?
- * 提供类型安全的写入接口，自动路由到对应分区�?
+ * 追加式写入器——强制所有上下文写入遵循四段式格式（Docs/02 §5.2）�?
+ * 提供类型安全的写入接口，自动路由到对应分区�?
  */
+
+import type { Result } from '../../Infra/types.js';
+import { ok, err } from '../../Infra/types.js';
 
 import {
   type PartitionId,
@@ -12,8 +15,6 @@ import {
   appendEntry,
   serializeEntry,
 } from './partitions/index.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
@@ -36,11 +37,11 @@ export const TYPE_PARTITION_MAP: Record<string, PartitionId> = {
 
 /** 追加式写入选项 */
 export interface AppendWriteOptions {
-  /** 条目类型（自动映射分区，也可手动覆盖�?*/
+  /** 条目类型（自动映射分区，也可手动覆盖�?*/
   type: string;
   /** 内容 */
   content: string;
-  /** 元数�?*/
+  /** 元数�?*/
   metadata?: Record<string, unknown>;
   /** 手动覆盖目标分区 */
   partitionOverride?: PartitionId;
@@ -48,11 +49,11 @@ export interface AppendWriteOptions {
   tokenEstimate?: number;
 }
 
-// ── 写入�?────────────────────────────────────────────
+// ── 写入�?────────────────────────────────────────────
 
 /**
- * 追加式写入上下文条目�?
- * 自动根据类型路由到对应分区，除非指定 partitionOverride�?
+ * 追加式写入上下文条目�?
+ * 自动根据类型路由到对应分区，除非指定 partitionOverride�?
  */
 export function writeEntry(
   context: Record<PartitionId, PartitionState>,
@@ -66,7 +67,7 @@ export function writeEntry(
 
   const partition = partitionOverride ?? TYPE_PARTITION_MAP[type];
   if (!partition) {
-    return err('INVALID_ARGUMENT', `未知条目类型 "${type}"，且未指�?partitionOverride`);
+    return err('INVALID_ARGUMENT', `未知条目类型 "${type}"，且未指�?partitionOverride`);
   }
 
   const entry = appendEntry(
@@ -82,7 +83,7 @@ export function writeEntry(
 }
 
 /**
- * 批量写入多个条目�?
+ * 批量写入多个条目�?
  */
 export function writeEntries(
   context: Record<PartitionId, PartitionState>,
@@ -100,7 +101,7 @@ export function writeEntries(
 }
 
 /**
- * 将上下文所有条目序列化为追加式格式文本（按 S→L→M→H 顺序）�?
+ * 将上下文所有条目序列化为追加式格式文本（按 S→L→M→H 顺序）�?
  */
 export function serializeContext(
   context: Record<PartitionId, PartitionState>,

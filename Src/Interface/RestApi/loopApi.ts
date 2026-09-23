@@ -5,11 +5,12 @@
  * Loop 状态查询 / 事件日志 / 仲裁案件。
  */
 
-import { json, apiError, registerRoute } from './router.js';
 import { getEventLog } from '../../Services/EventBus/eventBus.js';
 import { getAllCases, getCase } from '../../Services/Arbitration/tribunal.js';
 import { getPoolStats } from '../../Services/Arbitration/arbitratorPool.js';
 import { getAllAgents } from '../../Core/AgentRuntime/agentRegistry.js';
+
+import { json, apiError, registerRoute } from './router.js';
 
 /**
  * GET /api/loops/events — 事件日志

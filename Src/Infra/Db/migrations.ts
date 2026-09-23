@@ -10,9 +10,11 @@
  */
 
 import type Database from 'better-sqlite3';
-import { getMainDb, getEventsDb, getMemoryDb } from './database.js';
+
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
+
+import { getMainDb, getEventsDb, getMemoryDb } from './database.js';
 
 // ===== 类型定义 =====
 

@@ -6,9 +6,10 @@
  * 每次变动产生一条交易记录，保证可追溯。
  */
 
-import type { TokenWallet, TokenTransaction, TransactionType, WalletStatus } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { TokenWallet, TokenTransaction, TransactionType } from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -308,7 +309,7 @@ export function getSystemPool(): number {
 }
 
 /** 记录纳税（由 taxCollector 调用） */
-export function recordTaxPayment(agentId: string, taxAmount: number, traceId: string): Result<TokenWallet> {
+export function recordTaxPayment(agentId: string, taxAmount: number, _traceId: string): Result<TokenWallet> {
   const wallet = wallets.get(agentId);
   if (!wallet) return err(`Agent ${agentId} 钱包不存在`);
 

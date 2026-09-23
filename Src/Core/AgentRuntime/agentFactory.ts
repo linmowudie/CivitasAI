@@ -6,11 +6,12 @@
  * Worker 不可自行宣告完成（必须走 submitForReview）。
  */
 
-import type { AgentInstance, AgentRole, CreateAgentParams } from './types.js';
-import { registerAgent, updateAgent } from './agentRegistry.js';
 import { createWallet } from '../../Services/TokenEconomy/walletManager.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import { registerAgent, updateAgent } from './agentRegistry.js';
+import type { AgentInstance, AgentRole, CreateAgentParams } from './types.js';
 
 // ── 内部计数 ────────────────────────────────────────────────────────
 

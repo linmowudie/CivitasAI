@@ -6,13 +6,14 @@
  * 触发条件：仲裁裁决完成 / 任务完成 / 定期巡检。
  */
 
-import { read, type WorkspaceQuery } from './globalWorkspace.js';
-import { writeMemory } from './longTermMemory.js';
-import { isEligibleForLongTerm } from './writeGuard.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { ok } from '../../Infra/types.js';
+
+import { isEligibleForLongTerm } from './writeGuard.js';
+import { writeMemory } from './longTermMemory.js';
+import { read } from './globalWorkspace.js';
 
 // ── 沉淀触发 ────────────────────────────────────────────────────────
 

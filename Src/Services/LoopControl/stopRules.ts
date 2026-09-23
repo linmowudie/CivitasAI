@@ -7,7 +7,7 @@
  */
 
 import type { LoopState, VerifierSpec } from './loopState.js';
-import type { StoppedReason, FailureCategory } from './types.js';
+import type { StoppedReason } from './types.js';
 
 // ── StopRuleSet（Docs/12 §2.1）─────────────────────────────────────
 

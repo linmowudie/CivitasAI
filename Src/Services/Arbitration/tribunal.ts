@@ -6,14 +6,15 @@
  * Phase 0-2：规则裁决（不调 LLM）；Phase 3 接真实 LLM 仲裁。
  */
 
-import type {
-  ArbitrationCase, ContextCapsule, FinalVerdict, ArbitratorVerdict,
-  CaseStatus, ConflictType, VerdictType, RestorationPlan,
-} from './types.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type {
+  ArbitrationCase, ContextCapsule, FinalVerdict, ArbitratorVerdict,
+  ConflictType, VerdictType, RestorationPlan,
+} from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

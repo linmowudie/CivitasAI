@@ -6,9 +6,10 @@
  * 税收用途：60% 系统运转基金 / 30% 风险准备金 / 10% 销毁。
  */
 
-import type { TaxConfig } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { TaxConfig } from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

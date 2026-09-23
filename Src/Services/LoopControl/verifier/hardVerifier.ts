@@ -8,7 +8,7 @@
 
 import type { VerifierSpec, VerifierResult } from '../loopState.js';
 import type { Result } from '../../../Infra/types.js';
-import { ok, err } from '../../../Infra/types.js';
+import { ok } from '../../../Infra/types.js';
 
 export interface HardVerifyContext {
   /** 执行命令的函数（test 类型用） */

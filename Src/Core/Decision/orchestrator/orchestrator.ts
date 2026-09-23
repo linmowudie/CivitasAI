@@ -9,28 +9,25 @@
 
 import type {
   OrchestrationResult,
-  TaskPlan,
-  SubtaskResult,
-  RoutingMode,
   ComplexityReport,
   RouteDecisionResult,
 } from '../types.js';
 import { assessComplexity, type AssessmentInput } from '../ComplexityAssessor/complexityAssessor.js';
 import { decideRoute } from '../RouteDecision/routeDecision.js';
 import { decomposeTask, type DecomposeInput } from '../TaskDecomposer/taskDecomposer.js';
-import {
-  initProgressTracker,
-  registerAssignment,
-  detectAllAnomalies,
-  resetProgressTracker,
-} from './progressTracker.js';
-import { aggregateResults, resetAggregator } from './resultAggregator.js';
 import { createAgent } from '../../AgentRuntime/agentFactory.js';
-import { assignTask, getAgent } from '../../AgentRuntime/agentRuntime.js';
+import { assignTask } from '../../AgentRuntime/agentRuntime.js';
 import { EventType } from '../../../Services/EventBus/eventTypes.js';
 import { createEvent, publish } from '../../../Services/EventBus/eventBus.js';
 import type { Result } from '../../../Infra/types.js';
 import { ok, err } from '../../../Infra/types.js';
+
+import { resetAggregator } from './resultAggregator.js';
+import {
+  initProgressTracker,
+  registerAssignment,
+  resetProgressTracker,
+} from './progressTracker.js';
 
 // ── 编排器配置 ──────────────────────────────────────────────────────
 

@@ -6,11 +6,12 @@
  * 两种策略：self_healing（失败方自愈）/ global_takeover（全局接管）。
  */
 
-import type { RestorationPlan, CompensatingAction } from './types.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { RestorationPlan, CompensatingAction } from './types.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ export function executePlan(planId: string): Result<{
 
   plan.status = 'executing';
   let executed = 0;
-  let failed = 0;
+  const failed = 0;
 
   for (const action of plan.compensatingActions) {
     if (!action.executed) {

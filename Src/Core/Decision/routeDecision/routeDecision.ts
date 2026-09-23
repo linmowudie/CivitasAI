@@ -13,9 +13,10 @@
  */
 
 import type { ComplexityReport, RouteDecisionResult, RoutingMode } from '../types.js';
-import { getRoutingRules } from './routingRules.js';
 import type { Result } from '../../../Infra/types.js';
-import { ok, err } from '../../../Infra/types.js';
+import { ok } from '../../../Infra/types.js';
+
+import { getRoutingRules } from './routingRules.js';
 
 // ── 决策入口 ────────────────────────────────────────────────────────
 

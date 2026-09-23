@@ -1,13 +1,13 @@
 /**
  * @module Session/sessionManager
  * @description
- * 会话管理器——管�?Agent 会话生命周期�?
+ * 会话管理器——管�?Agent 会话生命周期�?
  */
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
-/** 会话状�?*/
+/** 会话状�?*/
 export type SessionStatus = 'active' | 'paused' | 'archived' | 'closed';
 
 /** 会话信息 */
@@ -20,9 +20,9 @@ export interface SessionInfo {
   metadata: Record<string, unknown>;
 }
 
-/** 会话管理器配�?*/
+/** 会话管理器配�?*/
 export interface SessionManagerConfig {
-  /** 最大并发会话数，默�?50 */
+  /** 最大并发会话数，默�?50 */
   maxConcurrentSessions: number;
   /** 会话超时（ms），默认 1 小时 */
   sessionTimeoutMs: number;
@@ -46,7 +46,7 @@ export function initSessionManager(userConfig?: Partial<SessionManagerConfig>): 
 export function createSession(agentId: string, metadata: Record<string, unknown> = {}): Result<SessionInfo> {
   const activeCount = Array.from(sessions.values()).filter(s => s.status === 'active').length;
   if (activeCount >= config.maxConcurrentSessions) {
-    return err('LIMIT_REACHED', `并发会话数已达上�?(${config.maxConcurrentSessions})`);
+    return err('LIMIT_REACHED', `并发会话数已达上�?(${config.maxConcurrentSessions})`);
   }
 
   const sessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -87,7 +87,7 @@ export function closeSession(sessionId: string): Result<void> {
   return ok(undefined);
 }
 
-/** 获取所有活跃会�?*/
+/** 获取所有活跃会�?*/
 export function getActiveSessions(): SessionInfo[] {
   return Array.from(sessions.values()).filter(s => s.status === 'active');
 }
@@ -102,7 +102,7 @@ export function cleanupExpiredSessions(): number {
   const now = Date.now();
   let cleaned = 0;
 
-  for (const [id, session] of sessions) {
+  for (const [, session] of sessions) {
     if (session.status === 'active' && (now - session.lastActiveAt) > config.sessionTimeoutMs) {
       session.status = 'archived';
       cleaned++;

@@ -78,7 +78,7 @@ export async function parseSseStream(
     }
   };
 
-  const startTimeout = (ms: number, label: string) => {
+  const startTimeout = (ms: number, _label: string) => {
     clearCurrentTimeout();
     timeoutHandle = setTimeout(() => {
       timeoutRejected = true;

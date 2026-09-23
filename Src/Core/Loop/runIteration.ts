@@ -13,11 +13,6 @@
  *   → ⑩ IterationDecision
  */
 
-import type { LoopState, LoopStep, LoopEvent } from './loopEngine.js';
-import { recordLoopEvent, assertStepOrder } from './loopEngine.js';
-import type { IterationDecision } from './iterationController.js';
-import { decideIteration, type IterationDecisionInput } from './iterationController.js';
-import type { LoopConfig } from './loopConfig.js';
 
 // ── Services 层 ──
 import { runPreSupervision } from '../../Services/Supervision/preSupervision.js';
@@ -43,6 +38,12 @@ import type { UserRole } from '../../Infra/types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 import { logger } from '../../Infra/Logging/logger.js';
+
+import type { LoopConfig } from './loopConfig.js';
+import { decideIteration, type IterationDecisionInput } from './iterationController.js';
+import type { IterationDecision } from './iterationController.js';
+import { recordLoopEvent, assertStepOrder } from './loopEngine.js';
+import type { LoopState, LoopStep, LoopEvent } from './loopEngine.js';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 公共类型
@@ -194,7 +195,7 @@ export async function runIteration(
   let tokensConsumed = 0;
   let outputText = '';
   let toolCalls: ParsedToolCall[] = [];
-  let toolResults: ToolResult[] = [];
+  const toolResults: ToolResult[] = [];
   let callResult: CallResult | undefined;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
 

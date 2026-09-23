@@ -6,9 +6,10 @@
  * Phase 0-2：内存模拟仲裁者；Phase 3 接真实 LLM。
  */
 
-import type { ArbitratorVerdict, VerdictType } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { ArbitratorVerdict, VerdictType } from './types.js';
 
 // ── 仲裁者描述 ──────────────────────────────────────────────────────
 

@@ -6,8 +6,9 @@
  * 约束：默认超时拒绝（禁止默认通过）；CRITICAL 需 2 角色审批。
  */
 
-import { json, apiError, registerRoute } from './router.js';
 import { getPendingApprovals, getApproval, decideApproval } from '../../Services/LoopControl/approvalGate.js';
+
+import { json, apiError, registerRoute } from './router.js';
 
 /**
  * GET /api/approvals — 待审批队列

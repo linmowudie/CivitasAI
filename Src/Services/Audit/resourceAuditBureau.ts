@@ -6,25 +6,24 @@
  * 职责：Token 异常检测 / 自动冻结 / 稽查分析 / 定期巡检 / 处罚执行。
  */
 
-import {
-  initAnomalyDetector, checkRollingWindow, checkDeviation, checkLoop,
-  recordConsumption, getAlerts, getCriticalAlerts,
-  type AnomalyAlert, type DetectorConfig,
-} from './anomalyDetector.js';
-import {
-  freezeAgent, unfreezeAgent, isFrozen, checkAutoUnfreeze,
-  getAllFrozenAgents, getFreezeHistory,
-  type FreezeRecord,
-} from './freezeManager.js';
-import {
-  initPatrolScheduler, executePatrol, registerAgentSnapshot,
-  getReports, getLatestReport,
-  type PatrolReport, type AgentConsumptionSnapshot, type PatrolConfig,
-} from './patrolScheduler.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import {
+  initPatrolScheduler, executePatrol, registerAgentSnapshot,
+  type PatrolReport, type AgentConsumptionSnapshot, type PatrolConfig,
+} from './patrolScheduler.js';
+import {
+  freezeAgent, unfreezeAgent, isFrozen, checkAutoUnfreeze,
+  getAllFrozenAgents,
+} from './freezeManager.js';
+import {
+  initAnomalyDetector, checkRollingWindow, checkDeviation, checkLoop,
+  recordConsumption, getAlerts,
+  type AnomalyAlert, type DetectorConfig,
+} from './anomalyDetector.js';
 
 // ── 稽查报告 ────────────────────────────────────────────────────────
 

@@ -56,12 +56,6 @@ export interface TimeServiceState {
 /** 上次 Date.now() 返回值（用于回拨检测） */
 let lastKnownTime = 0;
 
-/** 单调时钟基准点（performance.now() at initialization） */
-const perfBase = performance.now();
-
-/** 单调时钟对应的 Date.now() 基准 */
-const dateBase = Date.now();
-
 /** 累计回拨次数 */
 let driftCount = 0;
 

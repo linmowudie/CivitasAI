@@ -1,19 +1,20 @@
 /**
  * @module Retrieval/reranker
  * @description
- * 重排器——对检索结果进行二次排序�?
- * 使用交叉编码器或简单启发式重排�?
+ * 重排器——对检索结果进行二次排序�?
+ * 使用交叉编码器或简单启发式重排�?
  */
 
-import type { RetrievalFragment } from './retriever.js';
 import type { Result } from '../../Infra/types.js';
 import { ok } from '../../Infra/types.js';
+
+import type { RetrievalFragment } from './retriever.js';
 
 /** 重排选项 */
 export interface RerankerOptions {
   query: string;
   fragments: RetrievalFragment[];
-  /** 重排后保留数�?*/
+  /** 重排后保留数�?*/
   topK: number;
 }
 
@@ -23,7 +24,7 @@ export interface RerankerResult {
   reranked: boolean;
 }
 
-/** 重排器接�?*/
+/** 重排器接�?*/
 export interface Reranker {
   name: string;
   rerank(options: RerankerOptions): Promise<Result<RerankerResult>>;

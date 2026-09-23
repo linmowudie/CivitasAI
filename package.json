@@ -98,6 +98,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
     "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
@@ -110,15 +112,14 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^8.57.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.31.0",
+    "husky": "^9.1.0",
+    "prettier": "^3.4.0",
+    "pretty-quick": "^4.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
-    "wait-on": "^9.1.0",
-    "husky": "^9.1.0",
-    "@commitlint/cli": "^19.6.0",
-    "@commitlint/config-conventional": "^19.6.0",
-    "prettier": "^3.4.0",
-    "pretty-quick": "^4.0.0"
+    "wait-on": "^9.1.0"
   }
 }

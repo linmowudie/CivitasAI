@@ -13,9 +13,11 @@
  * - civitas_memory.db：共享记忆 + 长期记忆
  */
 
-import Database from 'better-sqlite3';
 import { resolve, dirname } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
+
+import Database from 'better-sqlite3';
+
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
 

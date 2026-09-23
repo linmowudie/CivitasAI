@@ -6,10 +6,10 @@
  * critical 事件同步处理，其余异步。
  */
 
+import type { Result } from '../../Infra/types.js';
+
 import type { DomainEvent, EventType, EventHandler } from './eventTypes.js';
 import { subscribe, publish } from './eventBus.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
 
 // ── 路由规则 ────────────────────────────────────────────────────────
 

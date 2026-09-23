@@ -72,7 +72,7 @@ async function executeL3(
   spec: VerifierSpec,
   ctx: LlmJudgeContext,
 ): Promise<VerifierResult> {
-  const { model, rubric, minScore, requireEvidence } = spec.payload;
+  const { model, rubric, minScore } = spec.payload;
 
   const prompt = buildJudgePrompt(ctx.artifact, rubric, minScore);
   const response = await ctx.callModel!(model, prompt);

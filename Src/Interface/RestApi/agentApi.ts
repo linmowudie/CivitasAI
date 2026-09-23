@@ -5,8 +5,9 @@
  * Agent 列表 / 详情 / 状态查询。
  */
 
-import { json, apiError, registerRoute } from './router.js';
 import { getAllAgents, getAgent, getAgentsByStatus } from '../../Core/AgentRuntime/agentRegistry.js';
+
+import { json, apiError, registerRoute } from './router.js';
 
 /**
  * GET /api/agents — 查询 Agent 列表

@@ -7,7 +7,8 @@
  */
 
 import { join } from 'node:path';
-import { mkdirSync, existsSync, rmSync, readdirSync, statSync, copyFileSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs';
+
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 

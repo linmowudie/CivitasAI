@@ -7,10 +7,11 @@
  * 超时默认拒绝（禁止默认通过）。
  */
 
-import type { PendingApproval, ApprovalDecider } from './loopState.js';
-import type { ApprovalKind, RiskLevel, DecisionPolicy, ApprovalStatus } from './types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { PendingApproval, ApprovalDecider } from './loopState.js';
+import type { ApprovalKind, RiskLevel, DecisionPolicy } from './types.js';
 
 // ── 创建审批请求 ────────────────────────────────────────────────────
 

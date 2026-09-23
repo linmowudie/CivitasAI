@@ -7,9 +7,10 @@
  */
 
 import type { AssertionLevel } from '../EventBus/eventTypes.js';
-import { isEligibleForLongTerm } from './writeGuard.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import { isEligibleForLongTerm } from './writeGuard.js';
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ export function getMemory(memoryId: string): LongTermMemoryEntry | undefined {
   return { ...m };
 }
 
-export function deprecateMemory(memoryId: string, reason?: string): Result<void> {
+export function deprecateMemory(memoryId: string, _reason?: string): Result<void> {
   const m = memories.get(memoryId);
   if (!m) return err(`Memory ${memoryId} 不存在`);
   m.status = 'deprecated';

@@ -4,12 +4,12 @@
  * 列出指定目录的内容，支持递归和过滤。
  */
 
-import type { ToolDefinition } from '../../Traits/toolSpec.js';
-import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
-import { safeListDir, safeExists } from '../../../Infra/Fs/fsSafe.js';
-import { contentOutputSchema } from '../_shared.js';
 import { statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+
+import type { ToolDefinition } from '../../Traits/toolSpec.js';
+import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
+import { contentOutputSchema } from '../_shared.js';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
 
 export const dirLister: ToolDefinition = {

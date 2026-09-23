@@ -9,13 +9,14 @@
 import type { RecruitmentRequest } from '../Decision/types.js';
 import type { AgentInstance } from '../../Core/AgentRuntime/types.js';
 import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
-import { getAgent, updateAgent, getAgentsByRole } from '../../Core/AgentRuntime/agentRegistry.js';
+import { getAgent, updateAgent } from '../../Core/AgentRuntime/agentRegistry.js';
 import { handleAgentEvent } from '../../Core/AgentRuntime/agentRuntime.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
-import { recordTermination, hasTerminationRecord } from './terminationRationale.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import { recordTermination } from './terminationRationale.js';
 
 // ── 招募入口 ────────────────────────────────────────────────────────
 
@@ -150,15 +151,15 @@ export function expelAndReplace(params: {
 
 // ── 查询 ────────────────────────────────────────────────────────────
 
-export function getRecruitedAgents(traceId: string): AgentInstance[] {
+export function getRecruitedAgents(_traceId: string): AgentInstance[] {
   // 简化实现：返回所有 Agent（后续可按 traceId 过滤）
   return [];
 }
 
 // ── 清理（测试用）──────────────────────────────────────────────────
 
-export function resetRecruiter(): void {
+export async function resetRecruiter(): Promise<void> {
   // 清理依赖
-  const { resetTerminations } = require('./terminationRationale.js');
+  const { resetTerminations } = await import('./terminationRationale.js');
   resetTerminations();
 }

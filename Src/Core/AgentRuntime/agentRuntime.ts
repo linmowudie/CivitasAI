@@ -6,14 +6,14 @@
  * Director 侧只有在收到 review 通过后才能标记任务成功。
  */
 
-import type { AgentInstance, AgentStatus, SubmitResult, AgentEvent } from './types.js';
-import { transition, canTransition } from './stateMachine.js';
-import { getAgent, updateAgent, updateAgentStatus } from './agentRegistry.js';
-import { createAgent } from './agentFactory.js';
 import { EventType } from '../../Services/EventBus/eventTypes.js';
 import { createEvent, publish } from '../../Services/EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import type { AgentInstance, AgentStatus, SubmitResult, AgentEvent } from './types.js';
+import { transition } from './stateMachine.js';
+import { updateAgent, updateAgentStatus } from './agentRegistry.js';
 
 // ── 任务提交队列 ────────────────────────────────────────────────────
 
@@ -27,7 +27,6 @@ interface PendingReview {
 }
 
 const pendingReviews: Map<string, PendingReview> = new Map(); // taskId → review
-let reviewCounter = 0;
 
 // ── Worker 提交审核 ─────────────────────────────────────────────────
 
@@ -234,5 +233,4 @@ export function assignTask(agentId: string, taskId: string, traceId: string): Re
 
 export function resetAgentRuntime(): void {
   pendingReviews.clear();
-  reviewCounter = 0;
 }

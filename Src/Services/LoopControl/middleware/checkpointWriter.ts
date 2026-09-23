@@ -44,7 +44,7 @@ export function createCheckpointWriterMiddleware(
     priority: 50,  // 在 StopRuleEvaluator 之后
     canShortCircuit: false,
 
-    execute: async (ctx: MiddlewareContext, result: unknown) => {
+    execute: async (ctx: MiddlewareContext, _result: unknown) => {
       const state = getLoopState();
       if (!state) return;
 

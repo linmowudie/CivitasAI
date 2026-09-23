@@ -6,13 +6,14 @@
  * 乐观锁版本控制，并发写同 key 时 expectedVersion 不匹配方被拒。
  */
 
-import type { WorkspaceEntry, WriteResult, WorkspaceQuery } from './versionedEntry.js';
-import { interceptWrite, isForbiddenKey } from './writeGuard.js';
-import { incrementClock, clockToTokens, mergeClocks, tokensToClock } from './causalTokens.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+
+import { incrementClock, clockToTokens, tokensToClock } from './causalTokens.js';
+import { interceptWrite, isForbiddenKey } from './writeGuard.js';
+import type { WorkspaceEntry, WriteResult, WorkspaceQuery } from './versionedEntry.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export function read(query: WorkspaceQuery): WorkspaceEntry[] {
 
 // ── 删除 ────────────────────────────────────────────────────────────
 
-export function discardEntry(entryId: string, agentId: string): Result<void> {
+export function discardEntry(entryId: string, _agentId: string): Result<void> {
   const entry = entries.get(entryId);
   if (!entry) return err(`Entry ${entryId} 不存在`);
   entry.status = 'discarded';

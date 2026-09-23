@@ -6,12 +6,14 @@
  * 消息落 DB（main 库 chat_sessions / chat_messages 表，migration v18/v19）。
  */
 
-import { json, apiError, registerRoute } from './router.js';
+import { v4 as uuidv4 } from 'uuid';
+
 import { getMainDb } from '../../Infra/Db/index.js';
 import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
 import { EventType } from '../../Services/EventBus/eventTypes.js';
-import { v4 as uuidv4 } from 'uuid';
 import { getRegisteredModels } from '../../Infra/Llm/Router/modelRouter.js';
+
+import { json, apiError, registerRoute } from './router.js';
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
