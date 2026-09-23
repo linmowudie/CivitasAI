@@ -79,7 +79,8 @@ export type DefectCategory =
   | 'spec_missing'
   | 'logic_error'
   | 'quality_low'
-  | 'risk_violation';
+  | 'risk_violation'
+  | 'external';
 
 // ── EvidenceKind ───────────────────────────────────────────────────
 

@@ -35,11 +35,13 @@ export function runLoopSupervision(
   records: IterationRecord[],
   _maxIterations: number,
 ): Result<LoopSupervisionResult> {
+  const current = records[records.length - 1];
+  if (!current) {
+    return ok({ anomalyDetected: false, currentIteration: records.length });
+  }
   if (records.length < 2) {
     return ok({ anomalyDetected: false, currentIteration: records.length });
   }
-
-  const current = records[records.length - 1];
 
   // �?无进展检测：连续 3 轮无工具调用
   const lastThree = records.slice(-3);

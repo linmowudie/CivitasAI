@@ -12,8 +12,8 @@ import type {
   ComplexityReport,
   RouteDecisionResult,
 } from '../types.js';
-import { assessComplexity, type AssessmentInput } from '../ComplexityAssessor/complexityAssessor.js';
-import { decideRoute } from '../RouteDecision/routeDecision.js';
+import { assessComplexity, type AssessmentInput } from '../complexityAssessor/complexityAssessor.js';
+import { decideRoute } from '../routeDecision/routeDecision.js';
 import { decomposeTask, type DecomposeInput } from '../TaskDecomposer/taskDecomposer.js';
 import { createAgent } from '../../AgentRuntime/agentFactory.js';
 import { assignTask } from '../../AgentRuntime/agentRuntime.js';
@@ -109,8 +109,8 @@ export function receiveTask(params: {
 
 function executeDirect(
   params: { taskId: string; traceId: string; taskDescription: string },
-  report: ComplexityReport,
-  route: RouteDecisionResult,
+  _report: ComplexityReport,
+  _route: RouteDecisionResult,
   startedAt: number,
 ): Result<OrchestrationResult> {
   // Director 直接执行——创建 Director Agent
@@ -137,7 +137,7 @@ function executeDirect(
 function executeDelegation(
   params: { taskId: string; traceId: string; taskDescription: string },
   report: ComplexityReport,
-  route: RouteDecisionResult,
+  _route: RouteDecisionResult,
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director
@@ -217,7 +217,7 @@ function executeDelegation(
 function executeAssemblyLine(
   params: { taskId: string; traceId: string; taskDescription: string },
   report: ComplexityReport,
-  route: RouteDecisionResult,
+  _route: RouteDecisionResult,
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director
@@ -242,7 +242,9 @@ function executeAssemblyLine(
 
   // 流水线：每个节点依赖前一个
   for (let i = 1; i < taskPlan.assignments.length; i++) {
-    taskPlan.assignments[i].dependsOn = [taskPlan.assignments[i - 1].assignmentId];
+    const curr = taskPlan.assignments[i];
+    const prev = taskPlan.assignments[i - 1];
+    if (curr && prev) curr.dependsOn = [prev.assignmentId];
   }
 
   // 招募流水线节点 Agent
@@ -272,7 +274,7 @@ function executeAssemblyLine(
 function executeConsortium(
   params: { taskId: string; traceId: string; taskDescription: string },
   report: ComplexityReport,
-  route: RouteDecisionResult,
+  _route: RouteDecisionResult,
   startedAt: number,
 ): Result<OrchestrationResult> {
   // 创建 Director

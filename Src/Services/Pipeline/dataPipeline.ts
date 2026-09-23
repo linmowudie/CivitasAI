@@ -51,7 +51,7 @@ export async function executeDataPipeline(
         ctx = await handler(ctx);
       } catch (e) {
         ctx.errors.push(`${stage}: ${e instanceof Error ? e.message : String(e)}`);
-        return err('PIPELINE_ERROR', `数据管道 ${stage} 阶段失败: ${ctx.errors.join(', ')}`);
+        return err(`PIPELINE_ERROR: 数据管道 ${stage} 阶段失败: ${ctx.errors.join(', ')}`);
       }
     }
   }

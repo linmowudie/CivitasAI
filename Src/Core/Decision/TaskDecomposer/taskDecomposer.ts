@@ -56,7 +56,7 @@ export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
       traceId: input.traceId,
       parentAgentId: input.directorAgentId,
       subtaskIndex: i,
-      description: generateSubtaskDescription(input.taskDescription, domain, i, subtaskCount),
+      description: generateSubtaskDescription(input.taskDescription, domain ?? 'general', i, subtaskCount),
       inputContext: {
         originalTask: input.taskDescription,
         domain,
@@ -68,7 +68,7 @@ export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
       timeLimitMs: timePerSubtask,
       tokenBudget: budgetPerSubtask,
       dependsOn: findDependencies(i, subtaskCount, report.couplingScore),
-      requiredTools: getToolsForDomain(domain),
+      requiredTools: getToolsForDomain(domain ?? 'general'),
       status: 'pending',
     };
     assignments.push(assignment);
@@ -102,7 +102,7 @@ function generateSubtaskDescription(
   return `[${domain}] 子任务 ${index + 1}/${total}: ${originalTask.slice(0, 100)}...`;
 }
 
-function findDependencies(index: number, total: number, couplingScore: number): string[] {
+function findDependencies(index: number, _total: number, couplingScore: number): string[] {
   // 耦合度高时，后续子任务依赖前一个
   if (couplingScore > 0.6 && index > 0) {
     return [`assign-current-${index - 1}`]; // 占位，实际由 orchestrator 替换
@@ -121,7 +121,7 @@ function getToolsForDomain(domain: string): string[] {
     security: ['file.read'],
     general: ['file.read', 'file.write'],
   };
-  return domainTools[domain] ?? domainTools.general;
+  return domainTools[domain] ?? domainTools['general'] ?? [];
 }
 
 function calculateMaxParallelism(subtaskCount: number, couplingScore: number): number {

@@ -129,7 +129,9 @@ export async function getEmbedding(
 ): Promise<Result<number[]>> {
   const result = await getEmbeddings({ model, input: text, timeoutMs });
   if (!result.ok) return err(result.error, result.severity);
-  return ok(result.value.embeddings[0]);
+  const first = result.value.embeddings[0];
+  if (!first) return err('Embedding 返回结果为空', 'ERROR');
+  return ok(first);
 }
 
 // ===== 内部类型 =====

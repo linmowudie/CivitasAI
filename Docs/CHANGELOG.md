@@ -4,6 +4,21 @@
 
 ---
 
+## [代码 · 逐层类型技术债清偿与迭代判定恢复] - 2026-09-23
+
+### 变更
+
+- **类型债清零**：`Src/` 全库 124 个 TypeScript 类型错误按 Infra(9)→Tools(4)→Services(46)→Core(49)→Interface/main(16) 分层修复完毕，`tsc --noEmit` 0 错误、lint 0 错误。主要模式：`err()` 误用双参签名（合并为 `'CODE: message'`）、`noUncheckedIndexedAccess` 下的索引守卫、DefectCategory 补 `'external'`、L3 验证器类型窄化。
+- **decideIteration 恢复 success 判定**：`Core/Loop/iterationController.ts` 重新实现「有文本输出且无工具调用 → success」退出（同轮含工具调用时 hadToolCall=true 不触发），退出序变为 风险→预算→上限→成功→无进展，与 Docs/12 §2.1 五类退出及 Gate G5 测试对齐。同步更新 Docs/02 ⑩ 行与 Docs/07 ③ 注（2026-09-15 移除注作废）。
+- **ESLint 分层 zones 恢复**：`.eslintrc.json` 补回 Services↛Core/Interface 边界（拆为两 zone，Services↛Core 以 `except: [AgentRuntime, Decision]` 豁免现存合法依赖），Gate G0-6（≥4 zones）通过。
+- **E2E 角色断言修复**：`Tests/E2E/{directExecution,delegationMode,consortiumMode,assemblyLineMode}.spec.ts` 中 `'director'` 更正为合法角色 `'prime_director'`（`Infra/types.ts` UserRole 8 角色之一，原断言自 b5da690 起即不成立）。
+
+### 验证
+
+`npx tsc --noEmit` 0 错误；`npm run lint` 0 errors / 90 warnings；`npm test` 707/707 通过（realAgent Round 3 曾因华为云 MaaS 延迟超时一次，独立复跑 4/4 通过，判定为外部 API 抖动非回归）。
+
+---
+
 ## [文档 · 文档-代码对账校准] - 2026-09-22
 
 ### 问题

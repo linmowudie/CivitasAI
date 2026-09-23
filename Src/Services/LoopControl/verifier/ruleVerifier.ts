@@ -88,13 +88,13 @@ function evaluateSimpleRule(expression: string, ctx: RuleVerifyContext): boolean
   const artifact = typeof ctx.artifact === 'string' ? ctx.artifact : JSON.stringify(ctx.artifact);
   // 支持: contains("xxx"), startsWith("xxx"), length > N
   const containsMatch = expression.match(/contains\("(.+?)"\)/);
-  if (containsMatch) return artifact.includes(containsMatch[1]);
+  if (containsMatch) return artifact.includes(containsMatch[1] ?? '');
   const startsMatch = expression.match(/startsWith\("(.+?)"\)/);
-  if (startsMatch) return artifact.startsWith(startsMatch[1]);
+  if (startsMatch) return artifact.startsWith(startsMatch[1] ?? '');
   const lengthMatch = expression.match(/length\s*(>=?)\s*(\d+)/);
   if (lengthMatch) {
     const op = lengthMatch[1];
-    const n = parseInt(lengthMatch[2]);
+    const n = parseInt(lengthMatch[2] ?? '0');
     return op === '>=' ? artifact.length >= n : artifact.length > n;
   }
   return false;

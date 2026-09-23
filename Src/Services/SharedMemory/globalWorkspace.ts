@@ -154,7 +154,9 @@ function getLatestByKey(key: string): WorkspaceEntry | undefined {
   if (!ids || ids.length === 0) return undefined;
   // 返回最新的 active 条目
   for (let i = ids.length - 1; i >= 0; i--) {
-    const entry = entries.get(ids[i]);
+    const id = ids[i];
+    if (id === undefined) continue;
+    const entry = entries.get(id);
     if (entry && entry.status === 'active') return entry;
   }
   return undefined;

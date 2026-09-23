@@ -201,7 +201,7 @@ describe('E2E: CONSORTIUM 模式 — 高难攻坚', () => {
       taskDescription: '开发包含后端 server 和前端 ui 及数据库 database 的全栈应用系统',
     });
 
-    const directors = getAgentsByRole('director');
+    const directors = getAgentsByRole('prime_director');
     expect(directors.length).toBeGreaterThanOrEqual(1);
 
     const partners = getAgentsByRole('partner');
@@ -273,7 +273,7 @@ describe('E2E: CONSORTIUM 模式 — 高难攻坚', () => {
   // ─────────────────────────────────────────────────
 
   it('结果聚合：多 Partner 结果 → partial_success（部分失败）', () => {
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-cons-agg');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-cons-agg');
     expect(directorRes.ok).toBe(true);
     if (!directorRes.ok) return;
 

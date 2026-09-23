@@ -62,12 +62,12 @@ export function writeEntry(
   const { type, content, metadata, partitionOverride, tokenEstimate } = options;
 
   if (!content) {
-    return err('INVALID_ARGUMENT', '写入内容不能为空');
+    return err('INVALID_ARGUMENT: 写入内容不能为空');
   }
 
   const partition = partitionOverride ?? TYPE_PARTITION_MAP[type];
   if (!partition) {
-    return err('INVALID_ARGUMENT', `未知条目类型 "${type}"，且未指�?partitionOverride`);
+    return err(`INVALID_ARGUMENT: 未知条目类型 "${type}"，且未指定 partitionOverride`);
   }
 
   const entry = appendEntry(

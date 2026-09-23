@@ -27,6 +27,17 @@
             "message": "Tools 层不可依赖上层（Services/Core/Interface）"
           },
           {
+            "target": "./Src/Services",
+            "from": "./Src/Core",
+            "except": ["AgentRuntime", "Decision"],
+            "message": "Services 层不可依赖 Core（仅 AgentRuntime/Decision 例外）"
+          },
+          {
+            "target": "./Src/Services",
+            "from": "./Src/Interface",
+            "message": "Services 层不可依赖 Interface"
+          },
+          {
             "target": "./Src/Core",
             "from": ["./Src/Interface"],
             "message": "Core 层不可依赖上层（Interface）"

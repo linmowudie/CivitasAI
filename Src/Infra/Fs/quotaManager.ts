@@ -69,7 +69,8 @@ export function canWrite(path: string, bytes: number): boolean {
   const quota = findMatchingQuota(resolved);
   if (!quota || quota.maxBytes === 0) return true; // 无配额或无限制
 
-  const currentUsage = usage.get(findQuotaKey(resolved)) ?? 0;
+  const key = findQuotaKey(resolved);
+  const currentUsage = (key ? usage.get(key) : undefined) ?? 0;
   return (currentUsage + bytes) <= quota.maxBytes;
 }
 
@@ -92,7 +93,7 @@ export function getUsage(path: string): QuotaUsage | null {
   if (!quota) return null;
 
   const key = findQuotaKey(resolved);
-  const usedBytes = usage.get(key) ?? 0;
+  const usedBytes = (key ? usage.get(key) : undefined) ?? 0;
   const usageRatio = quota.maxBytes > 0 ? usedBytes / quota.maxBytes : 0;
   const warnRatio = quota.warnRatio ?? 0.8;
 

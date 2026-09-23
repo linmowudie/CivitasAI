@@ -6,7 +6,9 @@
  * 挂载点：wrapToolCall（priority=100）。
  */
 
-import type { AgentMiddleware } from '../../../Infra/Contracts/middlewareTypes.js';
+import type {
+  AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput,
+} from '../../../Infra/Contracts/middlewareTypes.js';
 
 export interface FailureInjectionConfig {
   /** 是否启用 */
@@ -25,7 +27,11 @@ export const failureInjectorMiddleware: AgentMiddleware = {
   priority: 100,
   canShortCircuit: true,
 
-  execute: async (ctx, input, next) => {
+  execute: async (
+    ctx: MiddlewareContext,
+    input: ToolCallInput,
+    next: (input: ToolCallInput) => Promise<ToolCallOutput>,
+  ) => {
     const config = ctx.data['failureInjection'] as FailureInjectionConfig | undefined;
 
     if (!config?.enabled) return next(input);

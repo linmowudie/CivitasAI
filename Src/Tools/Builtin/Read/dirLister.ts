@@ -47,7 +47,7 @@ export const dirLister: ToolDefinition = {
 
     const check = checkPath(dirPath, 'list');
     if (!check.allowed) {
-      return toolError(context.operationId, 'PATH_DENIED', check.reason, false);
+      return toolError(context.operationId, 'PATH_DENIED', check.reason ?? '路径被拒绝', false);
     }
 
     try {

@@ -34,8 +34,8 @@ export async function handleRequest(request: {
   const start = Date.now();
 
   // 解析 URL
-  const [path, search] = request.url.split('?');
-  const query = parseQuery(search ?? '');
+  const [path = '', search = ''] = request.url.split('?');
+  const query = parseQuery(search);
 
   // 路由匹配
   const matched = matchRoute(request.method, path);

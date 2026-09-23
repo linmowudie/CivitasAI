@@ -88,7 +88,7 @@ export function registerLoopRoutes(): void {
   });
 
   registerRoute('GET', '/api/loops/arbitration/:caseId', async (req) => {
-    const c = getArbitrationCase(req.params.caseId);
+    const c = getArbitrationCase(req.params.caseId ?? '');
     if (!c) return apiError('Case not found', 404);
     return json(c);
   });

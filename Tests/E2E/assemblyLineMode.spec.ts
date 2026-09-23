@@ -196,7 +196,7 @@ describe('E2E: ASSEMBLY_LINE 模式 — SOP 流水线', () => {
     if (!report.ok) return;
 
     // 模拟 orchestrator 的 executeAssemblyLine 逻辑
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-asm-deps');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-asm-deps');
     expect(directorRes.ok).toBe(true);
     if (!directorRes.ok) return;
 
@@ -238,7 +238,7 @@ describe('E2E: ASSEMBLY_LINE 模式 — SOP 流水线', () => {
     });
     if (!report.ok) return;
 
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-asm-serial');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-asm-serial');
     if (!directorRes.ok) return;
 
     const { decomposeTask } = await import('../../Src/Core/Decision/TaskDecomposer/taskDecomposer.js') as any;
@@ -260,7 +260,7 @@ describe('E2E: ASSEMBLY_LINE 模式 — SOP 流水线', () => {
 
   it('Agent 招募：Director + 每节点 Worker（模拟）', () => {
     // 模拟 ASSEMBLY_LINE 的 Agent 招募
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-asm-agents');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-asm-agents');
     expect(directorRes.ok).toBe(true);
 
     // 模拟 3 个流水线节点 Worker
@@ -269,7 +269,7 @@ describe('E2E: ASSEMBLY_LINE 模式 — SOP 流水线', () => {
       expect(w.ok).toBe(true);
     }
 
-    const directors = getAgentsByRole('director');
+    const directors = getAgentsByRole('prime_director');
     expect(directors.length).toBe(1);
 
     const workers = getAgentsByRole('worker');
@@ -281,7 +281,7 @@ describe('E2E: ASSEMBLY_LINE 模式 — SOP 流水线', () => {
   // ─────────────────────────────────────────────────
 
   it('结果聚合：按流水线顺序聚合', () => {
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-asm-agg');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-asm-agg');
     expect(directorRes.ok).toBe(true);
     if (!directorRes.ok) return;
 

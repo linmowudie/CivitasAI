@@ -35,7 +35,7 @@ export function registerAgentRoutes(): void {
   });
 
   registerRoute('GET', '/api/agents/:agentId', async (req) => {
-    const agent = getAgentDetail(req.params.agentId);
+    const agent = getAgentDetail(req.params.agentId ?? '');
     if (!agent) return apiError('Agent not found', 404);
     return json(agent);
   });

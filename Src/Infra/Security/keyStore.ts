@@ -86,7 +86,7 @@ export function resolveKey(name: string): Result<ResolvedKey> {
   // 按顺序尝试每个引用
   for (let i = 0; i < entry.refs.length; i++) {
     const ref = entry.refs[i];
-    if (!ref.startsWith('env:')) continue;
+    if (!ref || !ref.startsWith('env:')) continue;
 
     const envVar = ref.slice(4);
     const envValue = process.env[envVar];

@@ -6,7 +6,7 @@
  * 挂载点：beforeModel（priority=10，最先执行）。
  */
 
-import type { AgentMiddleware, MiddlewareContext } from '../../../Infra/Contracts/middlewareTypes.js';
+import type { AgentMiddleware, MiddlewareContext, ModelCallInput } from '../../../Infra/Contracts/middlewareTypes.js';
 
 export const goalReanchorMiddleware: AgentMiddleware = {
   name: 'GoalReanchor',
@@ -14,7 +14,7 @@ export const goalReanchorMiddleware: AgentMiddleware = {
   priority: 10,
   canShortCircuit: false,
 
-  execute: async (ctx: MiddlewareContext, messages) => {
+  execute: async (ctx: MiddlewareContext, messages: ModelCallInput['messages']) => {
     // 检查是否需要重锚定（上下文压缩后设置标记）
     const needsReanchor = ctx.data['needsGoalReanchor'] as boolean | undefined;
 

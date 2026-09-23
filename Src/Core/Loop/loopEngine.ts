@@ -56,18 +56,18 @@ export function createLoopState(options: LoopEngineOptions): LoopState {
 }
 
 export function startLoop(state: LoopState): Result<LoopState> {
-  if (state.phase !== 'idle') return err('INVALID_STATE', `Loop ${state.loopId} not idle`);
+  if (state.phase !== 'idle') return err(`INVALID_STATE: Loop ${state.loopId} not idle`);
   state.phase = 'running'; state.startedAt = Date.now(); state.lastActivityAt = Date.now();
   return ok(state);
 }
 
 export function pauseLoop(state: LoopState): Result<LoopState> {
-  if (state.phase !== 'running') return err('INVALID_STATE', `Loop ${state.loopId} not running`);
+  if (state.phase !== 'running') return err(`INVALID_STATE: Loop ${state.loopId} not running`);
   state.phase = 'paused'; return ok(state);
 }
 
 export function resumeLoop(state: LoopState): Result<LoopState> {
-  if (state.phase !== 'paused') return err('INVALID_STATE', `Loop ${state.loopId} not paused`);
+  if (state.phase !== 'paused') return err(`INVALID_STATE: Loop ${state.loopId} not paused`);
   state.phase = 'running'; state.lastActivityAt = Date.now(); return ok(state);
 }
 
@@ -102,8 +102,11 @@ export function assertStepOrder(steps: LoopStep[]): boolean {
     '⑦ OutputParse', '⑧ ToolExecute', '⑨ PostSupervision', '⑩ IterationDecision',
   ];
   for (let i = 1; i < steps.length; i++) {
-    const prevIdx = order.indexOf(steps[i - 1]);
-    const currIdx = order.indexOf(steps[i]);
+    const prev = steps[i - 1];
+    const curr = steps[i];
+    if (prev === undefined || curr === undefined) return false;
+    const prevIdx = order.indexOf(prev);
+    const currIdx = order.indexOf(curr);
     if (prevIdx === -1 || currIdx === -1) return false;
     if (currIdx < prevIdx) return false;
   }

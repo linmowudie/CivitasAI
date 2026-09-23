@@ -10,6 +10,8 @@ import type { VerifierSpec, VerifierResult } from '../loopState.js';
 import type { Result } from '../../../Infra/types.js';
 import { ok, err } from '../../../Infra/types.js';
 
+type L3Spec = Extract<VerifierSpec, { level: 'L3' }>;
+
 export interface LlmJudgeContext {
   /** 待评分的产物 */
   artifact: string;
@@ -31,7 +33,7 @@ export async function runLlmJudge(
   ctx: LlmJudgeContext,
 ): Promise<Result<VerifierResult[]>> {
   const results: VerifierResult[] = [];
-  const l3Specs = specs.filter(s => s.level === 'L3');
+  const l3Specs = specs.filter((s): s is L3Spec => s.level === 'L3');
 
   for (const spec of l3Specs) {
     const start = Date.now();
@@ -69,7 +71,7 @@ export async function runLlmJudge(
 }
 
 async function executeL3(
-  spec: VerifierSpec,
+  spec: L3Spec,
   ctx: LlmJudgeContext,
 ): Promise<VerifierResult> {
   const { model, rubric, minScore } = spec.payload;

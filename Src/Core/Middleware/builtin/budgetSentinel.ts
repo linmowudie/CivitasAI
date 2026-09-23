@@ -6,7 +6,9 @@
  * 挂载点：wrapModelCall（priority=50，最外层包裹）。
  */
 
-import type { AgentMiddleware } from '../../../Infra/Contracts/middlewareTypes.js';
+import type {
+  AgentMiddleware, MiddlewareContext, ModelCallInput, ModelCallOutput,
+} from '../../../Infra/Contracts/middlewareTypes.js';
 
 export const BUDGET_WARNING_THRESHOLD = 0.8;
 export const BUDGET_CRITICAL_THRESHOLD = 0.95;
@@ -17,7 +19,11 @@ export const budgetSentinelMiddleware: AgentMiddleware = {
   priority: 50,
   canShortCircuit: true,
 
-  execute: async (ctx, input, next) => {
+  execute: async (
+    ctx: MiddlewareContext,
+    input: ModelCallInput,
+    next: (input: ModelCallInput) => Promise<ModelCallOutput>,
+  ) => {
     const budget = ctx.data['tokenBudget'] as number | undefined;
     const consumed = ctx.data['tokensConsumed'] as number | undefined;
 

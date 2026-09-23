@@ -75,7 +75,7 @@ export function matchRoute(method: HttpMethod, path: string): {
 
     const params: Record<string, string> = {};
     route.paramNames.forEach((name, i) => {
-      params[name] = decodeURIComponent(match[i + 1]);
+      params[name] = decodeURIComponent(match[i + 1] ?? '');
     });
 
     return { handler: route.handler, params };

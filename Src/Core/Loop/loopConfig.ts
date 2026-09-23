@@ -35,23 +35,23 @@ export const LOOP_LIMITS = {
 
 export function validateLoopConfig(config: LoopConfig): Result<LoopConfig> {
   if (!config.model || typeof config.model !== 'string')
-    return err('INVALID_CONFIG', 'LoopConfig.model missing or not string');
+    return err('INVALID_CONFIG: LoopConfig.model missing or not string');
   if (typeof config.max_iterations !== 'number' || config.max_iterations < 1)
-    return err('INVALID_CONFIG', 'LoopConfig.max_iterations missing or < 1');
+    return err('INVALID_CONFIG: LoopConfig.max_iterations missing or < 1');
   if (config.max_iterations > LOOP_LIMITS.maxIterationsHardCap)
-    return err('INVALID_CONFIG', `LoopConfig.max_iterations exceeds hard cap ${LOOP_LIMITS.maxIterationsHardCap}`);
+    return err(`INVALID_CONFIG: LoopConfig.max_iterations exceeds hard cap ${LOOP_LIMITS.maxIterationsHardCap}`);
   if (typeof config.timeout_ms !== 'number' || config.timeout_ms < LOOP_LIMITS.minTimeoutMs)
-    return err('INVALID_CONFIG', `LoopConfig.timeout_ms missing or < ${LOOP_LIMITS.minTimeoutMs}`);
+    return err(`INVALID_CONFIG: LoopConfig.timeout_ms missing or < ${LOOP_LIMITS.minTimeoutMs}`);
   if (config.timeout_ms > LOOP_LIMITS.maxTimeoutMs)
-    return err('INVALID_CONFIG', `LoopConfig.timeout_ms exceeds cap ${LOOP_LIMITS.maxTimeoutMs}`);
+    return err(`INVALID_CONFIG: LoopConfig.timeout_ms exceeds cap ${LOOP_LIMITS.maxTimeoutMs}`);
   if (typeof config.temperature !== 'number' || config.temperature < 0 || config.temperature > 2)
-    return err('INVALID_CONFIG', 'LoopConfig.temperature missing or not in [0, 2]');
+    return err('INVALID_CONFIG: LoopConfig.temperature missing or not in [0, 2]');
   if (typeof config.token_budget !== 'number' || config.token_budget < 1)
-    return err('INVALID_CONFIG', 'LoopConfig.token_budget missing or < 1');
+    return err('INVALID_CONFIG: LoopConfig.token_budget missing or < 1');
   if (config.token_budget > LOOP_LIMITS.maxTokenBudget)
-    return err('INVALID_CONFIG', `LoopConfig.token_budget exceeds hard cap ${LOOP_LIMITS.maxTokenBudget}`);
+    return err(`INVALID_CONFIG: LoopConfig.token_budget exceeds hard cap ${LOOP_LIMITS.maxTokenBudget}`);
   if (typeof config.stream !== 'boolean')
-    return err('INVALID_CONFIG', 'LoopConfig.stream missing or not boolean');
+    return err('INVALID_CONFIG: LoopConfig.stream missing or not boolean');
   return ok(config);
 }
 
@@ -74,6 +74,6 @@ export const ROLE_OVERRIDES: Record<string, Partial<LoopConfig>> = {
 export function createRoleLoopConfig(role: string): Result<LoopConfig> {
   const overrides = ROLE_OVERRIDES[role];
   if (!overrides)
-    return err('INVALID_CONFIG', `Unknown role: ${role}, valid: ${Object.keys(ROLE_OVERRIDES).join(', ')}`);
+    return err(`INVALID_CONFIG: Unknown role: ${role}, valid: ${Object.keys(ROLE_OVERRIDES).join(', ')}`);
   return createLoopConfig({ ...overrides });
 }

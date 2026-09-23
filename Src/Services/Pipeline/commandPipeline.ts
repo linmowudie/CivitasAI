@@ -48,13 +48,13 @@ export function registerCommandHandler(command: SystemCommand, handler: CommandH
 export async function executeCommand(request: CommandRequest): Promise<Result<CommandResult>> {
   const handler = commandHandlers.get(request.command);
   if (!handler) {
-    return err('COMMAND_NOT_FOUND', `未知命令: ${request.command}`);
+    return err(`COMMAND_NOT_FOUND: 未知命令: ${request.command}`);
   }
 
   try {
     return await handler(request);
   } catch (e) {
-    return err('COMMAND_FAILED', `命令执行失败: ${e instanceof Error ? e.message : String(e)}`);
+    return err(`COMMAND_FAILED: 命令执行失败: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

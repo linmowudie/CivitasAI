@@ -51,7 +51,7 @@ export const grepTool: ToolDefinition = {
 
     const check = checkPath(searchPath, 'list');
     if (!check.allowed) {
-      return toolError(context.operationId, 'PATH_DENIED', check.reason, false);
+      return toolError(context.operationId, 'PATH_DENIED', check.reason ?? '路径被拒绝', false);
     }
 
     try {
@@ -102,12 +102,14 @@ function searchFiles(
         const lines = content.split('\n');
         for (let i = 0; i < lines.length; i++) {
           if (matches.length >= maxResults) break;
+          const line = lines[i];
+          if (line === undefined) continue;
           regex.lastIndex = 0;
-          if (regex.test(lines[i])) {
+          if (regex.test(line)) {
             matches.push({
               file: relative(rootPath, fullPath),
               line: i + 1,
-              content: lines[i].trim().slice(0, 200),
+              content: line.trim().slice(0, 200),
             });
           }
         }

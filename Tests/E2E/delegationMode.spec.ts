@@ -253,7 +253,7 @@ describe('E2E: DELEGATION 模式 — 并行委派', () => {
     });
 
     // 至少有 Director
-    const directors = getAgentsByRole('director');
+    const directors = getAgentsByRole('prime_director');
     expect(directors.length).toBeGreaterThanOrEqual(1);
 
     // 多域任务 → CONSORTIUM → Partner
@@ -294,7 +294,7 @@ describe('E2E: DELEGATION 模式 — 并行委派', () => {
 
   it('结果聚合：多 Worker 结果 → aggregateResults', () => {
     // 手动构造 TaskPlan 和 SubtaskResult 测试聚合
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-agg');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-agg');
     expect(directorRes.ok).toBe(true);
     if (!directorRes.ok) return;
 

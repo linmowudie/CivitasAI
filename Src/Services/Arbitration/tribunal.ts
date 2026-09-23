@@ -155,7 +155,7 @@ export function reasonVerdict(caseId: string): Result<FinalVerdict> {
     verdictCounts[v.verdict] = (verdictCounts[v.verdict] ?? 0) + 1;
   }
 
-  const maxVerdict = Object.entries(verdictCounts).sort((a, b) => b[1] - a[1])[0];
+  const maxVerdict = Object.entries(verdictCounts).sort((a, b) => b[1] - a[1])[0] ?? ['unknown', 0] as [string, number];
   const isUnanimous = maxVerdict[1] === 3;
   const isDeadlocked = Object.keys(verdictCounts).length === 3; // 三种不同裁决
 

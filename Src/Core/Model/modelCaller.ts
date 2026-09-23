@@ -12,7 +12,7 @@ import type { Result } from '../../Infra/types.js';
 import { err } from '../../Infra/types.js';
 import { resolveModel, getFallbackProviders, getRoutingConfig } from '../../Infra/Llm/Router/modelRouter.js';
 import { LlmProvider } from '../../Infra/Llm/Provider/providerBase.js';
-import type { CallOptions, CallResult, StreamChunk, ChatMessage } from '../../Infra/Llm/Provider/providerBase.js';
+import type { CallOptions, CallResult, StreamChunk, ChatMessage, ErrorCategory } from '../../Infra/Llm/Provider/providerBase.js';
 import { getRetryDecision, delay } from '../../Infra/Llm/Provider/retryPolicy.js';
 
 // ===== 类型导出 =====
@@ -74,9 +74,11 @@ export async function callModel(
 
       for (let i = currentIdx + 1; i < fallbacks.length; i++) {
         const fallbackProvider = fallbacks[i];
-        if (!fallbackProvider.supportsModel(fallbackProvider.getModels()[0]?.id)) continue;
+        if (!fallbackProvider) continue;
 
         const fallbackSpec = fallbackProvider.getModels()[0];
+        if (!fallbackSpec || !fallbackProvider.supportsModel(fallbackSpec.id)) continue;
+
         const fallbackOpts: CallOptions = {
           ...finalOpts,
           model: fallbackSpec.id,
@@ -163,7 +165,7 @@ async function callWithRetry(
 /**
  * 从错误消息推断分类
  */
-function categorizeError(errorMsg: string): string {
+function categorizeError(errorMsg: string): ErrorCategory {
   if (errorMsg.includes('认证失败') || errorMsg.includes('401') || errorMsg.includes('403')) return 'auth';
   if (errorMsg.includes('速率限制') || errorMsg.includes('429')) return 'rate_limited';
   if (errorMsg.includes('服务不可用') || errorMsg.includes('503')) return 'unavailable';

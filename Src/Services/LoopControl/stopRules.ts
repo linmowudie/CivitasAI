@@ -79,7 +79,7 @@ const EVALUATION_ORDER: StoppedReason[] = [
  */
 export function evaluateStopRules(
   rules: StopRuleSet,
-  state: LoopState,
+  _state: LoopState,
   snapshot: LoopRuntimeSnapshot,
 ): StopDecision {
   // ⑤ 风险退出
@@ -187,6 +187,7 @@ function checkNoProgress(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): Sto
   const window = recentMetrics.slice(-rules.noProgress.stagnationWindow);
   const first = window[0];
   const last = window[window.length - 1];
+  if (first === undefined || last === undefined) return null;
   const delta = first === 0 ? (last > 0 ? 1.0 : 0.0) : (last - first) / Math.abs(first);
 
   if (delta < rules.noProgress.minDelta) {

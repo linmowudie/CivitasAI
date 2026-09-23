@@ -74,7 +74,7 @@ export function assembleContext(options: AssemblyOptions): Result<AssemblyResult
   } = options;
 
   if (budgetTokens <= 0) {
-    return err('INVALID_ARGUMENT', 'budgetTokens 必须 > 0');
+    return err('INVALID_ARGUMENT: budgetTokens 必须 > 0');
   }
 
   // 检查是否需要截�?

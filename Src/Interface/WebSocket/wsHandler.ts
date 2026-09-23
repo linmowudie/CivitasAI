@@ -308,6 +308,7 @@ async function startStreamGeneration(
       // 发布每次迭代的工具调用/结果事件（供前端渲染）
       for (let i = 0; i < result.iterations.length; i++) {
         const iter = result.iterations[i];
+        if (!iter) continue;
         publish(createEvent({
           eventType: EventType.AGENT_ITERATION_COMPLETE,
           source: 'wsHandler/streamGeneration',
@@ -329,7 +330,7 @@ async function startStreamGeneration(
               error: tr.error ? { code: tr.error.code, message: tr.error.message } : undefined,
             })),
             tokensConsumed: iter.tokensConsumed,
-            decision: iter.decision?.action ?? 'unknown',
+            decision: iter.decision?.exitReason ?? 'unknown',
           },
         }));
       }

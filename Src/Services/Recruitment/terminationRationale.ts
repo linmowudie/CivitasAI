@@ -5,7 +5,7 @@
  * 开除 Agent 前必须写 TerminationRationale，否则审计局会回滚开除决定。
  */
 
-import type { TerminationRationale, TerminationReason } from '../Decision/types.js';
+import type { TerminationRationale, TerminationReason } from '../../Core/Decision/types.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 

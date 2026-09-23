@@ -112,7 +112,11 @@ export function selectNextStrategy(
   if (available.length === 0) {
     return { strategy: 'escalate_human', escalated: true };
   }
-  return { strategy: available[0], escalated: false };
+  const first = available[0];
+  if (first === undefined) {
+    return { strategy: 'escalate_human', escalated: true };
+  }
+  return { strategy: first, escalated: false };
 }
 
 /**

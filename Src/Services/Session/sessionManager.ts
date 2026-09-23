@@ -46,7 +46,7 @@ export function initSessionManager(userConfig?: Partial<SessionManagerConfig>): 
 export function createSession(agentId: string, metadata: Record<string, unknown> = {}): Result<SessionInfo> {
   const activeCount = Array.from(sessions.values()).filter(s => s.status === 'active').length;
   if (activeCount >= config.maxConcurrentSessions) {
-    return err('LIMIT_REACHED', `并发会话数已达上�?(${config.maxConcurrentSessions})`);
+    return err(`LIMIT_REACHED: 并发会话数已达上限 (${config.maxConcurrentSessions})`);
   }
 
   const sessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -67,14 +67,14 @@ export function createSession(agentId: string, metadata: Record<string, unknown>
 /** 获取会话 */
 export function getSession(sessionId: string): Result<SessionInfo> {
   const session = sessions.get(sessionId);
-  if (!session) return err('NOT_FOUND', `会话 ${sessionId} 不存在`);
+  if (!session) return err(`NOT_FOUND: 会话 ${sessionId} 不存在`);
   return ok(session);
 }
 
 /** 更新会话活动时间 */
 export function touchSession(sessionId: string): Result<void> {
   const session = sessions.get(sessionId);
-  if (!session) return err('NOT_FOUND', `会话 ${sessionId} 不存在`);
+  if (!session) return err(`NOT_FOUND: 会话 ${sessionId} 不存在`);
   session.lastActiveAt = Date.now();
   return ok(undefined);
 }
@@ -82,7 +82,7 @@ export function touchSession(sessionId: string): Result<void> {
 /** 关闭会话 */
 export function closeSession(sessionId: string): Result<void> {
   const session = sessions.get(sessionId);
-  if (!session) return err('NOT_FOUND', `会话 ${sessionId} 不存在`);
+  if (!session) return err(`NOT_FOUND: 会话 ${sessionId} 不存在`);
   session.status = 'closed';
   return ok(undefined);
 }

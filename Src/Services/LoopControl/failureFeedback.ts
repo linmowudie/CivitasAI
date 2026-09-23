@@ -109,7 +109,7 @@ export function buildFailureFeedback(
   }
 
   // 推荐下一步动作
-  const recommendedNextAction = recommendNextAction(input, config);
+  const recommendedNextAction = recommendNextAction(input, config, comparedWithLastAttempt);
 
   // 截断策略文本
   const truncatedStrategies = input.triedStrategies.map(
@@ -132,6 +132,7 @@ export function buildFailureFeedback(
 function recommendNextAction(
   input: BuildFeedbackInput,
   config: FailureFeedbackConfig,
+  comparedWithLastAttempt?: FailureFeedback['comparedWithLastAttempt'],
 ): NextAction {
   // 预算耗尽 → abort
   if (input.remainingBudget.tokens <= 0 || input.remainingBudget.iterations <= 0) {
@@ -144,8 +145,8 @@ function recommendNextAction(
   }
 
   // 无改善 → switch_strategy
-  if (input.comparedWithLastAttempt !== undefined) {
-    const { improvement } = input.comparedWithLastAttempt;
+  if (comparedWithLastAttempt !== undefined) {
+    const { improvement } = comparedWithLastAttempt;
     if (improvement < config.improvementMinRatio) {
       return 'switch_strategy';
     }

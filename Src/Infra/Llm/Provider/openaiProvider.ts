@@ -111,6 +111,9 @@ export class OpenAIProvider extends LlmProvider {
 
       const data = await response.json() as OpenAIResponse;
       const choice = data.choices[0];
+      if (!choice) {
+        throw this.classifyHttpError(502, 'empty choices in response');
+      }
 
       return ok({
         content: choice.message?.content ?? '',

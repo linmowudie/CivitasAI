@@ -60,13 +60,13 @@ export interface HookDispatchResult {
 const handlers: HookHandler[] = [];
 
 export function registerHookHandler(handler: HookHandler): Result<void> {
-  if (!handler.name) return err('INVALID_ARGUMENT', 'Handler name required');
-  if (!handler.event) return err('INVALID_ARGUMENT', 'Handler event required');
-  if (!HOOK_EVENTS[handler.event]) return err('INVALID_ARGUMENT', `Unknown Hook event: ${handler.event}`);
-  if (typeof handler.handle !== 'function') return err('INVALID_ARGUMENT', 'handle must be a function');
+  if (!handler.name) return err('INVALID_ARGUMENT: Handler name required');
+  if (!handler.event) return err('INVALID_ARGUMENT: Handler event required');
+  if (!HOOK_EVENTS[handler.event]) return err(`INVALID_ARGUMENT: Unknown Hook event: ${handler.event}`);
+  if (typeof handler.handle !== 'function') return err('INVALID_ARGUMENT: handle must be a function');
 
   const existing = handlers.find(h => h.name === handler.name && h.event === handler.event);
-  if (existing) return err('DUPLICATE_ENTRY', `Handler "${handler.name}" already on "${handler.event}"`);
+  if (existing) return err(`DUPLICATE_ENTRY: Handler "${handler.name}" already on "${handler.event}"`);
 
   handlers.push({ ...handler, timeoutMs: handler.timeoutMs ?? 5000 });
   return ok(undefined);

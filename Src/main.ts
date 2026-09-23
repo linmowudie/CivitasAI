@@ -141,7 +141,7 @@ export async function startServer(): Promise<{ httpPort: number; wsPort: number 
   logger.info('提示词目录就绪', { source: 'main', roles: 8 });
 
   // ⑪ LLM 通道
-  const routerConfig = getConfigValueOr<Record<string, unknown>>(config, 'providers', []);
+  const routerConfig = getConfigValueOr<Record<string, unknown>[]>(config, 'providers', []);
   const routingRaw = getConfigValueOr<Record<string, unknown>>(config, 'routing', {});
   let providerCount = 0;
   if (Array.isArray(routerConfig)) {

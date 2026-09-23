@@ -7,7 +7,8 @@
 
 import type { AgentProgress, TaskAssignment } from '../types.js';
 import { EventType } from '../../../Services/EventBus/eventTypes.js';
-import { subscribe, type Subscription } from '../../../Services/EventBus/eventBus.js';
+import { subscribe } from '../../../Services/EventBus/eventBus.js';
+import type { Subscription } from '../../../Services/EventBus/eventTypes.js';
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 

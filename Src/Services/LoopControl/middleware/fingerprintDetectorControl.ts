@@ -8,7 +8,7 @@
  * 挂载点：wrapToolCall（工具调用前后拦截）。
  */
 
-import type { AgentMiddleware, MiddlewareContext, ToolCallInput } from '../../../Infra/Contracts/middlewareTypes.js';
+import type { AgentMiddleware, MiddlewareContext, ToolCallInput, ToolCallOutput } from '../../../Infra/Contracts/middlewareTypes.js';
 import type { LoopState } from '../loopState.js';
 import { detectFingerprintAction, recordFingerprint, type FingerprintConfig, type FingerprintAction } from '../actionFingerprint.js';
 
@@ -24,7 +24,7 @@ export function createFingerprintDetectorControlMiddleware(
     priority: 5,
     canShortCircuit: false,
 
-    execute: async (ctx: MiddlewareContext, input: ToolCallInput, next) => {
+    execute: async (ctx: MiddlewareContext, input: ToolCallInput, next: (input: ToolCallInput) => Promise<ToolCallOutput>) => {
       const state = getLoopState();
       if (!state) return next(input);
 

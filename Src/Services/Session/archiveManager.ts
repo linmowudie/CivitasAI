@@ -59,14 +59,14 @@ export function createArchive(
   type: ArchiveType = 'session',
 ): Result<ArchiveEntry> {
   if (archives.size >= config.maxEntries) {
-    return err('LIMIT_REACHED', `归档数已达上�?(${config.maxEntries})`);
+    return err(`LIMIT_REACHED: 归档数已达上限 (${config.maxEntries})`);
   }
 
   const dataStr = JSON.stringify(data);
   const sizeBytes = new TextEncoder().encode(dataStr).length;
 
   if (totalSizeBytes + sizeBytes > config.maxStorageBytes) {
-    return err('LIMIT_REACHED', `归档存储空间已满 (${config.maxStorageBytes} bytes)`);
+    return err(`LIMIT_REACHED: 归档存储空间已满 (${config.maxStorageBytes} bytes)`);
   }
 
   const archiveId = `arc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -90,7 +90,7 @@ export function createArchive(
 /** 获取归档 */
 export function getArchive(archiveId: string): Result<ArchiveEntry> {
   const entry = archives.get(archiveId);
-  if (!entry) return err('NOT_FOUND', `归档 ${archiveId} 不存在`);
+  if (!entry) return err(`NOT_FOUND: 归档 ${archiveId} 不存在`);
   return ok(entry);
 }
 

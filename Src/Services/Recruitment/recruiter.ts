@@ -6,7 +6,7 @@
  * 支持开除后重新招募（新 Agent 继承上下文）。
  */
 
-import type { RecruitmentRequest } from '../Decision/types.js';
+import type { RecruitmentRequest } from '../../Core/Decision/types.js';
 import type { AgentInstance } from '../../Core/AgentRuntime/types.js';
 import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
 import { getAgent, updateAgent } from '../../Core/AgentRuntime/agentRegistry.js';

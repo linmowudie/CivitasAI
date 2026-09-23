@@ -62,7 +62,7 @@ export function registerTokenRoutes(): void {
   });
 
   registerRoute('GET', '/api/tokens/wallets/:agentId', async (req) => {
-    const wallet = getWalletDetail(req.params.agentId);
+    const wallet = getWalletDetail(req.params.agentId ?? '');
     if (!wallet) return apiError('Wallet not found', 404);
     return json(wallet);
   });

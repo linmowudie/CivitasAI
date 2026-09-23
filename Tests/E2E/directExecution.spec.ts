@@ -177,7 +177,7 @@ describe('E2E: DIRECT 模式 — 简单任务直接执行', () => {
     });
 
     // 编排器创建了 Director
-    const directors = getAgentsByRole('director');
+    const directors = getAgentsByRole('prime_director');
     expect(directors.length).toBe(1);
 
     // 无 Worker
@@ -216,7 +216,7 @@ describe('E2E: DIRECT 模式 — 简单任务直接执行', () => {
     setupLlm();
 
     // 创建 Director
-    const directorRes = createAgent({ role: 'director', model: 'glm-5.1' }, 'trace-direct-llm');
+    const directorRes = createAgent({ role: 'prime_director', model: 'glm-5.1' }, 'trace-direct-llm');
     expect(directorRes.ok).toBe(true);
     if (!directorRes.ok) return;
 

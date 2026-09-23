@@ -12,15 +12,15 @@ import { ok, err } from '../../Infra/types.js';
 const middlewares: AgentMiddleware[] = [];
 
 export function registerMiddleware(middleware: AgentMiddleware): Result<void> {
-  if (!middleware.name) return err('INVALID_ARGUMENT', 'Middleware name required');
-  if (!middleware.hook) return err('INVALID_ARGUMENT', 'Middleware hook type required');
+  if (!middleware.name) return err('INVALID_ARGUMENT: Middleware name required');
+  if (!middleware.hook) return err('INVALID_ARGUMENT: Middleware hook type required');
   if (typeof middleware.execute !== 'function') {
-    return err('INVALID_ARGUMENT', 'Middleware execute must be a function');
+    return err('INVALID_ARGUMENT: Middleware execute must be a function');
   }
 
   const existing = middlewares.find(m => m.name === middleware.name);
   if (existing) {
-    return err('DUPLICATE_ENTRY', `Middleware "${middleware.name}" already registered`);
+    return err(`DUPLICATE_ENTRY: Middleware "${middleware.name}" already registered`);
   }
 
   middlewares.push(middleware);
@@ -91,6 +91,7 @@ export async function executeWrapHooks<TInput, TOutput>(
   let current = coreFn;
   for (let i = hooks.length - 1; i >= 0; i--) {
     const mw = hooks[i];
+    if (!mw) continue;
     const prev = current;
     current = ((inp: TInput) =>
       (mw.execute as (...args: any[]) => Promise<any>)(ctx, inp, prev)
