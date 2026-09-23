@@ -243,6 +243,9 @@ interface TaskAssignment {
   // 依赖
   dependsOn: string[];               // 依赖的子任务 assignmentId 列表
   requiredTools: string[];           // 允许使用的工具列表（最小权限）
+  // ⚠️ 2026-09-22 校准：字段真实存在（Core/Decision/types.ts:84）且由 taskDecomposer.ts:71 填充，
+  // 但全仓无任何运行期消费者——子任务工具集不影响主循环 ④ 的角色裁剪；
+  // 名义上的校验函数 whitelist.ts:102 isToolAllowedForRole 仅被 Tests 引用。"最小权限"当前为装饰性声明。
 }
 ```
 
@@ -389,6 +392,13 @@ recruitAgent(request)                              ✅ Services/Recruitment/recr
 ### 5.2 Agent 配置模板
 
 > **v2.2 修订**：`role` 扩展为完整 8 角色（对齐 `UserRole` 类型），工具可见性由 `requiredRoles` 白名单决定（详见 Docs/11 §3.3.1），不再使用 `allowedTools` 手动指定。
+
+> **⚠️ 权限声明校准（2026-09-22）**：下方 `AgentConfig` **在代码中不存在**。运行期实际类型仅有：
+> - `CreateAgentParams { role, model, taskId?, parentAgentId? }`（`Src/Core/AgentRuntime/types.ts:67-72`）——**无任何权限/资源字段**；
+> - `AgentInstance`（`:46-63`）——仅身份与状态字段；
+> - `RoleToolConfig { role, additionalTools?, excludedTools }`（`Src/Tools/Factory/toolFactory.ts:19-26`）——`additionalTools/excludedTools` 只活在这里，其消费者 `getVisibleTools` **全仓 0 生产调用者**；
+> - `trustLevel` **不是配置字段**，由角色经 `getTrustLevel(role)` 推导（`Infra/Security/trustLevels.ts`）；`sandboxEnabled`/`systemPrompt`/`tokenBudget` 等在此上下文均不存在（Token 预算在 LoopConfig，提示词由 `Prompts/` 侧承载）。
+> 本块整体为**目标态设计**，保留不删。
 
 ```typescript
 interface AgentConfig {

@@ -27,6 +27,7 @@
 - **Docs/11/15**：新增"生效状态"列核心交付——十一张参数表逐键标注 ✅/⚠️（全局事实：204 叶子键中 104 键 51% 无运行期消费者）；loopConfig 读路径错位致配置全灭、热重载为注释桩、modelRouter 示例改真实 huawei-maas 值、双天花板冲突记代码债。
 - **Docs/12/13**：审批链不通代码债（单角色审批 × CRITICAL 需 ≥2 → 危险工具永久不可执行）、DJB2 指纹、幂等键实现与公式互斥、fsync/FULL 均标未实现。
 - **Docs/17**：BEN-TOOL/ENV-401 模块路径更正、ENV-DBFULL 降为"existing（部分）"、Gate 范围改 G0-G13、keyStore 九导出补全。
+- **权限声明补校准（同日第二轮）**：Docs/01 §3.2 角色权限矩阵标为设计意图并逐行对照代码（Partner 实际可 recruit、入口无角色校验、治理操作无工具承载）；Docs/02 §3 L0 权限列/WS-L1 门禁/④ 裁剪形态加校准注（真实规则为 requiredRoles ∪ L0 兜底，`isToolAllowed` 危险×信任矩阵不在主循环路径）；Docs/03 §4.2 `SubTask.requiredTools` 标装饰性死字段、§5.2 `AgentConfig` 标为代码中不存在的目标态（实际 `CreateAgentParams`/`RoleToolConfig`）；Docs/11 §3.3.1 规则 1 补 L0 兜底分支、规则 2 记"可见但调不动"的执行侧不对称。
 
 ### 已知事项（代码债清单，未改代码）
 
