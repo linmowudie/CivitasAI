@@ -13,7 +13,7 @@ import { ok, err } from '../../Infra/types.js';
 
 import type { AgentInstance, AgentStatus, SubmitResult, AgentEvent } from './types.js';
 import { transition } from './stateMachine.js';
-import { updateAgent, updateAgentStatus } from './agentRegistry.js';
+import { getAgent, updateAgent, updateAgentStatus } from './agentRegistry.js';
 
 // ── 任务提交队列 ────────────────────────────────────────────────────
 
