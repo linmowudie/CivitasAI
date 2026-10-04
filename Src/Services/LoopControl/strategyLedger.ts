@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/strategyLedger
  * @description
- * 策略账本——Docs/12 §5.3。
+ * 策略账本——Docs/Agent/11 §5.3。
  * TurnStrategy：每轮结束时的结构化策略摘要。
  * 存储位置：civitas_main.strategies_ledger 为唯一真源。
  */
@@ -9,7 +9,7 @@
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
-// ── TurnStrategy（Docs/12 §5.3）────────────────────────────────────
+// ── TurnStrategy（Docs/Agent/11 §5.3）────────────────────────────────────
 
 export interface TurnStrategy {
   iteration: number;
@@ -95,16 +95,19 @@ export function getFailedStrategies(loopId: string): string[] {
 }
 
 /**
- * 选择替代策略——Docs/12 §5.4
+ * 选择替代策略——Docs/Agent/11 §5.4
  *
  * 当 noProgress.action = 'switch_strategy' 触发时：
  * 1. 禁止简单重跑
  * 2. 排除已失败策略
  * 3. 若无可用策略 → 自动升级为 escalate_human
+ *
+ * FE-071：`candidates` 可省略——缺省使用 `configureStrategyCandidates` 注入的
+ * Skills/strategies/candidates.json 候选集（进程内静态候选）。
  */
 export function selectNextStrategy(
   loopId: string,
-  candidates: string[],
+  candidates: string[] = _candidates,
 ): { strategy: string; escalated: boolean } {
   const failed = new Set(getFailedStrategies(loopId));
   const available = candidates.filter(c => !failed.has(c));
@@ -117,6 +120,20 @@ export function selectNextStrategy(
     return { strategy: 'escalate_human', escalated: true };
   }
   return { strategy: first, escalated: false };
+}
+
+// ── 候选策略集注入（FE-071）─────────────────────────────────────────
+
+let _candidates: string[] = [];
+
+/** 注入替代策略候选（strategy 文本列表）——main.ts 从 Skills/strategies/candidates.json 装载后注入 */
+export function configureStrategyCandidates(candidates: string[]): void {
+  _candidates = [...candidates];
+}
+
+/** 当前候选集快照（诊断用） */
+export function getStrategyCandidatesInjected(): string[] {
+  return [..._candidates];
 }
 
 /**

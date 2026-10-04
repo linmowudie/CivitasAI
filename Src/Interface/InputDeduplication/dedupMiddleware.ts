@@ -1,7 +1,7 @@
 /**
  * @module Interface/InputDeduplication/dedupMiddleware
  * @description
- * 输入去重中间件——Docs/06 §5.1。
+ * 输入去重中间件——Docs/Agent/06 §5.1。
  * 5 道防风暴：去重键 / 冷却期 / 幂等 ID / 并发上限 / 熔断。
  * Phase 0-2：内存实现；Phase 3 接 Redis/DB。
  */

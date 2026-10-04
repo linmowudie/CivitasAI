@@ -1,11 +1,13 @@
 /**
  * @module Hook/hookRegistry
  * @description
- * Hook registration and dispatch - Docs/02 11.
+ * Hook registration and dispatch - Docs/Agent/02 11.
  */
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+import { EventType } from '../EventBus/eventTypes.js';
+import { createEvent, publish } from '../EventBus/eventBus.js';
 
 export type HookEvent =
   | 'UserInputReceived' | 'SessionStart' | 'PreToolExecute'
@@ -102,6 +104,19 @@ export async function dispatchHook(
   for (const handler of eventHandlers) {
     try {
       handlersExecuted++;
+
+      // 推送 hook:triggered 事件
+      publish(createEvent({
+        eventType: EventType.HOOK_TRIGGERED,
+        source: `Hook/${handler.name}`,
+        payload: {
+          hookName: handler.name,
+          event,
+          priority: handler.priority,
+          data,
+        },
+      }));
+
       const result = await Promise.race([
         handler.handle(payload),
         new Promise<never>((_, reject) =>

@@ -1,7 +1,7 @@
 /**
  * @module Regulation/finalArbiter
  * @description
- * 最终裁决器——Docs/06 §1.5。
+ * 最终裁决器——Docs/Agent/06 §1.5。
  * 仲裁庭死锁时，作为最终裁决方介入。
  * 降级为单 LLM 强制裁决（不再要求多数决）。
  * Phase 0-2：规则强制裁决；Phase 3 接高能力模型。
@@ -10,6 +10,7 @@
 import type { ArbitrationCase, FinalVerdict, VerdictType } from '../Arbitration/types.js';
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
@@ -33,12 +34,21 @@ export interface RegulatoryIntervention {
 /**
  * 对死锁案件执行最终裁决。
  * 降级为单 LLM 强制裁决，裁决标记为 "regulatory_intervention"。
+ *
+ * ★ FE-042（2026-10-04）：直接入口守卫 —— 此前该函数无治理门，
+ *   任何角色只要拿到案件对象即可强制裁决（清单 G-03 声称已实现，实际未接线）。
+ *   终局裁决属治理执法，现 fail-closed：非 L0 / user 一律拒绝并留痕。
  */
 export function issueFinalVerdict(params: {
   case_: ArbitrationCase;
   reason: 'deadlock' | 'timeout' | 'escalation';
+  /** 执行者角色（2026-10-04）：终局裁决属治理执法，必须为 L0 / user */
+  actorRole: string;
   overrideVerdict?: VerdictType;
 }): Result<RegulatoryIntervention> {
+  const guard = requireGovernanceRole(params.actorRole, '最终裁决（监管执法）');
+  if (!guard.ok) return err(guard.error);
+
   const c = params.case_;
   if (c.status !== 'deadlocked' && c.status !== 'reasoning') {
     return err(`案件 ${c.caseId} 状态为 ${c.status}，不可执行最终裁决`);

@@ -11,6 +11,10 @@ import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
 import { isCommandForbidden } from '../../../Infra/Security/whitelist.js';
+import {
+  resolveWithinWorkspace,
+  findEscapingPathInCommand,
+} from '../../../Infra/Security/workspaceGuard.js';
 
 export const shellRunner: ToolDefinition = {
   spec: {
@@ -39,7 +43,7 @@ export const shellRunner: ToolDefinition = {
 
   async execute(input, context) {
     const command = input['command'] as string;
-    const cwd = input['cwd'] as string | undefined;
+    const requestedCwd = input['cwd'] as string | undefined;
     const timeoutMs = (input['timeoutMs'] as number) ?? 30_000;
 
     if (!command) {
@@ -49,6 +53,32 @@ export const shellRunner: ToolDefinition = {
     // 禁止命令检查
     if (isCommandForbidden(command)) {
       return toolError(context.operationId, 'COMMAND_FORBIDDEN', `命令被安全策略禁止`, false);
+    }
+
+    // ── 任务工作目录约束 ──
+    // cwd 强制收敛到工作目录；命令中不得出现越界的绝对路径或 `..` 逃逸片段。
+    // 说明：这是尽力而为的静态检查，完整隔离需 OS 级沙箱。
+    let cwd = requestedCwd;
+    if (context.workDir) {
+      if (requestedCwd) {
+        const within = resolveWithinWorkspace(requestedCwd, context.workDir);
+        if (!within.ok) {
+          return toolError(context.operationId, 'PATH_DENIED', within.error, false);
+        }
+        cwd = within.value;
+      } else {
+        cwd = context.workDir;
+      }
+
+      const escaping = findEscapingPathInCommand(command, context.workDir);
+      if (escaping) {
+        return toolError(
+          context.operationId,
+          'PATH_DENIED',
+          `命令引用了工作目录之外的路径: ${escaping}`,
+          false,
+        );
+      }
     }
 
     try {

@@ -2,12 +2,12 @@
  * 核心行为参数 Schema —— 数据
  *
  * 每个字段的 default / 区间 / 枚举取值 / 硬约束均取自唯一事实源
- * `Docs/15-参数总典与接口契约/参数总典.md`（§2 配置键全集 + §4 枚举全集 + §7 硬约束）。
+ * `Docs/Agent/14-参数总典与接口契约/参数总典.md`（§2 配置键全集 + §4 枚举全集 + §7 硬约束）。
  *
  * 覆盖范围：核心行为参数（循环 / 经济 / 监管 / 仲裁 / 审计 / 路由 / 模型 / 记忆 / 持久 / 系统 / 安全）。
  * 未纳入：benchBaseline / coverageBaseline / dataStorage（属基准记录与非交互运维项）。
  */
-import type { FieldDef, ConfigGroup } from './schemaTypes';
+import type { FieldDef, ConfigGroup, ReloadStrategy } from './schemaTypes';
 
 /** 分组元数据（侧边栏顺序即此顺序） */
 export const CONFIG_GROUPS: ConfigGroup[] = [
@@ -25,10 +25,27 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   { id: 'security', label: '安全策略', icon: 'Lock',       source: 'security',     desc: '信任分级 · 禁用路径/命令 · 沙箱模式', l0: true },
 ];
 
-/** 工厂：source 由所属组注入，key 自动生成 */
+/** 各分组默认热重载策略 */
+const GROUP_RELOAD_STRATEGY: Record<string, ReloadStrategy> = {
+  loopConfig: 'afterReply',
+  modelRouter: 'afterReply',
+  routingRules: 'afterReply',
+  economyRules: 'afterReply',
+  supervision: 'afterReply',
+  arbitration: 'afterReply',
+  audit: 'afterReply',
+  memory: 'afterReply',
+  durable: 'onNavigate',
+  session: 'onNavigate',
+  default: 'onRestart',   // system.* 默认需重启，ui.* 单独覆盖为 immediate
+  security: 'onRestart',
+};
+
+/** 工厂：source 由所属组注入，key 自动生成，reloadStrategy 取组默认 */
 type FieldInput = Omit<FieldDef, 'key' | 'source'>;
 const mk = (source: string) => (f: FieldInput): FieldDef => ({
   ...f, source, key: `${source}::${f.path}`,
+  reloadStrategy: f.reloadStrategy ?? GROUP_RELOAD_STRATEGY[source] ?? 'afterReply',
 });
 
 /* ─────────────────────────── 循环控制 loopConfig.json ─────────────────────────── */
@@ -231,15 +248,12 @@ const sys = mk('default');
 const SYSTEM_FIELDS: FieldDef[] = [
   sys({ path: 'system.logLevel', label: '日志级别', type: 'enum', control: 'segmented', default: 'info', options: ['debug', 'info', 'warn', 'error', 'fatal'], section: '系统', description: '热更新会重开日志句柄' }),
   sys({ path: 'server.httpPort', label: 'HTTP 端口', type: 'number', control: 'number', default: 3000, min: 1, max: 65535, step: 1, section: '服务端口' }),
-  sys({ path: 'server.wsPort', label: 'WebSocket 端口', type: 'number', control: 'number', default: 3001, min: 1, max: 65535, step: 1, section: '服务端口', description: '与 HTTP 分离，便于独立限流' }),
   sys({ path: 'database.walMode', label: 'SQLite WAL 模式', type: 'boolean', control: 'toggle', default: true, section: '数据库', description: '关闭会导致恢复能力降级' }),
   sys({ path: 'database.busyTimeoutMs', label: 'busy 超时', type: 'number', control: 'number', default: 5000, min: 100, max: 60000, step: 100, unit: 'ms', section: '数据库' }),
-  sys({ path: 'ui.dashboardPollIntervalSec', label: '大屏轮询周期', type: 'number', control: 'number', default: 5, min: 1, max: 300, step: 1, unit: '秒', section: 'UI 节流' }),
-  sys({ path: 'ui.approvalQueueRefreshSec', label: '审批队列刷新', type: 'number', control: 'number', default: 3, min: 1, max: 300, step: 1, unit: '秒', section: 'UI 节流' }),
-  sys({ path: 'ui.streamFlushIntervalMs', label: '流式批量合并', type: 'number', control: 'number', default: 100, min: 16, max: 5000, step: 16, unit: 'ms', section: 'UI 节流', description: '禁逐 token 推送' }),
-  sys({ path: 'ui.maxEventBufferSize', label: '事件缓冲上限', type: 'number', control: 'number', default: 500, min: 50, max: 10000, step: 50, unit: '条', section: 'UI 节流', description: '超限丢最旧，不阻断' }),
-  sys({ path: 'ui.wsReconnectBackoffMs', label: 'WS 重连退避基数', type: 'number', control: 'number', default: 1000, min: 100, max: 30000, step: 100, unit: 'ms', section: 'UI 节流', description: '指数退避基数' }),
-  sys({ path: 'ui.wsReconnectMaxAttempts', label: 'WS 重连最大次数', type: 'number', control: 'slider', default: 5, min: 1, max: 50, step: 1, unit: '次', section: 'UI 节流', description: '耗尽后降级纯轮询 + 离线横幅' }),
+  sys({ path: 'ui.dashboardPollIntervalSec', label: '大屏轮询周期', type: 'number', control: 'number', default: 5, min: 1, max: 300, step: 1, unit: '秒', section: 'UI 节流', reloadStrategy: 'immediate' }),
+  sys({ path: 'ui.approvalQueueRefreshSec', label: '审批队列刷新', type: 'number', control: 'number', default: 3, min: 1, max: 300, step: 1, unit: '秒', section: 'UI 节流', reloadStrategy: 'immediate' }),
+  sys({ path: 'ui.streamFlushIntervalMs', label: '流式批量合并', type: 'number', control: 'number', default: 100, min: 16, max: 5000, step: 16, unit: 'ms', section: 'UI 节流', description: '禁逐 token 推送', reloadStrategy: 'immediate' }),
+  sys({ path: 'ui.maxEventBufferSize', label: '事件缓冲上限', type: 'number', control: 'number', default: 500, min: 50, max: 10000, step: 50, unit: '条', section: 'UI 节流', description: '超限丢最旧，不阻断', reloadStrategy: 'immediate' }),
 ];
 
 /* ─────────────────────────── 安全策略 security.json（L0） ─────────────────────────── */

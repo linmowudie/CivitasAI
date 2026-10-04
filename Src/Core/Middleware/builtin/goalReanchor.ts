@@ -1,7 +1,7 @@
 /**
  * @module Middleware/builtin/goalReanchor
  * @description
- * GoalReanchor 中间件——Docs/02 §4.4 / §5.4。
+ * GoalReanchor 中间件——Docs/Agent/02 §4.4 / §5.4。
  * 上下文压缩后必须在下一轮开头重新锚定目标。
  * 挂载点：beforeModel（priority=10，最先执行）。
  */

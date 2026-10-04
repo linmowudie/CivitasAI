@@ -129,6 +129,62 @@ describe('S3 Llm 模块', () => {
     });
   });
 
+  // ===== openaiProvider 模型名归一化 =====
+  describe('openaiProvider 模型名归一化', () => {
+    /** 拦截 fetch，返回一个合法的最小 chat.completion 响应，并记录请求体 */
+    function stubFetch(bodies: Array<Record<string, unknown>>) {
+      const originalFetch = globalThis.fetch;
+      process.env.TEST_API_KEY = 'dummy-key';
+      globalThis.fetch = (async (_url: unknown, init: { body?: string }) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({
+          id: 'cmpl-1',
+          object: 'chat.completion',
+          model: 'test-model',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }) as unknown as typeof fetch;
+      return () => {
+        globalThis.fetch = originalFetch;
+        delete process.env.TEST_API_KEY;
+      };
+    }
+
+    it('限定名 provider/model 会剥离前缀后再发给上游', async () => {
+      const bodies: Array<Record<string, unknown>> = [];
+      const restore = stubFetch(bodies);
+      try {
+        const provider = new OpenAIProvider(TEST_CONFIG);
+        const res = await provider.chat({
+          model: 'test-provider/test-model',
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+        expect(res.ok).toBe(true);
+        // 上游只接受裸模型 id，发送限定名会得到误导性的 404
+        expect(bodies[0]?.model).toBe('test-model');
+      } finally {
+        restore();
+      }
+    });
+
+    it('裸模型名保持原样', async () => {
+      const bodies: Array<Record<string, unknown>> = [];
+      const restore = stubFetch(bodies);
+      try {
+        const provider = new OpenAIProvider(TEST_CONFIG);
+        const res = await provider.chat({
+          model: 'test-model',
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+        expect(res.ok).toBe(true);
+        expect(bodies[0]?.model).toBe('test-model');
+      } finally {
+        restore();
+      }
+    });
+  });
+
   // ===== modelRouter =====
   describe('modelRouter', () => {
     it('注册 Provider 并解析模型', () => {

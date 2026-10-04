@@ -1,7 +1,7 @@
 /**
  * @module Decision/ComplexityAssessor
  * @description
- * 复杂度评估器——Docs/03 §3.2。
+ * 复杂度评估器——Docs/Agent/03 §3.2。
  * Phase 0-2：基于启发式规则评估；后续可接 LLM 评估。
  */
 
@@ -22,14 +22,37 @@ export interface AssessmentInput {
   };
 }
 
-// ── 已知 SOP 模板（Phase 0-2 硬编码，后续可配置化）────────────────
+// ── 已知 SOP 模板（FE-070：可经 configureAssessor 从配置外部化；缺省用内置）────────
 
-const KNOWN_SOPS: Array<{ id: string; keywords: string[]; domain: string }> = [
+export interface SopTemplate {
+  id: string;
+  keywords: string[];
+  domain: string;
+}
+
+const DEFAULT_KNOWN_SOPS: SopTemplate[] = [
   { id: 'sop-code-review', keywords: ['review', 'code', '审查', '代码审查'], domain: 'backend' },
   { id: 'sop-data-migration', keywords: ['migrate', 'migration', 'data', '迁移'], domain: 'database' },
   { id: 'sop-api-design', keywords: ['api', 'rest', 'endpoint', '接口'], domain: 'backend' },
   { id: 'sop-frontend-component', keywords: ['component', 'ui', 'frontend', '组件', '界面'], domain: 'frontend' },
 ];
+
+let knownSops: SopTemplate[] = DEFAULT_KNOWN_SOPS;
+
+/**
+ * 注入 SOP 模板（FE-070：从 Configs 外部化；未注入/空数组 → 保持内置默认）。
+ * 由 main.ts 启动时从配置（如 `sopTemplates` 段）读取后调用。
+ */
+export function configureAssessor(opts: { knownSops?: SopTemplate[] } = {}): void {
+  if (opts.knownSops && opts.knownSops.length > 0) {
+    knownSops = opts.knownSops;
+  }
+}
+
+/** 测试/诊断用：恢复内置 SOP 模板 */
+export function resetAssessorSops(): void {
+  knownSops = DEFAULT_KNOWN_SOPS;
+}
 
 // ── 专业域关键词映射 ────────────────────────────────────────────────
 
@@ -138,7 +161,7 @@ function estimateSubtaskCount(domains: string[], couplingScore: number, tokens: 
 }
 
 function matchSop(text: string): string | null {
-  for (const sop of KNOWN_SOPS) {
+  for (const sop of knownSops) {
     const matchCount = sop.keywords.filter(kw => text.includes(kw)).length;
     if (matchCount >= 2) return sop.id;
   }

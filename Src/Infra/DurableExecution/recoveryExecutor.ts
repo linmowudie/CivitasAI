@@ -1,5 +1,5 @@
 /**
- * Recovery Executor — 恢复执行（Docs/13 §6.3）
+ * Recovery Executor — 恢复执行（Docs/Agent/12 §6.3）
  *
  * 职责：
  * - 根据 RecoveryPlan 执行恢复
@@ -28,7 +28,7 @@ export interface ResumeResult {
 // ===== 公开 API =====
 
 /**
- * 根据恢复计划执行恢复（Docs/13 §6.3）
+ * 根据恢复计划执行恢复（Docs/Agent/12 §6.3）
  *
  * 仅支持 AUTO_RESUME 策略；其他策略返回错误需人工处理。
  */
@@ -48,7 +48,7 @@ export function executeRecovery(plan: RecoveryPlan): Result<ResumeResult> {
 }
 
 /**
- * 从指定 Checkpoint 恢复（Docs/13 §6.3）
+ * 从指定 Checkpoint 恢复（Docs/Agent/12 §6.3）
  *
  * 步骤：
  * ① 加载 Checkpoint

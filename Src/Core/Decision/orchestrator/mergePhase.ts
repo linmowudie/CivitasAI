@@ -1,7 +1,7 @@
 /**
  * @module Decision/Orchestrator/mergePhase
  * @description
- * 合并阶段——Docs/03 §7A.2。
+ * 合并阶段——Docs/Agent/03 §7A.2。
  * Orchestrator 的 [8] 合并与冲突预检测步骤。
  * 多 Agent 产物 → 确定性合并（不同文件直接拼装）；
  * 同文件冲突 → WriteGuard 拦截 → 交 S12 仲裁；

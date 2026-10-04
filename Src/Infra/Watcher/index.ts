@@ -1,7 +1,7 @@
 /**
  * @module Watcher/index
  * @description
- * 文件/配置监听器统一导出——Docs/14 §S8。
+ * 文件/配置监听器统一导出——Docs/Agent/13 §S8。
  */
 
 // ── ConfigWatcher ───────────────────────────────────────────────────

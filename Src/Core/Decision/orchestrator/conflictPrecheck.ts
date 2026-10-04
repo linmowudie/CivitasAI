@@ -1,7 +1,7 @@
 /**
  * @module Decision/Orchestrator/conflictPrecheck
  * @description
- * 冲突预检测——Docs/03 §7A.2。
+ * 冲突预检测——Docs/Agent/03 §7A.2。
  * 在合并前检测多 Agent 产物之间的文件冲突。
  * 冲突不静默覆盖，交 S12 仲裁系统处理。
  */

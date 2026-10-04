@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/walletManager
  * @description
- * 钱包管理器——Docs/04 §3。
+ * 钱包管理器——Docs/Agent/04 §3。
  * 为每个 Agent 创建/销毁独立 Token 钱包，处理余额变动、冻结/解冻。
  * 每次变动产生一条交易记录，保证可追溯。
  */
@@ -250,7 +250,7 @@ export function getTransactions(walletId?: string): TokenTransaction[] {
   return [...transactions];
 }
 
-// ── 守恒验证（Docs/04 §7.1）────────────────────────────────────────
+// ── 守恒验证（Docs/Agent/04 §7.1）────────────────────────────────────────
 
 /**
  * 验证 Token 总量守恒：

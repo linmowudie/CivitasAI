@@ -1,7 +1,7 @@
 /**
  * @module Loop/loopConfig
  * @description
- * LoopConfig - Docs/02 12. Required 7 fields per loop instance.
+ * LoopConfig - Docs/Agent/02 12. Required 7 fields per loop instance.
  */
 
 import type { Result } from '../../Infra/types.js';
@@ -26,12 +26,32 @@ export const DEFAULT_LOOP_CONFIG: LoopConfig = {
   stream: true,
 };
 
-export const LOOP_LIMITS = {
+// 硬上限（唯一事实源 = Configs/loopConfig.json 的 hardLimits 段）。
+// 默认值对齐 hardLimits：tokenBudgetCeiling=2000000 / timeoutMsCeiling=600000 / maxIterationsCeiling=200。
+// main.ts 启动时通过 setLoopLimits() 注入配置值，消除与 hardLimits 的双源漂移。
+export interface LoopLimits {
+  maxIterationsHardCap: number;
+  maxTokenBudget: number;
+  minTimeoutMs: number;
+  maxTimeoutMs: number;
+}
+
+export const LOOP_LIMITS: LoopLimits = {
   maxIterationsHardCap: 200,
-  maxTokenBudget: 1_000_000,
+  maxTokenBudget: 2_000_000,
   minTimeoutMs: 5_000,
-  maxTimeoutMs: 300_000,
-} as const;
+  maxTimeoutMs: 600_000,
+};
+
+/** 注入硬上限（由 main.ts 从 hardLimits 段读取后调用）。 */
+export function setLoopLimits(limits: Partial<LoopLimits>): void {
+  Object.assign(LOOP_LIMITS, limits);
+}
+
+/** 读取当前硬上限快照。 */
+export function getLoopLimits(): LoopLimits {
+  return { ...LOOP_LIMITS };
+}
 
 export function validateLoopConfig(config: LoopConfig): Result<LoopConfig> {
   if (!config.model || typeof config.model !== 'string')
@@ -60,20 +80,48 @@ export function createLoopConfig(overrides?: Partial<LoopConfig>): Result<LoopCo
   return validateLoopConfig(config);
 }
 
-export const ROLE_OVERRIDES: Record<string, Partial<LoopConfig>> = {
-  prime_director: { max_iterations: 50, token_budget: 200_000, temperature: 0.2 },
-  partner:        { max_iterations: 30, token_budget: 100_000, temperature: 0.2 },
-  worker:         {},
-  reviewer:       { max_iterations: 10, token_budget: 50_000, temperature: 0 },
-  assembly_node:  { max_iterations: 20, token_budget: 80_000, temperature: 0.2 },
-  arbitrator:     { max_iterations: 15, token_budget: 60_000, temperature: 0 },
-  auditor:        { max_iterations: 10, token_budget: 40_000, temperature: 0 },
-  regulator:      { max_iterations: 20, token_budget: 80_000, temperature: 0.1 },
-};
+// ── Role Overrides（从 loopConfig.json 读取，消除硬编码）────────────
+
+let _roleOverrides: Record<string, Partial<LoopConfig>> | null = null;
+
+/**
+ * 注入从 loopConfig.json 加载的 roleOverrides。
+ * 由 main.ts 启动时调用。
+ */
+export function setRoleOverrides(overrides: Record<string, Partial<LoopConfig>>): void {
+  _roleOverrides = { ...overrides };
+}
+
+/**
+ * 获取当前 roleOverrides（仅使用注入值）。
+ * 未注入时返回空对象——createRoleLoopConfig 会据此报 unknown role，督促 main.ts 必须注入配置。
+ * 消除了硬编码 ROLE_OVERRIDES 与 Configs/loopConfig.json 的双源漂移。
+ */
+export function getRoleOverrides(): Record<string, Partial<LoopConfig>> {
+  if (_roleOverrides) return _roleOverrides;
+  return {};
+}
+
+/** @deprecated 使用 getRoleOverrides() 替代 */
+export const ROLE_OVERRIDES: Record<string, Partial<LoopConfig>> = new Proxy({} as Record<string, Partial<LoopConfig>>, {
+  get(_target, prop: string) {
+    return getRoleOverrides()[prop];
+  },
+  ownKeys() {
+    return Object.keys(getRoleOverrides());
+  },
+  getOwnPropertyDescriptor(_target, prop: string) {
+    const overrides = getRoleOverrides();
+    if (prop in overrides) {
+      return { configurable: true, enumerable: true, value: overrides[prop] };
+    }
+    return undefined;
+  },
+});
 
 export function createRoleLoopConfig(role: string): Result<LoopConfig> {
-  const overrides = ROLE_OVERRIDES[role];
+  const overrides = getRoleOverrides()[role];
   if (!overrides)
-    return err(`INVALID_CONFIG: Unknown role: ${role}, valid: ${Object.keys(ROLE_OVERRIDES).join(', ')}`);
+    return err(`INVALID_CONFIG: Unknown role: ${role}, valid: ${Object.keys(getRoleOverrides()).join(', ')}`);
   return createLoopConfig({ ...overrides });
 }

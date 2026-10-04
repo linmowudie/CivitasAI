@@ -1,7 +1,7 @@
 /**
  * @module EventBus/eventTypes
  * @description
- * 事件类型注册表——Docs/07 §4.3。
+ * 事件类型注册表——Docs/Agent/07 §4.3。
  * 全系统事件名的唯一定义处，禁止自由字符串。
  * 命名格式：<域>:<小写 snake_case 动作>。
  */
@@ -24,11 +24,16 @@ export enum EventType {
   AGENT_EXPELLED = 'agent:expelled',
   AGENT_DESTROYED = 'agent:destroyed',
 
-  // Agent 流式输出与会话消息（Docs/16 F0.6，agent: 域，不新增域前缀）
+  // Agent 流式输出与会话消息（Docs/Client/02 F0.6，agent: 域，不新增域前缀）
   AGENT_STREAM_CHUNK = 'agent:stream_chunk',   // LLM 增量输出片；按 ui.streamFlushIntervalMs 合批
   AGENT_STREAM_END = 'agent:stream_end',       // 一轮流式结束
   AGENT_CHAT_MESSAGE = 'agent:chat_message',   // 会话消息落库完成
   AGENT_ITERATION_COMPLETE = 'agent:iteration_complete', // 单次迭代完成（含工具调用/结果）
+  AGENT_TOOL_CALL_STARTED = 'agent:tool_call_started',   // 工具开始执行前（前端据此即时预创建工具组件）
+  AGENT_TOOL_CALL_PENDING = 'agent:tool_call_pending',   // 模型正在生成工具调用（参数未生成完、未执行）——前端提前显示"生成中/写入中"
+  AGENT_TOOL_CALL_RESULT = 'agent:tool_call_result',     // 单次工具执行结束
+  AGENT_TODO_UPDATED = 'agent:todo_updated',             // Agent 计划清单更新（按 agentId 归属，多 agent 各自一张表）
+  CHAT_SESSION_RENAMED = 'chat:session_renamed',         // 会话/任务改名（含模型自动命名）
 
   // Token 经济
   TOKEN_CONSUMED = 'token:consumed',
@@ -68,6 +73,18 @@ export enum EventType {
   MEMORY_VERSION_CONFLICT = 'memory:version_conflict',
   MEMORY_SELF_REINFORCING = 'memory:self_reinforcing',
 
+  // 治理动作留痕（2026-10-04，灵感源《一些思考2》§1.2 全链路可追溯：
+  // 全局唯一 ID / 时间戳 / 来源 Agent / 任务标识 四类元数据强制携带）
+  GOVERNANCE_ACTION_RECORDED = 'governance:action_recorded',
+
+  // 中间件/Hook 事件（Docs/Client/03 §4）
+  MIDDLEWARE_BEFORE_MODEL = 'middleware:before_model',
+  HOOK_TRIGGERED = 'hook:triggered',
+
+  // 多 Agent 委派/仲裁（Docs/Client/03 §5）
+  DELEGATION_ASSIGNED = 'delegation:assigned',
+  ARBITRATION_REQUEST = 'arbitration:request',
+
   // Loop 控制
   LOOP_STARTED = 'loop:started',
   LOOP_COMPLETED = 'loop:completed',
@@ -95,7 +112,7 @@ export enum EventType {
   CONFIG_RELOAD_FAILED = 'system:config_reload_failed',
 }
 
-// ── DomainEvent（Docs/07 §4.2）─────────────────────────────────────
+// ── DomainEvent（Docs/Agent/07 §4.2）─────────────────────────────────────
 
 export type EventPriority = 'low' | 'normal' | 'high' | 'critical';
 
@@ -118,7 +135,7 @@ export interface Subscription {
   unsubscribe(): void;
 }
 
-// ── AgentMessage（Docs/08 §2）──────────────────────────────────────
+// ── AgentMessage（Docs/Agent/08 §2）──────────────────────────────────────
 
 export type MessageType =
   | 'TASK_ASSIGN' | 'TASK_START' | 'TASK_PROGRESS' | 'TASK_COMPLETE'
@@ -147,6 +164,6 @@ export interface AgentMessage {
   correlationId?: string;
 }
 
-// ── AssertionLevel（Docs/07 §8.4）──────────────────────────────────
+// ── AssertionLevel（Docs/Agent/07 §8.4）──────────────────────────────────
 
 export type AssertionLevel = 'observed' | 'inferred' | 'assumed';

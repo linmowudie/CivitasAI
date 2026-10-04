@@ -15,6 +15,12 @@
     ],
     "networkWhitelist": [],
     "sandboxDefaultMode": "standard",
+    "approvalTimeoutSec": 300,
+    "autoApprove": {
+      "comment": "自动审批白名单：命中的危险工具无需用户确认，仅展示 L0 审查动画后自动通过并执行；留空表示全部需要人工确认",
+      "tools": [],
+      "delayMs": 600
+    },
     "criticalSecurityEvents": [
       "KEY_LEAKAGE",
       "FORBIDDEN_PATH_ACCESS",

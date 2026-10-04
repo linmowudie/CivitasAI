@@ -32,7 +32,7 @@ const TABS: {
   summary: string; triggers: string;
 }[] = [
   {
-    key: 'DIRECT', label: '直接执行', subtitle: 'DIRECT', color: '#22d3ee',
+    key: 'DIRECT', label: '直接执行', subtitle: 'DIRECT', color: '#a78bfa',
     summary: '简单任务：单域 + 低 Token → Director 直接调 LLM 回复，不招募 Worker，不做任务拆解。',
     triggers: 'estimatedTokens ≤ 10K · 单域 · 无 SOP 匹配',
   },
@@ -42,7 +42,7 @@ const TABS: {
     triggers: 'couplingScore < 0.5 · subtaskCount ≥ 2 · 单域或多域',
   },
   {
-    key: 'ASSEMBLY_LINE', label: 'SOP 流水线', subtitle: 'ASSEMBLY_LINE', color: '#06b6d4',
+    key: 'ASSEMBLY_LINE', label: 'SOP 流水线', subtitle: 'ASSEMBLY_LINE', color: '#fb923c',
     summary: '标准作业流程匹配：按 SOP 定义拆节点，强制串行（maxParallelism = 1），依赖链依次传递。',
     triggers: 'hasSopMatch = true · 匹配 code-review / data-migration / api-design / frontend-component',
   },

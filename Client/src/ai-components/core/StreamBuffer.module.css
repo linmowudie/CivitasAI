@@ -1,0 +1,20 @@
+/* Core.StreamBuffer 样式——流式输出缓冲 */
+
+.streamBuffer {
+  /* 流式内容区容器 */
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--color-brand-400, #89b4fa);
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

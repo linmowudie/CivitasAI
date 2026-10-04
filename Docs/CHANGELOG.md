@@ -4,6 +4,334 @@
 
 ---
 
+## [变更 · 提示词链路接线（FE-052 ~ FE-054）] - 2026-10-04
+
+### 变更
+
+- **`Docs/Agent/02-核心架构/核心架构设计.md`**：§3 十步序列 ③ 行补 2026-10-04 校准注（beforeModel 入参 = 装配素材、返回值回接 ④ 装配、`mwCtx.data` 注入 tokenBudget/tokensConsumed）；§4.4 钩子表 GoalReanchor 行补注（入参/返回值契约已接线；标志源头 truncation 仍为既有未接线事项）。
+- **`Prompts/README.md`**：三处表述修订——启动装载实装（`Services/Prompts/promptRegistry`）、文件名与 roleOverrides 角色键 1:1 对应、占位符填充机制未启用标注。
+- **`Docs/Client/02-前端改造基础/前端验收缺陷清单.md`**：FE-052 ~ FE-054 回写 🟩 已修复 + 逐条“修复 / 验证（2026-10-04）”证据段；新增章节标题同步更新。
+
+### 说明
+
+- 本轮为**接线修复 + 文档校准注**，配套代码修复记录见根 `CHANGELOG.md` 同日“修复（提示词链路专项）与“测试（提示词链路门禁）两节；
+- 口径沿用 2026-10-03 校准规则（文档向代码看齐）；既知校准结论“提示词运行期无加载器”（`Docs/Dev/Agent角色工作链路核对.md` 头部注、Agent-03 差别清单 #25）随本轮修复**失效**——该等过程文档为时点快照不回改，以本条为准。
+
+## [变更 · 治理层核查反馈文档回写（FE-041 ~ FE-051）] - 2026-10-04
+
+### 变更
+
+- **`Docs/Client/02-前端改造基础/前端验收缺陷清单.md`**：2026-10-04 治理层核查新增 11 条（FE-041 ~ FE-051）
+  全部回写为 🟩 已修复，逐条补“修复 / 验证（2026-10-04）”证据段（代码位置 + 测试文件与项数）；
+  章节结论同步更新为“均已于 2026-10-04 修复”。
+- **`Docs/Agent/03-Agent编排引擎/Agent编排引擎设计.md`**：评审链路接线更新（2026-10-04）——红线 4 追加
+  接线说明（`agent.submit_review` 由桩实装、Phase 0-2 恒真判定未变）；校准块后增补评审链路细节
+  （`ensureReviewerAgent` / `performReview` / `SUBMITTABLE_ROLES` 放宽为 partner / assembly_node）；
+  验收流程图注记更正（生产调用者 = 工具 `agent.submit_review`）。
+- **`Docs/Dev/治理层完善清单.md`**：G-02 勘误（`executeVerdicts` 移出，属 `arbitratorPool.ts` 无副作用纯函数，
+  无需守卫）+ G-05 勘误（`BroadcastMessage` 无 `actedByRole` 字段，留痕口径修正为统一治理台账；
+  `broadcastMessage` 代理定位修正）；进展记录追加“勘误（FE-045）/（FE-046）”两行。
+- **`Docs/Dev/多智能体系统设计验证清单.md`**：FE-006 行 🚧 未实现 → ✅ 已修复（随 FE-050 派发链路闭环）。
+
+### 说明
+
+- 本轮为**过程文档与设计文档回写**（未新增/修改设计正文以外的结构），配套代码修复记录见根 `CHANGELOG.md`
+  同日“修复（治理层核查反馈：FE-041 ~ FE-049、051）”与“新增（编排三链路接线）”两节；
+- 文档-代码对账口径沿用 2026-10-03 校准规则（文档向代码看齐）；行号引用一律以“文件名 + 函数/符号名”定位。
+
+## [变更 · 全部 23 组设计文档按 Dev 差别清单回写] - 2026-10-04
+
+### 变更
+
+- **回写范围**：按 [Docs/Dev](Dev/README.md) 23 份差别清单（806 条）逐组派遣独立代理，先对当前代码逐条**重新核实**（甄别"仍需回写/代码已追平/清单本身有误"），再回写文档本体，全部 23 组完成、零未处理遗留。实质修订统一标 **"2026-10-03 校准"**。
+- **口径**（沿用 2026-09-22 校准规则）：文档向代码看齐（代码唯一事实源）；未实现目标态不删除、标"⚠️ 未实现/目标态"；【需人工裁定】条目一律不裁决，以"现状记录 + 待办"写入文档（本轮累计登记 ≈90 处，集中于双源冲突、枚举双形态、契约归属类）。
+- **重要结论反转（文档已按新代码更正）**：loopConfig 双源漂移已消除、`synchronous` main=FULL 分级、`pending_approvals`/`effect_journal` 写穿库已落地、`toolSafetyGate` 已注册、long_term_memory 落库+回灌、agent.recruit 由桩转真实实现、INTENT 写失败 fail-open→fail-closed、Server 线 authGuard/备份全量等 12 项 SV 缺陷关闭。
+- **锚点治理**：全部行号引用（`file.ts:NNN` 类）改写为"文件名 + 函数/符号名"定位，防止再次腐化。
+- **清单销账**：23 份 Dev 清单末尾均追加「回写记录（2026-10-03）」载明各自回写/跳过/裁定计数；`Dev/README.md` 头部标注回写状态 ✅。
+- **边界**：本轮**未修改任何源代码/测试/配置**（调试代理并行工作中），未提交 git；`Docs/99-审查记录`、ADR、两份 CHANGELOG 旧条目等历史记录不回改。
+
+## [新增 · Docs/Dev 文档-代码差别清单全量审查] - 2026-10-03
+
+### 变更
+
+- **新增 `Docs/Dev/` 开发文档区**：对全部 23 组设计文档逐篇派遣独立审查代理比对当前代码（含未提交改动），产出 23 份差别清单，共 **806 条差异**（文档过时≈300／声明错误≈130／代码未实现≈100／需人工裁定≈100）。索引与共性问题见 [Dev/README](Dev/README.md)。
+- **重点发现**：①"✅ 已实现"标注漂移为最大类目（TokenEconomy 计量孤岛、afterAgent 钩子无执行点、checkpoint 运行期不存在、5 表零写入）；② 审批安全红线弱化（autoApprove 白名单 + 自报 decidedBy 可单人满足 CRITICAL 双角色）；③ WS→Electron IPC 迁移致 5 份文档大面积条目失效；④ 幂等键全 args 哈希 × 唯一约束的新 fail-closed 行为拒绝合法重试，待裁定；⑤ 9-22 校准后修复提交（loopConfig 接线、synchronous=FULL、long_term_memory 落库等）未回写，多份文档结论已反转。
+- **约定**：本批审查未修改任何设计文档与源代码；修复/回写后在对应清单更新条目状态。
+
+## [变更 · Docs 三分类重构：Client / Agent / Server] - 2026-10-03
+
+> 本条目**取代**同日「支撑线重编号 21/22/23」条目（该轮为中间态，最终形态是三分类）。
+
+### 变更
+
+- **顶层结构**：`Docs/` 由全局 01-23 扁平编号改为三端主分类，分类内独立编号：
+  - `Docs/Agent/01~16`——编排引擎与后端 16 篇（原 01-08、10-15、17 与开发规范；原全局编号 → Agent 编号：10→09、11→10、12→11、13→12、14→13、15→14、17→15、21→16）；
+  - `Docs/Client/01~04`——前端与 Electron 4 篇（原 09→C01、16→C02、18→C03、20→C04）；
+  - `Docs/Server/01~03`——服务端与使用/部署 3 组（原 19→S01、22→S02、23→S03）；
+  - `Docs/99-审查记录/` 保持原位（跨端历史快照）。完整对照表见 `Docs/Agent/16-开发规范/docsMigrationPlan.md`。
+- **引用改写（223 个文件，864 处新式引用）**：全仓 `Docs/NN` 数字引用（含 Src/Client/Server/Scripts **代码注释**）统一改写为 `Docs/<分类>/<NN>` 记法；`NN 号文档` 文本引用同步；被移动的 23 个目录内部互链按新深度（三级）全部修正；文档 H1 标题编号改为分类编号（如 `# Agent/11 · 循环控制系统设计`）。
+- **索引重建**：`Docs/README.md` 重写为三分类导航；`系统设计总览 §6` 模块索引表升级为分类×编号双列全 23 篇；根 `README.md` 文档索引自动更新。
+- **历史记录不回改**：本 CHANGELOG 旧条目、根 `CHANGELOG.md`、`ADR/0*.md`、`Docs/99-审查记录/` 中的旧编号为时点记录（其中两条指向已移动文档的 markdown 死链已重定向至新路径，文字不改）。
+- **验证**：全仓 Markdown 链接扫描零坏链。
+
+## [变更 · Docs 目录整理：支撑线重编号 21/22/23 + 坏链修复] - 2026-10-03
+
+### 变更
+
+- **目录重编号（消除撞号）**：工程支撑线三目录原与主线 03/04/05 编号冲突（`Docs/03` 指代歧义），现重编号为：
+  - `Docs/03-开发规范/` → `Docs/21-开发规范/`
+  - `Docs/04-使用指南/` → `Docs/22-使用指南/`
+  - `Docs/05-部署运维/` → `Docs/23-部署运维/`
+  设计主线 01-20 与审查记录 99 编号不变，全部 "Docs/NN §x" 式数字引用零影响；`docsMigrationPlan.md` 状态更新为"部分执行"。
+- **引用同步**：根 `README.md`（新手入门/工程实践/贡献指南 5 处）、`Configs/README.md`、`Docs/README.md` 总索引、`Docs/16-前端改造基础/前端改造方案与构建顺序.md` 附录引用。
+- **坏链修复（全仓 89 篇 md 扫描，共 3 处）**：
+  - 根 `README.md`：`Docs/04-使用指南/guide.md`（文件不存在）→ `Docs/22-使用指南/fullGuide.md`；
+  - `Docs/22-使用指南/fullGuide.md`：`../../skills/prompt-storage.md`（仓库内不存在）→ `../../Prompts/README.md`；
+  - 本 `CHANGELOG.md`：`../20-客户端接入账号与同步/客户端接入设计.md`（相对层级错误）→ `20-客户端接入账号与同步/客户端接入设计.md`。
+- **保留不改**：本 CHANGELOG 历史条目与 `Docs/99-审查记录/` 报告中的旧路径为时间点记录，不重写。
+
+## [修复 · FE-027 工具调用统计口径 + 迁移版本冲突门禁] - 2026-10-03
+
+### 变更
+
+- **`Docs/16-前端改造基础/前端验收缺陷清单.md`**：**FE-027 → 🟩 已修复**。统计 `tool.call` 改为以
+  `ai_events` 的 `agent:tool_call_result` 为主源（覆盖安全只读工具），并与 `effect_journal` 精确配对
+  （effect 行新增 `tool_call_id`，本地迁移 **v25**）：配对成功者沿用历史键 `eff:<effect_id>`，
+  其余使用 `tool:<event_id>`，**全量重传也不会重复计数**。附实机证据（`dir.list` 任务 → 8 条中 7 条为新键）。
+- **`Docs/20-客户端接入账号与同步/客户端接入设计.md`**：§5.4 统计口径表更新为"覆盖全部工具调用 + 配对"，
+  限制表 **C3** 标记为已修复。
+- **顺带修复**：新增迁移与既有 **v24** 撞号会被**静默跳过**（迁移没跑、schema 是旧的）——
+  现已给 `initMigrations()` 增加**版本号冲突检测**（FATAL）并附测试；本迁移改用 **v25**。
+
+### 说明
+
+派生逻辑的幂等键策略是本次的关键：**绝不新增键**。若一次工具调用同时存在于"工具事件"与"副作用日志"，
+派生时优先沿用历史键 `eff:<effect_id>`（旧数据按 ±180s 时间近似配对），只有无副作用记录的调用才用新键，
+因此历史同步记录与全量重传都不会被重复计数。
+
+
+## [修复 · SV-003 限流改共享存储（多实例安全）] - 2026-10-03
+
+### 变更
+
+- **`Docs/19-服务端/服务端缺陷清单.md`**：**SV-003 → 🟩 已修复**。方案：不引入 Redis，
+  用本服务已有的 PostgreSQL 做**共享计数**（`rate_limit_buckets` + 单条原子 UPSERT 固定窗口），
+  配置 `RATE_LIMIT_STORE=memory|postgres`（生产默认 postgres）；附双实例实机对比证据
+  （memory 模式下实例 B 未被限流 → 阈值实际 ×2；postgres 模式下 B 第 1 次即 429）。
+- **`Docs/19-服务端/服务端设计文档.md`**：§10.5 配置表补 `RATE_LIMIT_STORE` 行；
+  附录 D 的 **L1（限流进程内计数）** 标注为已解决；"与缺陷清单的对应"表同步更新。
+- **`Server/.env.example`**、**`Server/README.md`**：补 `RATE_LIMIT_STORE` 说明，
+  并明确"多实例/多副本部署必须用 postgres，否则阈值 ≈ 配置值 × 实例数"。
+
+### 遗留
+
+- 语义差异：PG 实现为**固定窗口**（内存实现为滑动窗口），已在代码注释与文档标注；
+- 若后续引入 Redis，实现同一 `RateLimiter` 接口替换即可（无需改调用点）。
+
+
+## [复核 · SV-001 闭环：备份导出 `statsLimit` 路由透传] - 2026-10-03
+
+### 变更
+
+- **`Docs/19-服务端/服务端设计文档.md`**：接口表（`/v1/backup`、`/v1/backup/download`）补 `statsLimit` 参数，
+  并在导出说明中写明语义（缺省 = 键集分页全量；传入 = 按 N 截断且包内 `truncated.stats` 标注）；
+  附录 D 的 L6 补记复核结论（原修复只在服务层生效、路由未透传 → 已补齐）。
+- **`Docs/19-服务端/服务端缺陷清单.md`**：SV-001 标注为**已闭环**，验收证据补实机数据
+  （`statsLimit=2` → 导出 2 条 + `truncated.stats.limit=2`；不传 → 全量 5 条无标记；`abc`/`0` → 400）。
+- **`Server/README.md`**：接口速查补 `&statsLimit=N`。
+
+### 说明
+
+本条为**对 Qoder 修复的复核补强**：SV-001 的服务层修复（键集分页全量导出 + `truncated` 标注）已到位，
+但 HTTP 路由未透传 `statsLimit`，导致该能力在接口层不可达、其测试只能直调服务层；
+现已补 schema 校验（1..100000，非法 400）+ 两处路由透传 + 接口级断言。详见根 `CHANGELOG.md` 同日条目。
+
+
+## [变更 · 缺陷清单清账：前端 18 条 + 服务端 4 条] - 2026-10-03
+
+### 变更
+
+- **`Docs/19-服务端/服务端设计文档.md`**：同步本轮服务端修复（代码变更见根 `CHANGELOG.md`）——术语表（访问令牌按 `sid` 回查会话状态）、技术选型（§5.1）、§5.3 登录/刷新流程图与段落（"访问令牌即时吊销（SV-002）"）、§9.5（`purgeInactive` 定期维护）、§4.8（`UNAVAILABLE(503)` 统一错误体）、§12 演进路线与附录 D（L6/L7 标 ✅ 已解决；SV-004 / SV-008 注记），共 12 处。
+- **`Docs/16-前端改造基础/前端验收缺陷清单.md`**：FE-003 / FE-004 / FE-005 / FE-007 ~ FE-017 / FE-031 / FE-034 / FE-036 / FE-040 共 18 条 → 🟩 已修复（2026-10-03，含修复记录与验证证据）；详细区标题同步（含 FE-030 / FE-032 / FE-033 陈旧标记）；已修复归档表补 18 行。
+- **`Docs/19-服务端/服务端缺陷清单.md`**：SV-001 / SV-002 / SV-004 / SV-008 → 🟩 已修复（含修复记录与验证证据）；详细区标题同步（含 SV-011 / SV-012 / SV-013 陈旧标记）；归档表补 4 行；与设计文档附录 D 映射表（L6/L7）更新为 ✅；末尾注记更新。
+
+### 说明
+
+- 本轮为"清单清账"：两份缺陷清单中**实现层面的 🟥 条目已全部清零**；剩余 ⬜ 为已决策保留的已知限制（FE-001 / FE-006 / FE-027 / FE-037、SV-003 / SV-005 / SV-007）。
+- 验证基线：服务端 105/105、前端 90/90、三侧 `tsc --noEmit` 0 错误（详见根 `CHANGELOG.md` 2026-10-03 条目）。
+
+
+## [变更 · AI 组件族内容持久化（重启后重建组件）] - 2026-10-02
+
+### 变更
+
+- **`Docs/16-前端改造基础/前端验收缺陷清单.md`**：新增并归档
+  - **FE-038（P1，🟩 已修复）AI 组件族内容未持久化** —— 重启/切回会话后，除正文外的
+    思考（CoTFolder）、工具卡（ToolGroup）、分段/子容器（MessageShell）、迭代轮次、失败原因全部消失；
+    修复方式：迁移 v23 消息富结构（`reasoning`/`tool_calls_json`/`segments_json`/`total_iterations`/`error`/`status`）
+    + 新表 `ai_events` 事件流 + 前端 `hydrateRichMessage` 重建 与 `replayAiEvents` 回放；
+    附实机证据（重启前后对比）。
+  - **FE-039（P1，🟩 已修复）本地 REST 限流过紧**（30 次/分）导致 UI 正常交互 429、
+    并让富结构回填**静默失败**（`apiPost` 失败返回 `{ok:false}` 而非抛错）；已调整为 600 次/分、突发 2x。
+  - **FE-040（P2，🟥 新发现）** HTTP API 限流与"前置监管（Agent 调用频率）"共用配置键
+    `supervision.rateLimit.maxRequestsPerMinute`，为 UI 放宽即同步放宽监管阈值，建议拆分。
+
+### 说明（架构约定）
+
+- AI 组件族（`Client/src/ai-components`：core / harness / loop / memory / multiagent）是**事件驱动**的，
+  因此"组件被创建即需持久化"落实为两条约定：
+  1. **消息富结构**承载与消息强绑定的组件数据（思考、工具卡、分段、迭代）；
+  2. **AI 事件流**（`ai_events`）承载其余事件驱动组件，按属主 + 会话持久化并可回放重建。
+  详见 [20 号文档 §12](Client/04-客户端接入账号与同步/客户端接入设计.md)（账号与数据隔离）与本轮根 `CHANGELOG.md`。
+
+
+## [变更 · 安全审计修复：设备策略 / 跨账号隔离 / 验证码加固] - 2026-10-02
+
+### 变更
+
+- **`Docs/20-客户端接入账号与同步/客户端接入设计.md`**：新增 **§12 登录系统安全审计与加固**——
+  业界标准对照表（OAuth 2.0/OIDC、RFC 8628、NIST SP 1800-13、ZITADEL/Microsoft AI Agent 身份实践）、
+  审计发现（含实测证据）、设备凭据与三种设备模式（`off`/`warn`/`strict`）、
+  **"登录后拉取的数据一定是当前用户的" 的三道闸**（服务端 `user_id` 全链路 + 本地属主列 + 账号级同步元数据）、
+  验证码加固清单与生产 fail-closed 策略；§11 限制表相应更新。
+- **`Docs/19-服务端/服务端设计文档.md`**：§10 增补 `DEVICE_BINDING_MODE`、验证码配额/冷却/失败锁定、
+  `MAIL_WEBHOOK_URL` 与生产 fail-closed、`GET/DELETE /v1/me/devices` 接口；附录 D 的 L4（无邮件通道）标注为已解决。
+- **`Server/.env.example`**：补齐本轮新增的环境变量（验证码 `CODE_*`、`ALLOW_DEV_CODE`、邮件 `MAIL_*`、`DEVICE_BINDING_MODE`）。
+
+### 缺陷登记（详见各清单）
+
+- `Docs/16-前端改造基础/前端验收缺陷清单.md`：**FE-032（P0 跨账号数据不隔离）**、**FE-033（P0 设备绑定致换机锁死）**
+  → 🟩 已修复（含实机证据）；FE-031 → 🟨 部分修复（已补登录后自动拉取）；FE-030 仍待产品决策。
+- `Docs/19-服务端/服务端缺陷清单.md`：**SV-011 / SV-012 / SV-013 / SV-014** → 🟩 已修复（含 14 项新集成测试与实机证据）。
+
+
+## [新增 · 20 客户端接入服务端（账号与数据同步）] - 2026-10-02
+
+### 新增
+
+- **`Docs/20-客户端接入账号与同步/客户端接入设计.md`**（设计主线第 20 号）：Electron 客户端接入 `Server/` 的完整设计——
+  目标与范围、**前置修复（长时记忆原本不落库 + ID 重用）**、架构与数据流（含"服务端请求经主进程转发以规避 CORS"的决策依据）、
+  令牌存储与登录态（safeStorage / sessionStorage 降级、401 单飞续期、`TOKEN_REUSED` 处置）、
+  同步语义（上行/下行逐项表 + 冲突与失败策略 + 统计派生的三个本地数据源与口径）、
+  字段映射表（本地 `long_term_memory` ↔ 服务端 `memories`，含状态枚举有损映射说明）、UI 分区、
+  安全边界、测试清单（47 项）、**端到端验证记录**、已知限制 C1~C8。
+
+### 变更
+
+- **`Docs/README.md`（总索引）**：设计主线补登记 **20（客户端接入服务端）** 一行，导语"编号 01-19"→"01-20"；
+  第 19 行同时挂上服务端缺陷清单链接。
+- **`Docs/19-服务端/服务端设计文档.md`**：§12 演进路线将 **P2（客户端接入）** 标注为已完成并链接 20 号文档；
+  文档头「关联文档」补充与 20 号文档的互链；附录 D 的 L10（客户端尚未接入）现状说明同步失效。
+
+### 缺陷登记
+
+- **`FE-026`（🟩 已修复）长时记忆只存内存、重启即丢，且 `memory_id` 重启后重用**（会污染云端幂等键）——
+  本轮随客户端接入一并修复（`longTermMemoryStore.ts` 落库 + 启动回灌 + 计数器恢复），
+  详见 `Docs/16-前端改造基础/前端验收缺陷清单.md`。
+- **`FE-027`（⬜ 已知限制）工具调用未全量落库**：统计中 `tool.call` 只能从 `effect_journal` 派生，
+  安全只读工具不计入（口径已在文档中标注）。
+- 服务端侧无新增缺陷；既有 `SV-001`（备份导出静默截断）与客户端 `C5` 相关，修复顺序建议随 P2 一并处理。
+
+
+## [新增 · 19 服务端缺陷清单（SV-xxx）] - 2026-10-02
+
+### 新增
+
+- **`Docs/19-服务端/服务端缺陷清单.md`**：服务端（`Server/`）缺陷与已知限制的跟踪清单，
+  与 `Docs/16-前端改造基础/前端验收缺陷清单.md`（`FE-xxx`）同约定、编号 `SV-xxx`；
+  含工作流、状态/严重度约定、未修复表、逐条详情（现象/根因 `文件:行`/影响面/建议修法/复现/验收标准）、
+  已修复归档，以及与设计文档附录 D（L1~L10）的对应关系表。
+- 首批登记 **8 条**（本轮实现与自查中发现，均已用 `grep` 核实行号）：
+
+  | ID | 标题 | 级别 | 状态 |
+  |---|---|---|---|
+  | SV-001 | 备份导出 10 000 条上限静默截断，备份包无标记 | P1 | 🟥 未修复 |
+  | SV-002 | 改密/登出后已签发访问令牌在 TTL 内仍可用 | P2 | 🟥 未修复 |
+  | SV-003 | 限流为进程内计数，多实例下防护弱化 | P2 | ⬜ 已知限制 |
+  | SV-004 | `purgeInactive()` 未接线，刷新令牌表单调增长 | P3 | 🟥 未修复 |
+  | SV-005 | 中文检索走 ILIKE 全表扫描 | P3 | ⬜ 已知限制 |
+  | SV-006 | 集成测试向 `schema_migrations` 写入伪造行且不清理 | P3 | 🟥 未修复 |
+  | SV-007 | 备份包明文（含记忆内容） | P2 | ⬜ 已知限制 |
+  | SV-008 | `/readyz` 失败响应绕过统一错误体 | P3 | 🟥 未修复 |
+
+### 变更
+
+- **`Docs/19-服务端/服务端设计文档.md`**：附录 D（已知限制）末尾补充「与缺陷清单的对应」映射表
+  （L1↔SV-003、L3↔SV-005、L6↔SV-001、L7↔SV-002、L9↔SV-007），并注明 SV-004/006/008 为清单独有、
+  修复后需回填设计文档 §9.5 / §10.2 / §4.8。
+- **`Server/README.md`** 第 9 节（已知限制）：改为指向缺陷清单，并保留影响使用决策的条目（含 `SV-xxx` 引用）。
+
+### 说明
+
+- 本轮**仅登记、不修复**（符合既定工作流：未修复入清单 → 修复后写入根 `CHANGELOG.md` → 移入归档）。
+- 其中 **SV-001** 为**静默错误结果**（用户以为备份完整，实为截断），建议在客户端接入（P2）时优先修掉。
+
+
+## [新增 · 19 服务端设计文档（账号与数据服务）] - 2026-10-02
+
+### 新增
+
+- **`Docs/19-服务端/服务端设计文档.md`**（新增设计主线第 19 号）：Civitas-AI **服务端**（`Server/`）的完整设计——
+  背景与验收标准、总体架构与分层、技术选型对比、**数据模型**（7 张表字段级说明 + 索引设计意图 + 与端侧
+  `long_term_memory` 的字段对齐表 + 数据生命周期）、**接口设计**（通用约定/错误码/各接口逐条/版本化策略）、
+  **鉴权与安全**（STRIDE 威胁模型、Argon2id 参数、令牌轮换与重用检测时序、防枚举、审计、部署与传输安全、
+  隐私边界）、**同步语义**（服务端权威、revision 乐观并发、`clientMemoryId` 幂等、墓碑、离线冲突现状与目标态）、
+  **备份与恢复**（包格式、merge/replace 语义、事务边界、失败回滚、"卸载重装重建"双路径时序）、
+  **统计设计**（事件模型、幂等、聚合与扩展、时区边界）、**部署运维**（部署形态、配置全表、迁移与漂移检测、
+  两层备份、健康检查、多实例与扩展、容量预算）、**测试策略**（分层、隔离方式、覆盖矩阵、验收证据）、
+  **失败模式与处置**、**演进路线 P1~P7**，以及 5 个附录（环境变量/错误码/路由总表/已知限制/文档→代码对账）。
+
+### 变更
+
+- **编号修正**：上一轮误将服务端文档放在 `Docs/17-服务端/`，与既有 `17-实验矩阵与评估` 编号冲突；
+  现归位为 **`Docs/19-服务端/`**（17=实验矩阵、18=AI组件族），旧目录已删除，内容并入新文档，无信息丢失。
+- **`Docs/README.md`（总索引）**：设计主线表格补登记 **18（AI组件族架构）** 与 **19（服务端设计）** 两行
+  （18 此前缺失，属索引漂移），并把导语"编号 01-18"更新为"编号 01-19"。
+- **交叉引用更新**：根 `CHANGELOG.md`（原指向 `Docs/17-服务端/服务端设计与接口.md`）改为 `Docs/19-服务端/服务端设计文档.md`；
+  `Server/README.md` 顶部增加设计文档入口（README 定位为使用/运维手册，设计依据指向 19 号文档）。
+
+### 对账与口径
+
+- 本文所有接口、表结构、配置项、索引与错误码均标注了**代码位置**（附录 E「文档 → 代码对账」），
+  与 `Server/` 实现逐条对应；`tsc --noEmit` 与 82 项测试（单元 29 + 集成 53）为当前代码真源证据。
+- 未实现的目标态统一标 `⚠️ 未实现`（含：客户端接入、增量同步、自动 down 迁移、TLS/指标/追踪、
+  访问令牌即时吊销、备份包加密、物化统计表、Redis 限流、中文分词、邮件通道）。
+- **已知实现缺陷**（非设计取舍，已在附录 D 记录并建议在 P2 修复）：备份导出上限 10 000 条为**静默截断**，
+  应改为分页或显式报错，避免"备份成功但数据不全"。
+
+
+## [代码 · 技术债修复：审批链 / LoopConfig 读路径 / 双源漂移 / FORBIDDEN / journal / 关闭序列] - 2026-09-24
+
+### 变更（对应 Docs/CHANGELOG 2026-09-22 的"已知事项（代码债清单）"高优先 ①~④ + 中优先若干）
+
+- **审批链不通（高优先 ①）**：`Services/LoopControl/middleware/toolSafetyGate.ts` 的默认 `approverRoles` 由单角色 `[{role:'user'}]` 扩为 `[{role:'user'},{role:'prime_director'}]` 双角色，并把 `approverRoles` 字段类型从内联字面量改为对齐 `ApprovalDecider`（`Services/LoopControl/loopState.ts`）。现在 `DANGEROUS + IRREVERSIBLE`（CRITICAL 级）建审不再因"至少需要 2 个不同角色"恒失败，`shell.exec`/`code.eval`/`agent.recruit` 可走人工审批链（Docs/12 §6.2）。
+- **LoopConfig 读路径错位（高优先 ②）**：`Src/main.ts` ⑮ 段由读 `getConfigValueOr(config,'loopConfig')`（恒为 `{}`，因 configLoader 把 loopConfig.json 顶层键平铺进 merged 根）改为直接读顶层键 `loopDefaults`/`hardLimits`/`stopRules`/`roleOverrides`，与 `configValidator.ts` 的读取口径一致。`Configs/loopConfig.json` 的数值现已运行期生效。
+- **StopRuleSet 硬重建覆盖配置（高优先 ②）**：`Services/LoopControl/stopRules.ts` 新增 `setActiveStopRuleSet`/`getActiveStopRuleSet` 全局登记；`main.ts` 启动时 `setActiveStopRuleSet(buildStopRuleSet(...))`；`runIteration.ts` 改为 `getActiveStopRuleSet()` 读取（无登记时才按 LoopConfig 兜底构建），消除每轮硬重建默认规则覆盖配置的问题。
+- **退出类别 'risk' 硬改写（Docs/12 §2.1）**：`runIteration.ts` 删除 `decision.exitReason = 'risk'` 的硬编码改写，新增 `mapStoppedReasonToExitReason()` 把 7 值 `StoppedReason` 映射到 5 值 `ExitReason`，保留真实退出类别（limits→max_iterations、budget_hard→budget_exhausted 等）。
+- **ROLE_OVERRIDES/LOOP_LIMITS 双源漂移（高优先 ③）**：`Core/Loop/loopConfig.ts` 删除 `getRoleOverrides()` 的内置硬编码回退（未注入时返回 `{}`），并让 `LOOP_LIMITS` 默认值对齐 `hardLimits`（tokenBudgetCeiling 2000000 / timeoutMsCeiling 600000），新增 `setLoopLimits()`/`getLoopLimits()`；`main.ts` 启动时从 `hardLimits` 段注入，两套天花板归一。
+- **FORBIDDEN 执行期无硬拒 + journal fail-open（高优先 ④）**：`toolSafetyGate.ts` 新增 `dangerLevel === 'FORBIDDEN'` 的硬拒分支（纵深防御第二道闸）；`EffectJournal INTENT` 写入失败由 fail-open 改为 **fail-closed**（拒绝执行，符合 Docs/13 §4"副作用必须先写 INTENT"强一致语义）。
+- **`synchronous=NORMAL` 违反 FULL 裁定（中优先）**：`Infra/Db/database.ts` 的 `openDatabase` 增加 `synchronousMode` 参数，`initDatabase` 对 main 库（承载 effect_journal）按 `durable.effect.writeSynchronous` 设 `FULL`（默认 FULL），events/memory 库保持 NORMAL；`main.ts` ⑥ 段读取 `durable.effect.writeSynchronous` 传入。
+- **幂等缓存单调增长（中优先）**：`main.ts` 关闭序列新增 ⑦.5 步调用 `purgeExpired()` 清理过期幂等缓存。
+- **类型债 / lint 债（tsc/lint 门禁恢复）**：
+  - `tsc --noEmit` 修复 5 处类型错误：`main.ts` roleOverrides spread 类型（改为显式 `Partial<LoopConfig>` 构造）、`Supervision/index.ts` `RateLimitConfig` 改从 `Infra/Contracts/rateLimitTypes.js` re-export、`memoryApi.ts` `getDatabase`→`getDatabases`、`toolsApi.ts` `getToolRegistry`→`getAllToolSpecs`（并重写 listTools 映射到真实 ToolSpec 字段）、`ipcBridge.ts` 删除未使用的 `IpcCommandHandler` 类型。
+  - `lint` 修复 1 处 error：`ipcBridge.ts` 的 `require('electron')` 改为顶部 ESM `import { BrowserWindow }`。
+  - `Configs/default.json` 补 `server.wsPort: 3001`（validator 校验 `wsPort` 必为整数，但默认配置缺失该键，导致 `loadConfig` 校验失败、`config.spec.ts` / `gateG0.spec.ts` 连锁失败）。
+  - `Tests/Interface/interactionObservability.spec.ts` 的 `require('.../eventBus.js')` 改为顶部 ESM import `subscribe`（修 `Cannot find module` 失败）。
+
+### 未处理（本轮范围外，仍为待办）
+
+- **KNOWLEDGE_CONSOLIDATION 双发布（中优先，本轮回退未改）**：Docs/15 §8 #24 与 Docs/07 §4.3 裁定"仅由 Loop 成功退出点发布、撤 `tribunal.ts` 发布"。但"Loop 成功退出 → `SharedMemory.consolidateFromTrace`"的接线尚未落地（`consolidateFromTrace` 目前无任何生产调用者），仅撤 tribunal 会致六步治理闭环断链、4 个 E2E/司法测试失败。故本轮**保留** `tribunal.consolidateKnowledge()` 的发布，该项连同接线一并列为待办。
+- 关闭序列 ②③④ 步（中断模型调用 / 后置监管 / trace index writer）仍需接入 AbortController、`runPostSupervision` 与 trace 索引写入器。
+- `pruneCheckpoints`（按 loop 维度）与 `purgeExpired` 的**运行期定时**清理未挂载，仅关闭时清一次。
+- StoppedReason/ExitReason/loops.stopped_reason 三套枚举的**完整收敛**（单一源 + 其余再导出）仍为待办，本轮以映射函数过渡。
+- 记忆/审批/账本等表建成但服务层内存态未接线（高优先 ⑤）、热重载未实现、幂等键两套公式并存等不在本轮。
+
+### 验证
+
+`npx tsc --noEmit` 0 错误；`npm run lint` 0 errors / 103 warnings（103 warnings 均为既存 no-console/explicit-function-return-type 等，非本轮引入）；`npm test` **823/823 通过**（43 spec 文件）。
+
+---
+
 ## [代码 · 逐层类型技术债清偿与迭代判定恢复] - 2026-09-23
 
 ### 变更

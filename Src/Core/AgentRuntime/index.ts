@@ -1,7 +1,7 @@
 /**
  * @module AgentRuntime/index
  * @description
- * Agent 运行时统一导出——Docs/02 §6 / Docs/14 §S9。
+ * Agent 运行时统一导出——Docs/Agent/02 §6 / Docs/Agent/13 §S9。
  */
 
 // ── 类型 ────────────────────────────────────────────────────────────

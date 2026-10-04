@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/tokenLedger
  * @description
- * Token 账本——Docs/04 §7。
+ * Token 账本——Docs/Agent/04 §7。
  * 保证 Token 总量守恒，每笔交易可追溯。
  * 每次交易后验证守恒，异常时广播 LEDGER_MISMATCH。
  */
@@ -40,7 +40,7 @@ export function getTransactionCount(): number {
   return ledger.length;
 }
 
-// ── 守恒验证（Docs/04 §7.1）────────────────────────────────────────
+// ── 守恒验证（Docs/Agent/04 §7.1）────────────────────────────────────────
 
 /**
  * 全局守恒校验：

@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/stopRules
  * @description
- * 五类独立退出条件——Docs/12 §2。
+ * 五类独立退出条件——Docs/Agent/11 §2。
  * 判定优先级：⑤风险 → ②上限 → ③预算 → ④无进展 → ①成功 → 继续下一轮。
  * 成功判定必须放在所有失败判定之后。
  */
@@ -9,7 +9,7 @@
 import type { LoopState, VerifierSpec } from './loopState.js';
 import type { StoppedReason } from './types.js';
 
-// ── StopRuleSet（Docs/12 §2.1）─────────────────────────────────────
+// ── StopRuleSet（Docs/Agent/11 §2.1）─────────────────────────────────────
 
 export interface StopLimits {
   maxIterations: number;
@@ -66,7 +66,7 @@ export interface LoopRuntimeSnapshot {
   verifierPassed: boolean;
 }
 
-// ── 判定优先级（Docs/12 §2.2）───────────────────────────────────────
+// ── 判定优先级（Docs/Agent/11 §2.2）───────────────────────────────────────
 
 const EVALUATION_ORDER: StoppedReason[] = [
   'risk', 'limits', 'budget_hard', 'no_progress', 'success',
@@ -109,24 +109,43 @@ export function evaluateStopRules(
 // ── 各子检查 ────────────────────────────────────────────────────────
 
 function checkRisk(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
-  if (snapshot.riskSignals.length > 0) {
-    return {
-      shouldStop: true,
-      reason: 'risk',
-      detail: `风险信号: ${snapshot.riskSignals.join(', ')}`,
-    };
+  if (snapshot.riskSignals.length === 0) {
+    return null;
   }
-  // 检查配置的风险触发器
-  for (const trigger of rules.riskTriggers) {
-    if (evaluateRiskCondition(trigger.condition, snapshot)) {
+
+  // FE-070：有触发器声明时按触发器处置（condition 可被真实评估：`signal == "值"` / 关键词）；
+  // 此前“任何信号→停”前置短路使配置的 riskTriggers 成为**死分支**。
+  if (rules.riskTriggers.length > 0) {
+    let coveredByPause = false;
+    let abortTrigger: string | null = null;
+    for (const trigger of rules.riskTriggers) {
+      if (!evaluateRiskCondition(trigger.condition, snapshot)) continue;
+      if (trigger.action === 'abort' || trigger.action === 'rollback_and_abort') {
+        abortTrigger = trigger.condition;
+        break;
+      }
+      // pause_and_request_approval：本层不中止（审批动作由 approvalGate 承担）
+      coveredByPause = true;
+    }
+    if (abortTrigger !== null) {
       return {
         shouldStop: true,
         reason: 'risk',
-        detail: `风险触发器命中: ${trigger.condition}`,
+        detail: `风险触发器命中: ${abortTrigger}`,
       };
     }
+    if (coveredByPause) {
+      // 全部命中项均为 pause 类 → 放行（已交审批语义）
+      return null;
+    }
+    // 信号未被任何触发器覆盖 → 保守退出（fail-safe，与无触发器时语义一致）
   }
-  return null;
+
+  return {
+    shouldStop: true,
+    reason: 'risk',
+    detail: `风险信号: ${snapshot.riskSignals.join(', ')}`,
+  };
 }
 
 function checkLimits(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
@@ -217,10 +236,18 @@ export function detectBudgetPhase(
 
 // ── 风险条件简单解析器（DSL 仅支持 == + 字符串枚举）────────────────
 
+/**
+ * 风险条件求值（FE-070 增强）：
+ *  - v1 可执行语法：`signal == "值"`（精确匹配 riskSignals 成员）；
+ *  - 保留关键词包含匹配（历史兼容；完整 DSL 仍属后续）。
+ */
 function evaluateRiskCondition(condition: string, snapshot: LoopRuntimeSnapshot): boolean {
-  // 简化实现：检查 riskSignals 中是否包含条件关键词
-  // 完整 DSL 解析器在 Phase 1 实现
-  const normalized = condition.toLowerCase();
+  const trimmed = condition.trim();
+  const exact = /^signal\s*==\s*"([^"]+)"\s*$/.exec(trimmed);
+  if (exact) {
+    return snapshot.riskSignals.includes(exact[1]!);
+  }
+  const normalized = trimmed.toLowerCase();
   return snapshot.riskSignals.some(s => normalized.includes(s.toLowerCase()));
 }
 
@@ -254,4 +281,21 @@ export function buildStopRuleSet(config: {
 /** 获取评估顺序（供测试验证） */
 export function getEvaluationOrder(): StoppedReason[] {
   return [...EVALUATION_ORDER];
+}
+
+// ── 全局 StopRuleSet 存储（供 runIteration 读取，消除硬重建）──────────
+
+let _activeStopRuleSet: StopRuleSet | null = null;
+
+/**
+ * 设置当前生效的 StopRuleSet（由 main.ts 启动时从配置构建后调用）。
+ * runIteration 通过 getActiveStopRuleSet() 读取，而非每次迭代硬重建默认规则。
+ */
+export function setActiveStopRuleSet(rules: StopRuleSet): void {
+  _activeStopRuleSet = rules;
+}
+
+/** 获取当前生效的 StopRuleSet（未设置则返回 null）。 */
+export function getActiveStopRuleSet(): StopRuleSet | null {
+  return _activeStopRuleSet;
 }

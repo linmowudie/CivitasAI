@@ -13,6 +13,6 @@ Agent 决策所需的外置"技能"：执行剧本、行为准则、评分标准
 
 ## 关联
 
-- 评分标准由 `Scripts/rubricRecalibrate.ts` 定期重校准（Docs/14 §S14）
+- 评分标准由 `Scripts/rubricRecalibrate.ts` 定期重校准（Docs/Agent/13 §S14）
 - L3 rubric 变更须与 [ADR-0003](../ADR/0003-verifier-four-tier-non-skip.md)（四级不可跨越）保持一致：L1/L2 硬规则不因评分调整而放松
 - 通过 `Configs/dataStorage.json` 约定的路径与保留策略访问

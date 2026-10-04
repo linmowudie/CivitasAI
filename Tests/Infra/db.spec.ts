@@ -10,7 +10,7 @@ import { resolve, join } from 'node:path';
 import { existsSync, rmSync, mkdirSync } from 'node:fs';
 
 import { initDatabase, closeDatabase, isDatabaseInitialized, getMainDb, getEventsDb, getMemoryDb } from '../../Src/Infra/Db/database.js';
-import { initMigrations, migrateUp, migrateDown, getAppliedMigrations, getCurrentVersion, clearMigrations } from '../../Src/Infra/Db/migrations.js';
+import { initMigrations, migrateUp, migrateDown, getAppliedMigrations, getCurrentVersion, clearMigrations, registerMigration } from '../../Src/Infra/Db/migrations.js';
 import { transaction } from '../../Src/Infra/Db/transaction.js';
 import { createSession, getSession, updateLastActive, archiveSession, listActiveSessions } from '../../Src/Infra/Db/Repositories/sessionRepository.js';
 
@@ -137,6 +137,28 @@ describe('S1-⑥ Db 模块', () => {
       migrateUp();
       const v2 = getCurrentVersion();
       expect(v2).toBe(v1);
+    });
+
+    it('迁移版本号冲突必须报错（否则后注册的迁移会被静默跳过）', () => {
+      // 真实踩过的坑：新增 v24 时与既有 v24 撞号 → isApplied 判定"已应用" → 迁移没跑、schema 是旧的。
+      clearMigrations();
+      registerMigration({
+        version: 999,
+        name: 'dup_a',
+        database: 'main',
+        up: 'SELECT 1;',
+        down: 'SELECT 1;',
+      });
+      registerMigration({
+        version: 999,
+        name: 'dup_b',
+        database: 'main',
+        up: 'SELECT 1;',
+        down: 'SELECT 1;',
+      });
+      const result = initMigrations();
+      expect(result.ok).toBe(false);
+      expect(result.ok ? '' : result.error).toContain('迁移版本号冲突');
     });
   });
 

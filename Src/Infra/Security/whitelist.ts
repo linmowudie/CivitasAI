@@ -1,5 +1,5 @@
 /**
- * 白名单管理（Docs/11 §3.5 / Docs/03 §工具隔离）
+ * 白名单管理（Docs/Agent/10 §3.5 / Docs/Agent/03 §工具隔离）
  *
  * 职责：
  * - 工具白名单（最小权限原则）：Worker 只能使用 TaskAssignment.requiredTools 中列出的工具

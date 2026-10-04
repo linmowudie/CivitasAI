@@ -205,7 +205,7 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
       newMemoryContent: '新数据', oldMemoryContent: '旧数据', taskDescription: 'T',
     });
 
-    const verdict = reasonVerdict(filed.value.caseId);
+    const verdict = reasonVerdict(filed.value.caseId, 'arbitrator');
     expect(verdict.ok).toBe(true);
     if (!verdict.ok) return;
 
@@ -230,7 +230,7 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
     });
     if (!filed.ok) return;
 
-    const suspension = issueSuspension(filed.value.caseId);
+    const suspension = issueSuspension(filed.value.caseId, 'arbitrator');
     expect(suspension.ok).toBe(true);
 
     const events = getEventLog();
@@ -247,7 +247,7 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
     if (!f1.ok) return;
 
     // 第一次挂起
-    const s1 = issueSuspension(f1.value.caseId);
+    const s1 = issueSuspension(f1.value.caseId, 'arbitrator');
     expect(s1.ok).toBe(true);
 
     // 同 conflictId 第二次立案（先完成第一个案件）
@@ -262,7 +262,7 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
     // 同 conflictId 的案件已完成，可以重新立案
     // 但防抖检查是基于 conflictId + 5 分钟
     if (f2.ok) {
-      const s2 = issueSuspension(f2.value.caseId);
+      const s2 = issueSuspension(f2.value.caseId, 'arbitrator');
       // 防抖：5 分钟内 → 仍然成功但跳过实际挂起
       expect(s2.ok).toBe(true);
     }
@@ -308,9 +308,9 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
     assembleCapsule(filed.value.caseId, {
       newMemoryContent: 'A', oldMemoryContent: 'B', taskDescription: 'T',
     });
-    reasonVerdict(filed.value.caseId);
+    reasonVerdict(filed.value.caseId, 'arbitrator');
 
-    const kd = consolidateKnowledge(filed.value.caseId);
+    const kd = consolidateKnowledge(filed.value.caseId, 'arbitrator');
     expect(kd.ok).toBe(true);
 
     const events = getEventLog();
@@ -376,8 +376,8 @@ describe('E2E: LITIGATION 模式 — 司法仲裁', () => {
     if (!c) return;
     c.status = 'deadlocked';
 
-    // 监管局最终裁决
-    const intervention = issueFinalVerdict({ case_: c, reason: 'deadlock' });
+    // 监管局最终裁决（FE-042：须以 L0 角色发起）
+    const intervention = issueFinalVerdict({ case_: c, reason: 'deadlock', actorRole: 'regulatory_authority' });
     expect(intervention.ok).toBe(true);
     if (!intervention.ok) return;
 

@@ -1,7 +1,7 @@
 /**
  * @module AgentRuntime/stateMachine
  * @description
- * Agent 状态机——Docs/02 §6.1。
+ * Agent 状态机——Docs/Agent/02 §6.1。
  * 6 态转换规则，严格校验合法转换。
  * Loop 级状态（awaiting_approval）不影响 Agent 态。
  */
@@ -11,7 +11,7 @@ import { ok, err } from '../../Infra/types.js';
 
 import type { AgentStatus, AgentEvent } from './types.js';
 
-// ── 合法转换表（Docs/02 §6.1）──────────────────────────────────────
+// ── 合法转换表（Docs/Agent/02 §6.1）──────────────────────────────────────
 
 const VALID_TRANSITIONS: Record<AgentStatus, Record<string, AgentStatus>> = {
   creating: {

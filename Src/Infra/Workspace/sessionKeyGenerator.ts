@@ -1,5 +1,5 @@
 /**
- * 会话密钥生成器（Docs/01 §5.2 / Docs/15 §6）
+ * 会话密钥生成器（Docs/Agent/01 §5.2 / Docs/Agent/14 §6）
  *
  * 职责：
  * - 生成 session_key = SHA-256 前 16 位十六进制

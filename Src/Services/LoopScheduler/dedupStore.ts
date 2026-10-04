@@ -1,7 +1,7 @@
 /**
  * @module LoopScheduler/dedupStore
  * @description
- * 去重存储——Docs/14 §S8。
+ * 去重存储——Docs/Agent/13 §S8。
  * 防止同一事件在短时间内重复触发 Loop。
  * 60s 窗口内相同 key 仅允许首次通过。
  */

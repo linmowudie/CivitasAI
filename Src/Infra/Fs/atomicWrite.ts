@@ -1,5 +1,5 @@
 /**
- * 原子写入（Docs/13 §4 / Gate G1）
+ * 原子写入（Docs/Agent/12 §4 / Gate G1）
  *
  * 职责：
  * - 写入临时文件 → fsync → rename 到目标路径（原子操作）

@@ -1,7 +1,7 @@
 /**
  * @module SharedMemory/index
  * @description
- * 共享记忆系统统一导出——Docs/07。
+ * 共享记忆系统统一导出——Docs/Agent/07。
  */
 
 // ── VersionedEntry 类型 ─────────────────────────────────────────────

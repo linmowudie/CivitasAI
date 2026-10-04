@@ -1,12 +1,12 @@
 /**
- * RecoveryPlan 类型定义（Docs/13 §6.1）
+ * RecoveryPlan 类型定义（Docs/Agent/12 §6.1）
  *
  * 恢复扫描的输出结果，决定崩溃后如何处置未完成的 Loop。
  */
 
 import type { EffectRecord } from './EffectRecord.js';
 
-// ===== 恢复策略（全集，Docs/13 §6.1） =====
+// ===== 恢复策略（全集，Docs/Agent/12 §6.1） =====
 
 /** 恢复策略四值全集（与 §6.2 矩阵一一对应） */
 export type RecoveryStrategy =
@@ -21,7 +21,7 @@ export type RecoveryStrategy =
 
 // ===== 核心类型 =====
 
-/** 恢复计划（Docs/13 §6.1） */
+/** 恢复计划（Docs/Agent/12 §6.1） */
 export interface RecoveryPlan {
   readonly loopId: string;
   readonly strategy: RecoveryStrategy;

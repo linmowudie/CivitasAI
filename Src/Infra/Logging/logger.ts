@@ -1,5 +1,5 @@
 /**
- * 日志门面（Docs/02 §7.1 ② / Docs/09 §6.1）
+ * 日志门面（Docs/Agent/02 §7.1 ② / Docs/Client/01 §6.1）
  *
  * 职责：
  * - 提供分级日志接口：debug / info / warn / error / fatal

@@ -1,5 +1,5 @@
 /**
- * 工具 Schema 验证器（Docs/11 §6.1）
+ * 工具 Schema 验证器（Docs/Agent/10 §6.1）
  *
  * 职责：
  * - 验证 ToolSpec 完整性（所有必填字段）
@@ -7,11 +7,17 @@
  * - 验证 outputSchema 必须包含 status + recoverable
  * - 验证 idempotency='NO' 时 EffectJournal 前置检查
  * - 验证 DANGEROUS + IRREVERSIBLE 需要 L4 HumanGate
+ * - 治理类工具不得对 L1/L2 开放、agent.* 编排类工具角色受限（FE-048，2026-10-04）
  *
  * 缺一字段 → 拒注（CI 也拦截）。
  */
 
 import type { ToolSpec, JsonSchema } from './toolSpec.js';
+import {
+  GOVERNANCE_TOOL_NAME_PATTERN,
+  GOVERNANCE_TOOL_ROLES,
+  ORCHESTRATOR_ROLES,
+} from '../roles.js';
 
 // ===== 类型定义 =====
 
@@ -26,7 +32,7 @@ export interface ValidationResult {
 /**
  * 验证 ToolSpec 完整性
  *
- * 按 Docs/11 §6.1 自动门禁逐条检查。
+ * 按 Docs/Agent/10 §6.1 自动门禁逐条检查。
  */
 export function validateToolSpec(spec: ToolSpec): ValidationResult {
   const errors: string[] = [];
@@ -110,6 +116,31 @@ export function validateToolSpec(spec: ToolSpec): ValidationResult {
   // 12. FORBIDDEN 工具不应注册
   if (spec.dangerLevel === 'FORBIDDEN') {
     errors.push('FORBIDDEN 级别工具不允许注册');
+  }
+
+  // 13. 治理类工具不得对 L1/L2 开放（FE-048：GOVERNANCE_TOOL_ROLES 注册期校验）
+  // 工具名命中 GOVERNANCE_TOOL_NAME_PATTERN → requiredRoles 必须 ⊆ GOVERNANCE_TOOL_ROLES
+  if (GOVERNANCE_TOOL_NAME_PATTERN.test(spec.name)) {
+    const leaked = spec.requiredRoles.filter(
+      (role) => !(GOVERNANCE_TOOL_ROLES as readonly string[]).includes(role),
+    );
+    if (leaked.length > 0) {
+      errors.push(
+        `治理类工具 ${spec.name} 对非 L0 角色开放: ${leaked.join(', ')}（治理工具 requiredRoles 仅限 GOVERNANCE_TOOL_ROLES）`,
+      );
+    }
+  }
+
+  // 14. 编排/评审类（agent.*）工具的 requiredRoles 必须 ⊆ ORCHESTRATOR_ROLES（FE-048）
+  if (spec.name.startsWith('agent.')) {
+    const invalid = spec.requiredRoles.filter(
+      (role) => !(ORCHESTRATOR_ROLES as readonly string[]).includes(role),
+    );
+    if (invalid.length > 0) {
+      errors.push(
+        `编排类工具 ${spec.name} 含非编排角色: ${invalid.join(', ')}（agent.* 工具 requiredRoles 仅限 ORCHESTRATOR_ROLES）`,
+      );
+    }
   }
 
   return {

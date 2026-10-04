@@ -1,7 +1,7 @@
 /**
  * @module Decision/TaskDecomposer
  * @description
- * 任务拆解器——Docs/03 §4.2。
+ * 任务拆解器——Docs/Agent/03 §4.2。
  * 将复杂任务拆解为可分配的子任务，生成 TaskPlan。
  * Phase 0-2：基于规则的拆解；后续可接 LLM 拆解。
  */
@@ -67,7 +67,10 @@ export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
       maxIterations: 20,
       timeLimitMs: timePerSubtask,
       tokenBudget: budgetPerSubtask,
-      dependsOn: findDependencies(i, subtaskCount, report.couplingScore),
+      // FE-070：依赖引用真实 assignmentId（消除 `assign-current-N` 占位串——
+      // 此前仅 ASSEMBLY_LINE 模式有替换逻辑，CONSORTIUM+高耦合时假 ID 会落库）
+      dependsOn: findDependencyIndexes(i, report.couplingScore)
+        .map((idx) => `assign-${input.taskId}-${idx}`),
       requiredTools: getToolsForDomain(domain ?? 'general'),
       status: 'pending',
     };
@@ -102,10 +105,10 @@ function generateSubtaskDescription(
   return `[${domain}] 子任务 ${index + 1}/${total}: ${originalTask.slice(0, 100)}...`;
 }
 
-function findDependencies(index: number, _total: number, couplingScore: number): string[] {
-  // 耦合度高时，后续子任务依赖前一个
+function findDependencyIndexes(index: number, couplingScore: number): number[] {
+  // 耦合度高时，后续子任务依赖前一个（FE-070：返回**前置索引**，由调用方映射为真实 assignmentId）
   if (couplingScore > 0.6 && index > 0) {
-    return [`assign-current-${index - 1}`]; // 占位，实际由 orchestrator 替换
+    return [index - 1];
   }
   // 低耦合时完全并行
   return [];

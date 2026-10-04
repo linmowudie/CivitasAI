@@ -1,7 +1,7 @@
 /**
  * @module Context/partitions
  * @description
- * 上下文四级分区（缓存感知）——Docs/02 §5。
+ * 上下文四级分区（缓存感知）——Docs/Agent/02 §5。
  *
  * 核心原则：**不变的内容在前，变化的内容在后**，以最大化 Prompt Cache 命中。
  *
@@ -18,7 +18,7 @@
 /** 四级分区标识 */
 export type PartitionId = 'S' | 'L' | 'M' | 'H';
 
-/** 追加式写入格式：类型|元数据|时间戳|内容（Docs/02 §5.2） */
+/** 追加式写入格式：类型|元数据|时间戳|内容（Docs/Agent/02 §5.2） */
 export interface ContextEntry {
   /** 条目唯一 ID */
   id: string;
@@ -57,7 +57,7 @@ export interface PartitionState {
 
 // ── 常量 ──────────────────────────────────────────────
 
-/** 四级分区默认配置（Docs/02 §5.1） */
+/** 四级分区默认配置（Docs/Agent/02 §5.1） */
 export const PARTITION_CONFIG: Record<PartitionId, PartitionConfig> = {
   S: { ceilingRatio: 0.15, tokenCoefficient: 0.05 },
   L: { ceilingRatio: 0.15, tokenCoefficient: 0.5 },
@@ -92,7 +92,7 @@ export function createEmptyContext(): Record<PartitionId, PartitionState> {
 }
 
 /**
- * 追加式写入上下文条目（Docs/02 §5.2 强制格式）。
+ * 追加式写入上下文条目（Docs/Agent/02 §5.2 强制格式）。
  * 格式：类型|元数据|时间戳|内容
  */
 export function appendEntry(

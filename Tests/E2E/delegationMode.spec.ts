@@ -31,7 +31,7 @@ import {
   assignTask, submitForReview, reviewSubmission, isTaskApproved,
   resetAgentRuntime,
 } from '../../Src/Core/AgentRuntime/agentRuntime.js';
-import { performReview, resetReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
+import { performReview, resetReviewer, configureReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
 
 // ── 结果聚合 ────────────────────────────────────────
 import { aggregateResults, resetAggregator } from '../../Src/Core/Decision/Orchestrator/resultAggregator.js';
@@ -360,15 +360,17 @@ describe('E2E: DELEGATION 模式 — 并行委派', () => {
     // Token 扣减
     debit(worker.agentId, workerResponse.value.usage.total_tokens, 'trace-deleg-llm');
 
-    // 提交审核
+    // 提交审核（FE-056：评审按 summary/artifacts 契约读取成果，空提交会被 L2 拒绝）
     submitForReview({
       taskId: 'task-deleg-worker',
       workerAgentId: worker.agentId,
-      payload: { output: workerResponse.value.content },
+      payload: { summary: workerResponse.value.content.slice(0, 800), output: workerResponse.value.content },
     });
 
-    // Reviewer 审核通过
-    performReview({
+    // Reviewer 审核通过（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定——
+    //   本测试 worker model 为裸名 'glm-5.1'，自动候选会匹配到全限定名而误触发真实 Judge）
+    configureReviewer({ judgeModel: '' });
+    await performReview({
       taskId: 'task-deleg-worker',
       reviewerAgentId: reviewer.agentId,
     });

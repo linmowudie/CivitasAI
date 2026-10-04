@@ -1,7 +1,7 @@
 /**
  * @module Context/truncation
  * @description
- * 上下文截断策略——Docs/02 §5.4�?
+ * 上下文截断策略——Docs/Agent/02 §5.4�?
  *
  * 只在上下文使用率 �?92% 时触发实际截断�?
  * 截断后必须触�?GoalReanchorMiddleware（下轮开头）�?

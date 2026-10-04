@@ -23,6 +23,13 @@ import { fileEditor } from './Builtin/Write/fileEditor.js';
 import { shellRunner } from './Builtin/Execute/shellRunner.js';
 import { codeSandbox } from './Builtin/Execute/codeSandbox.js';
 
+// Builtin/System（工具探索与统一派发：头部冻结 + 追加式工具）
+import { toolExecutor } from './Builtin/System/toolExecutor.js';
+import { toolSearcher } from './Builtin/System/toolSearcher.js';
+
+// Builtin/Plan（Agent 计划清单：多 agent 各自归属，无副作用）
+import { todoWriter } from './Builtin/Plan/todoWriter.js';
+
 // Builtin/Search
 import { webSearch } from './Builtin/Search/webSearch.js';
 import { vectorSearch } from './Builtin/Search/vectorSearch.js';
@@ -43,10 +50,15 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   // Execute (DANGEROUS)
   shellRunner,
   codeSandbox,
+  // System：工具探索 + 统一派发（元工具，永远在头部）
+  toolSearcher,
+  toolExecutor,
+  // Plan (SAFE) —— Agent 计划清单（按 agentId 归属）
+  todoWriter,
   // Search (SAFE)
   webSearch,
   vectorSearch,
-  // Custom (stub)
+  // Custom（编排类：招募 + 评审提交，均已实装）
   agentRecruiter,
   submitForReview,
 ];

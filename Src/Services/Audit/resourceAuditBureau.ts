@@ -1,12 +1,16 @@
 /**
  * @module Audit/resourceAuditBureau
  * @description
- * 资源审计局主入口——Docs/06 §2。
+ * 资源审计局主入口——Docs/Agent/06 §2。
  * 整合异常检测、冻结管理、巡检调度。
  * 职责：Token 异常检测 / 自动冻结 / 稽查分析 / 定期巡检 / 处罚执行。
  */
 
 import { EventType } from '../EventBus/eventTypes.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
+
+/** 审计局自身即治理机构：其执法动作以 auditor 角色记录 */
+const AUDIT_BUREAU_ROLE = 'auditor';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
@@ -82,7 +86,8 @@ export function monitorAgent(agentId: string, tokens: number, outputFingerprint?
 
   let frozen = false;
   if (hasCritical && !isFrozen(agentId)) {
-    const freezeResult = freezeAgent(agentId, '异常检测自动冻结');
+    // 审计局自身的执法动作：以治理角色 auditor 身份执行
+    const freezeResult = freezeAgent(agentId, '异常检测自动冻结', AUDIT_BUREAU_ROLE);
     frozen = freezeResult.ok;
   }
 
@@ -95,7 +100,9 @@ export function monitorAgent(agentId: string, tokens: number, outputFingerprint?
  * 对冻结 Agent 执行深度稽查。
  * Phase 0-2：基于告警类型判定；Phase 3 接 LLM 分析。
  */
-export function investigate(agentId: string): Result<AuditReport> {
+export function investigate(agentId: string, actorRole: string): Result<AuditReport> {
+  const guard = requireGovernanceRole(actorRole, '审计调查');
+  if (!guard.ok) return err(guard.error);
   const agentAlerts = getAlerts(agentId);
   if (agentAlerts.length === 0) {
     return err(`Agent ${agentId} 无告警记录`);
@@ -155,7 +162,7 @@ export function investigate(agentId: string): Result<AuditReport> {
 
   // 执行建议
   if (recommendation === 'unfreeze' && isFrozen(agentId)) {
-    unfreezeAgent(agentId, 'audit_investigation');
+    unfreezeAgent(agentId, 'audit_investigation', AUDIT_BUREAU_ROLE);
   }
 
   return ok(report);
@@ -163,7 +170,9 @@ export function investigate(agentId: string): Result<AuditReport> {
 
 // ── 巡检代理 ────────────────────────────────────────────────────────
 
-export function runPatrol(): Result<PatrolReport> {
+export function runPatrol(actorRole: string): Result<PatrolReport> {
+  const guard = requireGovernanceRole(actorRole, '审计巡查');
+  if (!guard.ok) return err(guard.error);
   return executePatrol();
 }
 
@@ -173,12 +182,12 @@ export function addAgentSnapshot(snapshot: AgentConsumptionSnapshot): void {
 
 // ── 冻结管理代理 ────────────────────────────────────────────────────
 
-export function freeze(agentId: string, reason: string) {
-  return freezeAgent(agentId, reason);
+export function freeze(agentId: string, reason: string, actorRole: string) {
+  return freezeAgent(agentId, reason, actorRole);
 }
 
-export function unfreeze(agentId: string, by?: string) {
-  return unfreezeAgent(agentId, by);
+export function unfreeze(agentId: string, actorRole: string, by?: string) {
+  return unfreezeAgent(agentId, by ?? 'audit_bureau', actorRole);
 }
 
 export function checkExpired(): string[] {

@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/verifier/humanGateCore
  * @description
- * L4 人类审批门——Docs/12 §3.1 / §6。
+ * L4 人类审批门——Docs/Agent/11 §3.1 / §6。
  * 不可逆 / 高风险 / 大额操作必须经过人类审批。
  * 本阶段仅落 DB 队列，S12 才接 UI。
  */

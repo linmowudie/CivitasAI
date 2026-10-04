@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/failureFeedback
  * @description
- * 可行动的失败信息协议——Docs/12 §7。
+ * 可行动的失败信息协议——Docs/Agent/11 §7。
  * 禁止"再试一次"式反馈（P5 Failure Must Be Actionable）。
  * 每次失败都必须产出：具体失败证据 + 已试策略 + 剩余预算。
  */
@@ -12,7 +12,7 @@ import { ok, err } from '../../Infra/types.js';
 import type { FailureCategory, NextAction } from './types.js';
 import type { VerifierResult } from './loopState.js';
 
-// ── FailureFeedback（Docs/12 §7.2）─────────────────────────────────
+// ── FailureFeedback（Docs/Agent/11 §7.2）─────────────────────────────────
 
 export interface FailureFeedback {
   iteration: number;
@@ -161,7 +161,7 @@ function recommendNextAction(
   return 'switch_strategy';
 }
 
-// ── 序列化为 tool_result 格式（Docs/12 §7.3）───────────────────────
+// ── 序列化为 tool_result 格式（Docs/Agent/11 §7.3）───────────────────────
 
 export function feedbackToToolResult(feedback: FailureFeedback): object {
   return {

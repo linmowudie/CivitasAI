@@ -1,9 +1,9 @@
 /**
- * Checkpoint Store — 快照读写（Docs/13 §5 / Gate G2 DUR-003）
+ * Checkpoint Store — 快照读写（Docs/Agent/12 §5 / Gate G2 DUR-003）
  *
  * 职责：
  * - 每轮 iteration 末尾原子写入 Checkpoint
- * - DB 事务为主干（Docs/13 §5.3），文件副本为辅助
+ * - DB 事务为主干（Docs/Agent/12 §5.3），文件副本为辅助
  * - 支持加载最新/指定 Checkpoint
  */
 

@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/dualBudget
  * @description
- * 双预算机制——Docs/04 §5.2.1 / Docs/12 §2.3。
+ * 双预算机制——Docs/Agent/04 §5.2.1 / Docs/Agent/11 §2.3。
  * 四档预算控制：normal → warm → soft → expand_request → hard。
  * 比例数值统一由 loopConfig.stopRules.budget.*Ratio 提供。
  */

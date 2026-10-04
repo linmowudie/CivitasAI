@@ -1,5 +1,5 @@
 /**
- * genEventTypes.ts — Docs/16 F0.8
+ * genEventTypes.ts — Docs/Client/02 F0.8
  *
  * 构建期脚本：读取后端 `Src/Services/EventBus/eventTypes.ts` 的 EventType 枚举，
  * 生成 `Client/src/shared/eventTypes.ts`，前端零自造字符串。

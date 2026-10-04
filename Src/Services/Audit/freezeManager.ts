@@ -1,7 +1,7 @@
 /**
  * @module Audit/freezeManager
  * @description
- * 冻结管理器——Docs/06 §2.4。
+ * 冻结管理器——Docs/Agent/06 §2.4。
  * 对异常 Agent 执行钱包冻结/解冻。
  * 冻结通过 TokenEconomy 执行，WALLET_FROZEN 由 TokenEconomy 发布。
  */
@@ -10,6 +10,7 @@ import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
 
 // ── 冻结记录 ────────────────────────────────────────────────────────
 
@@ -39,7 +40,15 @@ export function setAutoUnfreezeSec(sec: number): void {
 
 // ── 冻结 ────────────────────────────────────────────────────────────
 
-export function freezeAgent(agentId: string, reason: string): Result<FreezeRecord> {
+/**
+ * 冻结 Agent（**治理动作**：仅 L0 治理角色或人类所有者可执行）。
+ *
+ * @param actorRole 执行者角色；非治理角色一律拒绝（fail-closed）
+ */
+export function freezeAgent(agentId: string, reason: string, actorRole: string): Result<FreezeRecord> {
+  const guard = requireGovernanceRole(actorRole, '冻结 Agent（审计执法）');
+  if (!guard.ok) return err(guard.error);
+
   if (frozenAgents.has(agentId)) {
     return err(`Agent ${agentId} 已被冻结`);
   }
@@ -66,6 +75,7 @@ export function freezeAgent(agentId: string, reason: string): Result<FreezeRecor
       agentId,
       reason,
       initiator: 'AuditBureau',
+      actedByRole: actorRole,
     },
   }));
 
@@ -74,7 +84,20 @@ export function freezeAgent(agentId: string, reason: string): Result<FreezeRecor
 
 // ── 解冻 ────────────────────────────────────────────────────────────
 
-export function unfreezeAgent(agentId: string, by: string = 'system'): Result<void> {
+/**
+ * 解冻 Agent（**治理动作**：仅 L0 治理角色或人类所有者可执行）。
+ *
+ * 注意：**系统到期自动解冻**不走此函数（见内部 `applyUnfreeze`）——
+ * 自动解冻是"解除限制"的 fail-safe 行为，不是治理裁决。
+ */
+export function unfreezeAgent(agentId: string, by: string, actorRole: string): Result<void> {
+  const guard = requireGovernanceRole(actorRole, '解冻 Agent（审计执法）');
+  if (!guard.ok) return err(guard.error);
+  return applyUnfreeze(agentId, by);
+}
+
+/** 内部解冻实现（不做角色校验；仅供治理入口与系统自动到期路径复用） */
+function applyUnfreeze(agentId: string, by: string): Result<void> {
   if (!frozenAgents.has(agentId)) {
     return err(`Agent ${agentId} 未被冻结`);
   }

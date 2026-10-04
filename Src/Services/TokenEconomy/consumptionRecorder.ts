@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/consumptionRecorder
  * @description
- * 消耗记录器——Docs/04 §3.1。
+ * 消耗记录器——Docs/Agent/04 §3.1。
  * 精确记录每次 LLM 调用的 Token 消耗，计算成本 + 税额。
  * 每次消耗产生 ConsumptionRecord + 钱包扣减 + 交易记录。
  */
@@ -68,7 +68,7 @@ export function recordConsumption(
   const now = Date.now();
   const totalTokens = input.promptTokens + input.completionTokens;
 
-  // 成本计算（Docs/04 §6.2）
+  // 成本计算（Docs/Agent/04 §6.2）
   const inputCost = input.promptTokens * pricing.costPer1kInput / 1000;
   const outputCost = input.completionTokens * pricing.costPer1kOutput / 1000;
   const calculatedCost = Math.ceil(inputCost + outputCost);

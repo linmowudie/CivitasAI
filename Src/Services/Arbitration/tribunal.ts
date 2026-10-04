@@ -1,12 +1,31 @@
 /**
  * @module Arbitration/tribunal
  * @description
- * 仲裁庭——Docs/05 §4 六步治理闭环。
+ * 仲裁庭——Docs/Agent/05 §4 六步治理闭环。
  * 冲突接收 → 胶囊组装 → 裁决推理 → 律师函挂起 → 现场恢复 → 知识沉淀。
  * Phase 0-2：规则裁决（不调 LLM）；Phase 3 接真实 LLM 仲裁。
  */
 
 import { EventType } from '../EventBus/eventTypes.js';
+import { logger } from '../../Infra/Logging/logger.js';
+import { recordConflict, evaluateScaling } from './dynamicScaling.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
+import { writeMemory } from '../SharedMemory/longTermMemory.js';
+
+// FE-062 收敛：胶囊/恢复的唯一实现（tribunal 委托，消除双实现漂移）
+import {
+  assembleCapsule as assembleCapsuleFromSource,
+  resetCapsuleAssembler,
+} from './capsuleAssembler.js';
+import {
+  createPlan as createRestorationPlanCore,
+  executePlan as executeRestorationPlan,
+  getPlan as getRestorationPlanCore,
+  resetRestorationManager,
+} from './restorationManager.js';
+
+/** 仲裁庭自身即治理机构：其裁决/执法动作以 arbitrator 角色记录 */
+const TRIBUNAL_ROLE = 'arbitrator';
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
@@ -19,7 +38,6 @@ import type {
 // ── 内部状态 ────────────────────────────────────────────────────────
 
 const cases: Map<string, ArbitrationCase> = new Map();
-const restorationPlans: Map<string, RestorationPlan> = new Map();
 let caseCounter = 0;
 
 // ── 挂起防抖：同 (loopId, conflictId) 5 分钟内只挂一次 ─────────────
@@ -49,6 +67,26 @@ export function fileCase(params: {
   const caseId = `case-${++caseCounter}`;
   const now = Date.now();
 
+  // ★ 动态扩容生产调用者（2026-10-04）：立案即登记冲突频率并评估仲裁者池规模。
+  //   此前 `dynamicScaling.{recordConflict,evaluateScaling}` **无任何生产调用者**（孤岛），
+  //   "按需扩容"因此永不触发。现在由立案驱动；评估失败不阻断立案。
+  try {
+    recordConflict();
+    const scaled = evaluateScaling();
+    if (scaled.ok && scaled.value.action === 'scale_up') {
+      logger.info('冲突频率触发仲裁者池扩容', {
+        source: 'Arbitration/tribunal/fileCase',
+        conflictId: params.conflictId,
+        targetCount: scaled.value.targetCount,
+      });
+    }
+  } catch (e) {
+    logger.warn('仲裁者池扩缩评估失败（立案继续）', {
+      source: 'Arbitration/tribunal/fileCase',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   const arbitrationCase: ArbitrationCase = {
     caseId,
     conflictId: params.conflictId,
@@ -77,7 +115,8 @@ export function fileCase(params: {
 // ── Step 2：胶囊组装 ────────────────────────────────────────────────
 
 /**
- * 组装上下文胶囊（Phase 0-2：简化版，不拉取真实证据）。
+ * 组装上下文胶囊（FE-062 收敛：委托 capsuleAssembler 唯一实现；内容直传路径）。
+ * 本函数仅保留案件语义（写入 case.capsule + 状态流转）。
  */
 export function assembleCapsule(caseId: string, params: {
   newMemoryContent: string;
@@ -87,36 +126,19 @@ export function assembleCapsule(caseId: string, params: {
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
 
-  const capsule: ContextCapsule = {
-    capsuleId: `capsule-${caseId}`,
+  const assembled = assembleCapsuleFromSource({
     conflictId: c.conflictId,
-    evidence: {
-      newMemory: {
-        content: params.newMemoryContent,
-        metadata: { source: c.plaintiffAgentId },
-        agentId: c.plaintiffAgentId,
-      },
-      oldMemory: {
-        content: params.oldMemoryContent,
-        metadata: { source: c.defendantAgentId },
-        agentId: c.defendantAgentId,
-      },
-    },
-    taskContext: {
-      parentTaskDescription: params.taskDescription,
-      constraints: [],
-    },
-    agentHistory: {
-      plaintiffOps: [],
-      defendantOps: [],
-    },
-    tokenBudget: 5000,
-    createdAt: Date.now(),
-  };
+    newMemoryContent: params.newMemoryContent,
+    oldMemoryContent: params.oldMemoryContent,
+    plaintiffAgentId: c.plaintiffAgentId,
+    defendantAgentId: c.defendantAgentId,
+    taskDescription: params.taskDescription,
+  });
+  if (!assembled.ok) return err(assembled.error);
 
-  c.capsule = capsule;
+  c.capsule = assembled.value;
   c.status = 'assembling';
-  return ok(capsule);
+  return ok(assembled.value);
 }
 
 // ── Step 3：裁决推理 ────────────────────────────────────────────────
@@ -125,7 +147,9 @@ export function assembleCapsule(caseId: string, params: {
  * 执行裁决推理（Phase 0-2：规则裁决；后续接 3-LLM 多数决）。
  * 优先级协议：LWW > 任务权威性 > 证据链完整性 > LLM 兜底。
  */
-export function reasonVerdict(caseId: string): Result<FinalVerdict> {
+export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVerdict> {
+  const guard = requireGovernanceRole(actorRole, '仲裁裁决');
+  if (!guard.ok) return err(guard.error);
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
   if (!c.capsule) return err(`案件 ${caseId} 胶囊未组装`);
@@ -193,7 +217,9 @@ export function reasonVerdict(caseId: string): Result<FinalVerdict> {
  * 发布律师函挂起涉事 Agent。
  * 5 分钟内同 (loopId, conflictId) 只挂一次。
  */
-export function issueSuspension(caseId: string): Result<void> {
+export function issueSuspension(caseId: string, actorRole: string): Result<void> {
+  const guard = requireGovernanceRole(actorRole, '仲裁停职（执法）');
+  if (!guard.ok) return err(guard.error);
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
 
@@ -230,7 +256,7 @@ export function issueSuspension(caseId: string): Result<void> {
 // ── Step 5：现场恢复 ────────────────────────────────────────────────
 
 /**
- * 创建恢复计划。
+ * 创建恢复计划（FE-062 收敛：委托 restorationManager 唯一实现）。
  */
 export function createRestorationPlan(caseId: string, params: {
   restorerAgentId: string;
@@ -239,31 +265,28 @@ export function createRestorationPlan(caseId: string, params: {
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
 
-  const plan: RestorationPlan = {
-    planId: `restore-${caseId}`,
+  const created = createRestorationPlanCore({
     caseId,
     conflictId: c.conflictId,
     restorerAgentId: params.restorerAgentId,
     strategy: params.strategy,
-    compensatingActions: [],
-    status: 'pending',
-    createdAt: Date.now(),
-  };
+  });
+  if (!created.ok) return err(created.error);
 
-  restorationPlans.set(plan.planId, plan);
   c.status = 'restoring';
-  return ok(plan);
+  return ok(created.value);
 }
 
 /**
- * 完成恢复。
+ * 完成恢复（FE-062 收敛：委托 restorationManager.executePlan——
+ * 回填补偿动作执行状态 + 发布 RESTORATION_ACK；本函数仅保留案件状态流转）。
  */
 export function completeRestoration(planId: string): Result<void> {
-  const plan = restorationPlans.get(planId);
+  const plan = getRestorationPlanCore(planId);
   if (!plan) return err(`恢复计划 ${planId} 不存在`);
 
-  plan.status = 'completed';
-  plan.completedAt = Date.now();
+  const executed = executeRestorationPlan(planId);
+  if (!executed.ok) return err(executed.error);
 
   const c = cases.get(plan.caseId);
   if (c) {
@@ -272,26 +295,55 @@ export function completeRestoration(planId: string): Result<void> {
     c.completedAt = Date.now();
   }
 
-  // 发布恢复确认事件
-  publish(createEvent({
-    eventType: EventType.RESTORATION_ACK,
-    source: 'Arbitration/tribunal/completeRestoration',
-    traceId: c?.traceId,
-    payload: { planId, caseId: plan.caseId },
-  }));
-
   return ok(undefined);
 }
 
 // ── Step 6：知识沉淀 ────────────────────────────────────────────────
 
 /**
- * 将裁决结果提炼为长期知识（Phase 0-2：标记事件）。
+ * 将裁决结果提炼为长期知识（FE-059 实装）。
+ * 注：Docs/Agent/14 §8 #24 裁定 KNOWLEDGE_CONSOLIDATION 事件由仲裁与 Loop 退出口双源发布；
+ * Loop 退出口的接线由 `Core/Loop/loopKnowledge.ts` 承担（成功退出时）。
+ * 本函数此前仅发布事件、不写记忆（“接线尚未落地”）；现落实：裁决写入长期记忆
+ * （category='decision'，携带 caseId/traceId 溯源）——仲裁者的“史官”职责全链闭环。
  */
-export function consolidateKnowledge(caseId: string): Result<void> {
+export function consolidateKnowledge(caseId: string, actorRole: string): Result<void> {
+  // ★ 知识沉淀 = 仲裁者的"史官"职责（灵感源《一些思考2》§4.5：裁决完成后由仲裁者清理全局上下文、
+  //   提炼静态知识并写入长期记忆）→ 属**治理动作**，仅 L0（arbitrator）/ user 可执行。
+  const knowledgeGuard = requireGovernanceRole(actorRole, '知识沉淀（史官职责）');
+  if (!knowledgeGuard.ok) return err(knowledgeGuard.error);
+
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
   if (!c.finalVerdict) return err(`案件 ${caseId} 无裁决结果`);
+
+  const v = c.finalVerdict;
+
+  // FE-059：落实写长期记忆（此前仅发布事件，无任何写入——“接线尚未落地”）。
+  //   裁决 = 决策型知识（observed：实际发生的裁决事实，携带 caseId 溯源）。
+  const memoryContent = [
+    `裁决：${v.verdict}（${v.isUnanimous ? '一致' : '多数决'}）`,
+    v.majorityReasoning ? `理由：${v.majorityReasoning}` : '',
+    `胜方：${v.winnerId ?? '无'}；败方：${v.loserId ?? '无'}`,
+  ].filter(Boolean).join('\n');
+
+  const memoryResult = writeMemory({
+    title: `仲裁裁决 ${caseId}：${v.verdict}`,
+    content: memoryContent,
+    category: 'decision',
+    sourceTraceIds: c.traceId ? [c.traceId] : [],
+    sourceArbitrationIds: [caseId],
+  });
+
+  if (!memoryResult.ok) {
+    // 沉淀失败不阻断治理闭环的事件契约，但如实返回错误（调用方可见）
+    logger.warn('裁决知识沉淀失败', {
+      source: 'Arbitration/tribunal/consolidateKnowledge',
+      caseId,
+      error: memoryResult.error,
+    });
+    return err(`裁决知识沉淀失败：${memoryResult.error}`);
+  }
 
   // 发布知识沉淀事件
   publish(createEvent({
@@ -302,6 +354,7 @@ export function consolidateKnowledge(caseId: string): Result<void> {
       caseId,
       conflictId: c.conflictId,
       verdict: c.finalVerdict.verdict,
+      memoryId: memoryResult.value.memoryId,
     },
   }));
 
@@ -312,6 +365,10 @@ export function consolidateKnowledge(caseId: string): Result<void> {
 
 /**
  * 端到端执行六步治理闭环。
+ *
+ * FE-047（2026-10-04）：新增 `actorRole` 参数 —— 闭环中的裁决/停职/知识沉淀
+ * 均属治理执法，此前内部硬编码 `TRIBUNAL_ROLE`，外部无法以实际发起者身份留痕。
+ * 缺省仍为仲裁庭自身角色 `arbitrator`（本函数即仲裁庭的端到端执行器）。
  */
 export function executeFullArbitration(params: {
   conflictId: string;
@@ -323,7 +380,11 @@ export function executeFullArbitration(params: {
   oldMemoryContent: string;
   taskDescription: string;
   restorerAgentId: string;
+  /** 执行者角色（须为 L0 / user）；缺省为仲裁庭自身角色 `arbitrator` */
+  actorRole?: string;
 }): Result<ArbitrationCase> {
+  const actor = params.actorRole ?? TRIBUNAL_ROLE;
+
   // Step 1: 立案
   const fileResult = fileCase(params);
   if (!fileResult.ok) return fileResult;
@@ -338,7 +399,7 @@ export function executeFullArbitration(params: {
   if (!capsuleResult.ok) return err(capsuleResult.error);
 
   // Step 3: 裁决推理
-  const verdictResult = reasonVerdict(caseId);
+  const verdictResult = reasonVerdict(caseId, actor);
   if (!verdictResult.ok) return err(verdictResult.error);
 
   // 死锁 → 升级监管局
@@ -347,7 +408,7 @@ export function executeFullArbitration(params: {
   }
 
   // Step 4: 律师函挂起
-  issueSuspension(caseId);
+  issueSuspension(caseId, actor);
 
   // Step 5: 现场恢复
   const restoreResult = createRestorationPlan(caseId, {
@@ -359,7 +420,7 @@ export function executeFullArbitration(params: {
   }
 
   // Step 6: 知识沉淀
-  consolidateKnowledge(caseId);
+  consolidateKnowledge(caseId, actor);
 
   return ok(cases.get(caseId)!);
 }
@@ -386,7 +447,9 @@ export function getAllCases(): ArbitrationCase[] {
 
 export function resetTribunal(): void {
   cases.clear();
-  restorationPlans.clear();
   suspendHistory.clear();
   caseCounter = 0;
+  // FE-062：同域收敛——胶囊/恢复状态一并重置（供测试隔离）
+  resetCapsuleAssembler();
+  resetRestorationManager();
 }

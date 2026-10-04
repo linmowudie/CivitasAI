@@ -1,11 +1,15 @@
 /**
  * @module Regulation/broadcastChannel
  * @description
- * 广播通道——Docs/06 §1.4。
+ * 广播通道——Docs/Agent/06 §1.4。
  * 管理全局广播消息：规则更新 / 紧急警报 / 系统通知 / 仲裁死锁。
  */
 
 import { EventType } from '../EventBus/eventTypes.js';
+import { logger } from '../../Infra/Logging/logger.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
+import { write as writeWorkspace } from '../SharedMemory/globalWorkspace.js';
+
 import { createEvent, publish } from '../EventBus/eventBus.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
@@ -49,7 +53,12 @@ export function broadcast(params: {
   targetRole?: string;
   requiresAck?: boolean;
   ackDeadlineMs?: number;
+  /** 发布者角色（2026-10-04）：广播属**治理动作**，必须 L0 / user */
+  actorRole: string;
 }): Result<BroadcastMessage> {
+  const guard = requireGovernanceRole(params.actorRole, '治理广播');
+  if (!guard.ok) return err(guard.error);
+
   const now = Date.now();
   const msg: BroadcastMessage = {
     broadcastId: `broadcast-${++broadcastCounter}`,
@@ -66,6 +75,33 @@ export function broadcast(params: {
     publishedBy: 'regulatory_authority',
     acks: new Map(),
   };
+
+  // ★ 治理广播 = 写入**共享记忆**（2026-10-04，按原始设计：广播是所有 Agent 可见的记忆条目）。
+  //   globalWorkspace.write() 内部已过 writeGuard（红线 key / 乐观锁），故广播天然受记忆治理约束。
+  //   借鉴 MongoTerminalAgent 监管理念：**该写入失败不阻断广播主流程**（监管失效不阻断），但必须留痕。
+  try {
+    const memWrite = writeWorkspace({
+      key: 'regulation.broadcast.' + msg.type + '.' + msg.broadcastId,
+      content: msg.title + ' :: ' + msg.content,
+      contentType: 'decision',
+      assertion: 'observed',
+      traceId: 'governance:' + params.actorRole,
+      agentId: 'governance:' + params.actorRole,
+    });
+    if (!memWrite.ok) {
+      logger.warn('治理广播写入共享记忆失败（广播继续，记忆缺失）', {
+        source: 'Regulation/broadcastChannel',
+        broadcastId: msg.broadcastId,
+        error: memWrite.error,
+      });
+    }
+  } catch (e) {
+    logger.warn('治理广播写入共享记忆异常（广播继续）', {
+      source: 'Regulation/broadcastChannel',
+      broadcastId: msg.broadcastId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 
   messages.set(msg.broadcastId, msg);
 

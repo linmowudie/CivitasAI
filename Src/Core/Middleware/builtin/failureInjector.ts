@@ -1,7 +1,7 @@
 /**
  * @module Middleware/builtin/failureInjector
  * @description
- * 故障注入中间件——Docs/12 循环控制（测试/调试用）。
+ * 故障注入中间件——Docs/Agent/11 循环控制（测试/调试用）。
  * 可按配置注入特定步骤的故障。
  * 挂载点：wrapToolCall（priority=100）。
  */

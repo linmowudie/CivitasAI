@@ -12,7 +12,7 @@ export { getRetryDecision, delay, classifyNetworkError } from './Provider/retryP
 export type { RetryDecision } from './Provider/retryPolicy.js';
 
 // Router
-export { registerProvider, setRoutingConfig, getRoutingConfig, resolveModel, getProviders, getRegisteredModels, getFallbackProviders, resetRouter } from './Router/modelRouter.js';
+export { registerProvider, unregisterProvider, setRoutingConfig, getRoutingConfig, resolveModel, getProviders, getRegisteredModels, getFallbackProviders, resetRouter } from './Router/modelRouter.js';
 export type { RoutingConfig, QualifiedModelName } from './Router/modelRouter.js';
 
 // Slm (re-export)

@@ -1,7 +1,7 @@
 /**
  * @module EventBus/eventBus
  * @description
- * 内存事件总线——Docs/07 §4.2。
+ * 内存事件总线——Docs/Agent/07 §4.2。
  * 发布-订阅模式，异步通信，事件溯源。
  * 消费者幂等（同一 eventId 重复发布只处理一次）。
  */

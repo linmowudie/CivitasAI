@@ -5,7 +5,7 @@
 
 ## 文件清单
 
-> 表中"L0/L2"为**设计分级**（Docs/11 §1.3）；运行期热重载尚未接线，见下文"热加载（现状）"。
+> 表中"L0/L2"为**设计分级**（Docs/Agent/10 §1.3）；运行期热重载尚未接线，见下文"热加载（现状）"。
 
 | 文件 | 内容 | 加载级别 |
 |------|------|---------|
@@ -27,8 +27,8 @@
 
 ## 热加载（现状：未生效）
 
-`main.ts` 第 ⑨ 步调用 `initConfigWatcher({ watchDir: 'Configs/', pollIntervalMs: 5000 })` **仅登记参数**；`Infra/Watcher/configWatcher.ts` 的扫描逻辑为注释桩，`startWatching` / `onConfigChange` 无任何调用者——**当前不存在真正的运行期热重载**，所有配置改动均需重启生效（2026-09-22 与 Docs/11 同步校准）。L0/L2 分级与 `mutationLevels.ts` 判定函数亦未接线（见 Docs/11 §1.3 校准注记）。
+`main.ts` 第 ⑨ 步调用 `initConfigWatcher({ watchDir: 'Configs/', pollIntervalMs: 5000 })` **仅登记参数**；`Infra/Watcher/configWatcher.ts` 的扫描逻辑为注释桩，`startWatching` / `onConfigChange` 无任何调用者——**当前不存在真正的运行期热重载**，所有配置改动均需重启生效（2026-09-22 与 Docs/Agent/10 同步校准）。L0/L2 分级与 `mutationLevels.ts` 判定函数亦未接线（见 Docs/Agent/10 §1.3 校准注记）。
 
 另一已知问题：`configLoader` 在三层合并后会把 11 个功能 JSON 无条件覆盖到 merged，`local.json` 对同名键的覆盖实际会被吃掉；且多数功能键（约 51%）在 `Src/` 中无消费者，属"登记未接线"参数。
 
-详细语义见 [Docs/11-配置体系与安全](../Docs/11-配置体系与安全/配置体系与安全设计.md) 与 [Docs/04-使用指南/configuration.md](../Docs/04-使用指南/configuration.md)。
+详细语义见 [Docs/Agent/10-配置体系与安全](../Docs/Agent/10-配置体系与安全/配置体系与安全设计.md) 与 [Docs/Server/02-使用指南/configuration.md](../Docs/Server/02-使用指南/configuration.md)。

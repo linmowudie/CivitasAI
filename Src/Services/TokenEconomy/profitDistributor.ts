@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/profitDistributor
  * @description
- * 收益分配器——Docs/04 §3.3。
+ * 收益分配器——Docs/Agent/04 §3.3。
  * Consortium 模式下按三维贡献度自动分润：
  * 质量分(0.5) + 数量分(0.3) + 效率分(0.2)。
  */

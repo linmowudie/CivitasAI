@@ -1,11 +1,11 @@
 /**
  * @module TokenEconomy/types
  * @description
- * Token 经济系统公共类型——Docs/04 §2。
+ * Token 经济系统公共类型——Docs/Agent/04 §2。
  * 钱包、交易、消耗记录、税率等核心数据结构。
  */
 
-// ── TransactionType（Docs/04 §2.2 · 11 成员）───────────────────────
+// ── TransactionType（Docs/Agent/04 §2.2 · 11 成员）───────────────────────
 
 export type TransactionType =
   | 'LLM_CONSUMPTION'
@@ -24,7 +24,7 @@ export type TransactionType =
 
 export type WalletStatus = 'active' | 'frozen' | 'closed';
 
-// ── TokenWallet（Docs/04 §2.1）─────────────────────────────────────
+// ── TokenWallet（Docs/Agent/04 §2.1）─────────────────────────────────────
 
 export interface TokenWallet {
   walletId: string;
@@ -39,7 +39,7 @@ export interface TokenWallet {
   updatedAt: number;
 }
 
-// ── TokenTransaction（Docs/04 §2.2）────────────────────────────────
+// ── TokenTransaction（Docs/Agent/04 §2.2）────────────────────────────────
 
 export interface TokenTransaction {
   transactionId: string;
@@ -54,7 +54,7 @@ export interface TokenTransaction {
   createdAt: number;
 }
 
-// ── ConsumptionRecord（Docs/04 §2.3）───────────────────────────────
+// ── ConsumptionRecord（Docs/Agent/04 §2.3）───────────────────────────────
 
 export interface ConsumptionRecord {
   recordId: string;
@@ -74,7 +74,7 @@ export interface ConsumptionRecord {
   completedAt: number;
 }
 
-// ── TaxConfig（Docs/04 §4.1）───────────────────────────────────────
+// ── TaxConfig（Docs/Agent/04 §4.1）───────────────────────────────────────
 
 export interface TaxConfig {
   baseRate: number;
@@ -87,7 +87,7 @@ export interface TaxConfig {
   loadThresholdAgents: number;
 }
 
-// ── ModelPricing（Docs/04 §6.1）────────────────────────────────────
+// ── ModelPricing（Docs/Agent/04 §6.1）────────────────────────────────────
 
 export interface ModelPricing {
   provider: string;
@@ -97,7 +97,7 @@ export interface ModelPricing {
   contextWindow: number;
 }
 
-// ── EfficiencyMetrics（Docs/04 §5.2.2）─────────────────────────────
+// ── EfficiencyMetrics（Docs/Agent/04 §5.2.2）─────────────────────────────
 
 export interface EfficiencyMetrics {
   iteration: number;
@@ -107,7 +107,7 @@ export interface EfficiencyMetrics {
   repeatRatio: number;
 }
 
-// ── ProfitSharingConfig（Docs/04 §3.3）─────────────────────────────
+// ── ProfitSharingConfig（Docs/Agent/04 §3.3）─────────────────────────────
 
 export interface ProfitSharingConfig {
   qualityWeight: number;

@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/middleware/fingerprintDetectorControl
  * @description
- * Loop 控制级指纹检测中间件——Docs/12 §5。
+ * Loop 控制级指纹检测中间件——Docs/Agent/11 §5。
  * 与 Core/Middleware/builtin/fingerprintDetector.ts（S5 桩）互补：
  * 本模块基于 LoopState.actionFingerprints 做完整四规则检测。
  *

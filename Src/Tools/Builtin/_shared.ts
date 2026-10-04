@@ -1,7 +1,7 @@
 /**
  * 内置工具共享的输出 Schema 模板
  *
- * 所有工具的 outputSchema 必须包含 status + recoverable（Docs/11 §6.2）。
+ * 所有工具的 outputSchema 必须包含 status + recoverable（Docs/Agent/10 §6.2）。
  */
 
 import type { JsonSchema } from '../Traits/toolSpec.js';

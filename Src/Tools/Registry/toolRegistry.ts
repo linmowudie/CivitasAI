@@ -1,5 +1,5 @@
 /**
- * 工具注册表（Docs/11 §6.1 / Docs/02 §7.1 ⑫）
+ * 工具注册表（Docs/Agent/10 §6.1 / Docs/Agent/02 §7.1 ⑫）
  *
  * 职责：
  * - 扫描 Builtin/ + Custom/ 注册所有工具

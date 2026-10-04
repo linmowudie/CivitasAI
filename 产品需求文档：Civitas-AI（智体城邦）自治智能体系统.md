@@ -1,6 +1,8 @@
 这份需求文档将你的设想转化为了一份专业的产品需求文档（PRD）框架。我们将该系统命名为
 **Civitas-AI（智体城邦）**，核心定位为"社会驱动型自治智能体系统"。
 
+> **📌 本文档定位**：项目**灵感来源/需求框架文件**（早期 PRD，含 AI 生成内容），非现状契约。其中"6 种路由模式"等表述与现状代码不同：后端 `RoutingMode` 实际为 6 成员（含 DIRECT、无 AUDIT），前端 `WorkingMode` 为 7 值（含 AUDIT）；实际可路由仅 DIRECT/DELEGATION/CONSORTIUM/ASSEMBLY_LINE 4 种。角色、权限、架构的现状准据见根目录 `README.md` 与 `Docs/`。
+
 # 产品需求文档：Civitas-AI（智体城邦）自治智能体系统
 
 ## 1. 产品概述

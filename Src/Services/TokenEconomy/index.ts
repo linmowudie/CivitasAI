@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/index
  * @description
- * Token 经济系统统一导出——Docs/04。
+ * Token 经济系统统一导出——Docs/Agent/04。
  */
 
 // ── 类型 ────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
 
 import type { Result } from '../../Infra/types.js';
 import { ok } from '../../Infra/types.js';
+import { getActiveOwner } from '../AccountScope/activeAccount.js';
 
 // ── 类型 ──────────────────────────────────────────────
 
@@ -54,8 +55,9 @@ export function initToolResultCache(userConfig?: Partial<ToolResultCacheConfig>)
 
 /** 生成缓存�?*/
 export function makeCacheKey(toolName: string, input: Record<string, unknown>): string {
+  // 含当前属主前缀（数据隔离：切换账号后同参数不命中他人缓存）
   const inputHash = simpleHash(JSON.stringify(input));
-  return `${toolName}:${inputHash}`;
+  return `${getActiveOwner()}:${toolName}:${inputHash}`;
 }
 
 /** 缓存工具结果 */

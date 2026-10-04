@@ -15,7 +15,7 @@ function WalletLiquid({ initial, balance }: { initial: number; balance: number }
   const used = initial - balance;
   const pct = used / initial; // 已消耗占比
   const fillPct = balance / initial; // 液面剩余
-  const color = pct > 0.3 ? '#ef4444' : pct > 0.15 ? '#f59e0b' : '#22d3ee';
+  const color = pct > 0.3 ? '#ef4444' : pct > 0.15 ? '#f59e0b' : '#10b981';
   const height = 60;
   const liquidHeight = height * fillPct;
   return (

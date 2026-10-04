@@ -1,5 +1,5 @@
 /**
- * useAlerts — 五条前端告警规则（Docs/09 §6.3）。
+ * useAlerts — 五条前端告警规则（Docs/Client/01 §6.3）。
  *
  * 规则：
  * 1. Token 异常：单 Agent 消耗 > 平均 3 倍

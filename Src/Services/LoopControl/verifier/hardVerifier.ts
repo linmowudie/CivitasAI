@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/verifier/hardVerifier
  * @description
- * L1 硬验证器——Docs/12 §3.1。
+ * L1 硬验证器——Docs/Agent/11 §3.1。
  * 确定性验证：编译 / 单测 / Schema / 数值阈值 / HTTP 状态码 / 文件存在。
  * Deterministic-First 原则（P1）：优先使用硬约束。
  */

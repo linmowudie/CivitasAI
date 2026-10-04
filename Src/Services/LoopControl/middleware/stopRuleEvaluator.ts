@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/middleware/stopRuleEvaluator
  * @description
- * 退出规则评估中间件——Docs/12 §2.2。
+ * 退出规则评估中间件——Docs/Agent/11 §2.2。
  * 每轮迭代末尾评估五类退出条件。
  *
  * 挂载点：afterAgent（Agent 一轮执行结束后）。

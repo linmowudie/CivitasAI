@@ -1,7 +1,7 @@
 /**
  * @module Supervision/postSupervision
  * @description
- * Post-supervision - Docs/02 step 9.
+ * Post-supervision - Docs/Agent/02 step 9.
  * Result archival, anomaly scan, token deduction, loop exit decisions.
  */
 
@@ -61,6 +61,8 @@ export function runPostSupervision(
     exitDecision,
     tokenDeduction: { consumed: input.tokensConsumed, remaining },
     anomalies,
-    archived: true,
+    // FE-070：此前为写死 `true` 的假标记（“结果归档”实际未发生）——现如实返回 false：
+    // 真实归档由事件持久化（ai_events）、checkpoint 与会话消息落库承担，本模块不重复归档。
+    archived: false,
   });
 }

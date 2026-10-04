@@ -1,0 +1,46 @@
+/* Core.CoTFolder 样式——思维链折叠区 */
+
+.wrapper {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-800, #1e1e2e) 60%, transparent);
+  border: 1px solid var(--color-surface-700, #313244);
+  overflow: hidden;
+}
+
+.toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--color-text-muted, #888);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle:hover {
+  background: color-mix(in srgb, var(--color-surface-700, #313244) 40%, transparent);
+}
+
+.iconThinking {
+  color: var(--color-brand-400, #89b4fa);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.body {
+  padding: 6px 12px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-text-muted, #888);
+  white-space: pre-wrap;
+  border-top: 1px solid color-mix(in srgb, var(--color-surface-700, #313244) 60%, transparent);
+}

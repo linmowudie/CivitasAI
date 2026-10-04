@@ -1,5 +1,5 @@
 /**
- * Idempotency Store — 幂等缓存（Docs/13 §7.3 / Gate G2 DUR-005）
+ * Idempotency Store — 幂等缓存（Docs/Agent/12 §7.3 / Gate G2 DUR-005）
  *
  * 职责：
  * - 缓存已完成的副作用结果，相同幂等键二次调用直接返回首次结果
@@ -45,7 +45,7 @@ export function initIdempotencyStore(config: { cacheTtlHour?: number }): void {
 }
 
 /**
- * 生成幂等键（Docs/13 §7.2）
+ * 生成幂等键（Docs/Agent/12 §7.2）
  *
  * idempotencyKey = SHA-256(toolName + canonicalJson(args) + loopId)
  */

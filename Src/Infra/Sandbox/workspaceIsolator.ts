@@ -1,7 +1,7 @@
 /**
  * @module Sandbox/workspaceIsolator
  * @description
- * Agent 工作区隔离器——Docs/03 §7A.1。
+ * Agent 工作区隔离器——Docs/Agent/03 §7A.1。
  * 为每个 Agent 创建隔离目录：Data/Workspace/{session}/{taskId}/{agentId}/。
  * 五级隔离策略：只读无隔离 / 目录隔离 / Git worktree / 乐观锁 / 沙箱草稿。
  */
@@ -12,7 +12,7 @@ import { mkdirSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
-// ── 隔离级别（Docs/03 §7A.1 表格）──────────────────────────────────
+// ── 隔离级别（Docs/Agent/03 §7A.1 表格）──────────────────────────────────
 
 export type IsolationLevel =
   | 'none'           // 只读，无隔离

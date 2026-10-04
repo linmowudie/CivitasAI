@@ -1,7 +1,7 @@
 /**
  * @module TokenEconomy/taxCollector
  * @description
- * 税收征收器——Docs/04 §4。
+ * 税收征收器——Docs/Agent/04 §4。
  * 支持固定税率 + 动态税率调节（高负载/低负载）。
  * 税收用途：60% 系统运转基金 / 30% 风险准备金 / 10% 销毁。
  */
@@ -48,7 +48,7 @@ export function calculateTax(amount: number): Result<number> {
   return ok(Math.ceil(amount * currentRate));
 }
 
-// ── 动态税率调节（Docs/04 §4.2）─────────────────────────────────────
+// ── 动态税率调节（Docs/Agent/04 §4.2）─────────────────────────────────────
 
 /**
  * 根据系统负载调整税率
@@ -82,7 +82,7 @@ export function adjustTaxRate(activeAgentCount: number, now: number = Date.now()
   return ok({ oldRate, newRate: currentRate });
 }
 
-// ── 税收分配（Docs/04 §4.3）─────────────────────────────────────────
+// ── 税收分配（Docs/Agent/04 §4.3）─────────────────────────────────────────
 
 /**
  * 分配税收：60% 系统运转基金 / 30% 风险准备金 / 10% 销毁
@@ -110,6 +110,37 @@ export function getTotalTaxCollected(): number {
 
 export function getTotalDestroyed(): number {
   return totalDestroyed;
+}
+
+// ── 周期自动调节（FE-065：此前 adjustTaxRate 无生产调用方）────────────
+
+let adjustmentTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * 启动税率周期评估（内部仍有 adjustmentIntervalSec 节流，定时器仅负责“心跳”）。
+ * @param getActiveAgentCount 活跃 Agent 数提供函数（ready+running）
+ * @param intervalMs 心跳间隔（缺省 60s）
+ */
+export function startTaxAdjustment(
+  getActiveAgentCount: () => number,
+  intervalMs = 60_000,
+): void {
+  stopTaxAdjustment();
+  adjustmentTimer = setInterval(() => {
+    try {
+      adjustTaxRate(getActiveAgentCount());
+    } catch {
+      /* 周期任务容错：税率调整失败不影响主进程 */
+    }
+  }, intervalMs);
+}
+
+/** 停止税率周期评估（shutdown 对称调用） */
+export function stopTaxAdjustment(): void {
+  if (adjustmentTimer) {
+    clearInterval(adjustmentTimer);
+    adjustmentTimer = null;
+  }
 }
 
 export function resetTaxCollector(): void {

@@ -1,13 +1,13 @@
 /**
  * @module Decision/types
  * @description
- * 多 Agent 编排引擎公共类型——Docs/03 + Docs/14 §S10。
+ * 多 Agent 编排引擎公共类型——Docs/Agent/03 + Docs/Agent/13 §S10。
  * 复杂度评估、路由决策、任务拆解、编排器共享的数据结构。
  */
 
 import type { AgentRole } from '../AgentRuntime/types.js';
 
-// ── 路由模式（Docs/03 §3.3 · 6 种）──────────────────────────────────
+// ── 路由模式（Docs/Agent/03 §3.3 · 6 种）──────────────────────────────────
 
 export type RoutingMode =
   | 'DIRECT'          // Director 直接执行
@@ -17,7 +17,7 @@ export type RoutingMode =
   | 'LITIGATION'      // 司法仲裁（S12）
   | 'REGULATION';     // 行政协调（S12）
 
-// ── 复杂度评估报告（Docs/03 §3.2）───────────────────────────────────
+// ── 复杂度评估报告（Docs/Agent/03 §3.2）───────────────────────────────────
 
 export interface ComplexityReport {
   // 基础评估
@@ -40,7 +40,7 @@ export interface ComplexityReport {
   confidenceScore: number;           // 置信度（0.0-1.0）
 }
 
-// ── 路由规则配置（Docs/03 §3.3 · routingRules.json）─────────────────
+// ── 路由规则配置（Docs/Agent/03 §3.3 · routingRules.json）─────────────────
 
 export interface RoutingRulesConfig {
   consortiumTokenThreshold: number;    // 默认 50000
@@ -60,7 +60,7 @@ export interface RouteDecisionResult {
   reason: string;
 }
 
-// ── 任务分配书（Docs/03 §4.2）───────────────────────────────────────
+// ── 任务分配书（Docs/Agent/03 §4.2）───────────────────────────────────────
 
 export interface TaskAssignment {
   assignmentId: string;
@@ -152,11 +152,16 @@ export interface AggregatedResult {
   aggregatedAt: number;
 }
 
-// ── Agent 招募配置（Docs/03 §5.2）───────────────────────────────────
+// ── Agent 招募配置（Docs/Agent/03 §5.2）───────────────────────────────────
 
 export interface RecruitmentRequest {
   role: AgentRole;
   domain: string;
+  /**
+   * 该 Agent 要执行的任务提示词（2026-10-03 新增）。
+   * 落库到 `agents.task_prompt`，供后续调度派发与审计追溯（此前招募不携带任务，子 Agent 无从执行）。
+   */
+  taskPrompt?: string;
   requiredTools: string[];
   tokenBudget: number;
   maxIterations: number;
@@ -165,7 +170,7 @@ export interface RecruitmentRequest {
   parentAgentId: string;
 }
 
-// ── 开除终止理由（Docs/03 §7.6）────────────────────────────────────
+// ── 开除终止理由（Docs/Agent/03 §7.6）────────────────────────────────────
 
 export interface TerminationRationale {
   agentId: string;

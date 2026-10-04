@@ -29,7 +29,7 @@ import {
 import {
   assignTask, submitForReview, isTaskApproved, resetAgentRuntime,
 } from '../../Src/Core/AgentRuntime/agentRuntime.js';
-import { performReview, resetReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
+import { performReview, resetReviewer, configureReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
 
 // ── 结果聚合 ────────────────────────────────────────
 import { aggregateResults, resetAggregator } from '../../Src/Core/Decision/Orchestrator/resultAggregator.js';
@@ -367,13 +367,15 @@ describe('E2E: CONSORTIUM 模式 — 高难攻坚', () => {
     debit(p1.value.agentId, r1.value.usage.total_tokens, 'trace-cons-llm');
     debit(p2.value.agentId, r2.value.usage.total_tokens, 'trace-cons-llm');
 
-    // 各自提交审核
-    submitForReview({ taskId: 'task-cons-p1', workerAgentId: p1.value.agentId, payload: { output: r1.value.content } });
-    submitForReview({ taskId: 'task-cons-p2', workerAgentId: p2.value.agentId, payload: { output: r2.value.content } });
+    // 各自提交审核（FE-056：评审按 summary/artifacts 契约读取成果）
+    submitForReview({ taskId: 'task-cons-p1', workerAgentId: p1.value.agentId, payload: { summary: r1.value.content.slice(0, 800), output: r1.value.content } });
+    submitForReview({ taskId: 'task-cons-p2', workerAgentId: p2.value.agentId, payload: { summary: r2.value.content.slice(0, 800), output: r2.value.content } });
 
-    // Reviewer 审核
-    performReview({ taskId: 'task-cons-p1', reviewerAgentId: rv.value.agentId });
-    performReview({ taskId: 'task-cons-p2', reviewerAgentId: rv.value.agentId });
+    // Reviewer 审核（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定——
+    //   本测试 worker model 为裸名 'glm-5.1'，自动候选会匹配到全限定名而误触发真实 Judge）
+    configureReviewer({ judgeModel: '' });
+    await performReview({ taskId: 'task-cons-p1', reviewerAgentId: rv.value.agentId });
+    await performReview({ taskId: 'task-cons-p2', reviewerAgentId: rv.value.agentId });
 
     expect(isTaskApproved('task-cons-p1')).toBe(true);
     expect(isTaskApproved('task-cons-p2')).toBe(true);

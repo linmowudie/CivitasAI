@@ -1,5 +1,5 @@
 /**
- * Checkpoint 类型定义（Docs/13 §5.2 / Docs/10 §8.2 #2）
+ * Checkpoint 类型定义（Docs/Agent/12 §5.2 / Docs/Agent/09 §8.2 #2）
  *
  * 每轮 iteration 末尾的快照，用于崩溃恢复。
  */
@@ -14,7 +14,7 @@ export interface ArtifactEntry {
   readonly sizeBytes: number;
 }
 
-/** LoopState 快照（简化版，完整定义在 Docs/12 §4.2） */
+/** LoopState 快照（简化版，完整定义在 Docs/Agent/11 §4.2） */
 export interface LoopStateSnapshot {
   readonly iteration: number;
   readonly phase: string;
@@ -25,7 +25,7 @@ export interface LoopStateSnapshot {
 
 // ===== 核心类型 =====
 
-/** 检查点记录（Docs/13 §5.2） */
+/** 检查点记录（Docs/Agent/12 §5.2） */
 export interface Checkpoint {
   /** = {loopId}#{iteration}#{ts} */
   readonly checkpointId: string;

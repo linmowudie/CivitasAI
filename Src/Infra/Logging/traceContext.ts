@@ -1,5 +1,5 @@
 /**
- * Trace 上下文管理（Docs/02 §3.2 / Docs/09 §6.1 / Docs/15 §6）
+ * Trace 上下文管理（Docs/Agent/02 §3.2 / Docs/Client/01 §6.1 / Docs/Agent/14 §6）
  *
  * 职责：
  * - 基于 AsyncLocalStorage 实现异步链路追踪上下文传递
@@ -9,8 +9,8 @@
  * - operation_id：具体操作（{timestamp_ms}-{4位hex}）
  *
  * 设计约束：
- * - trace_id 跨 Agent 不可变（Docs/01 §ID 语义）
- * - 禁止用 trace_id 做用户维度聚合（Docs/15 §6）
+ * - trace_id 跨 Agent 不可变（Docs/Agent/01 §ID 语义）
+ * - 禁止用 trace_id 做用户维度聚合（Docs/Agent/14 §6）
  * - 禁止混用 session_key / trace_id / operation_id
  */
 
@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 
 // ===== 类型定义 =====
 
-/** Span 类型（Docs/09 §6.1） */
+/** Span 类型（Docs/Client/01 §6.1） */
 export type SpanType = 'llm_call' | 'tool_exec' | 'agent_run' | 'middleware' | 'custom';
 
 /** Trace 上下文结构 */
@@ -184,7 +184,7 @@ function generateSpanId(): string {
   return randomUUID().replace(/-/g, '').slice(0, 8);
 }
 
-/** 生成 operation_id：{timestamp_ms}-{4位hex}（Docs/15 §6） */
+/** 生成 operation_id：{timestamp_ms}-{4位hex}（Docs/Agent/14 §6） */
 function generateOperationId(): string {
   const ts = Date.now().toString(36);
   const hex = randomUUID().replace(/-/g, '').slice(0, 4);

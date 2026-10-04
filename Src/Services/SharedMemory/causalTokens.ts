@@ -1,7 +1,7 @@
 /**
  * @module SharedMemory/causalTokens
  * @description
- * 因果一致性令牌——Docs/07 §8.2。
+ * 因果一致性令牌——Docs/Agent/07 §8.2。
  * 记录 Agent 写入时的 happens-before 关系，用于仲裁时重建因果链。
  */
 

@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/middleware/goalReanchorControl
  * @description
- * Loop 控制级 GoalReanchor 中间件——Docs/12 §4.3。
+ * Loop 控制级 GoalReanchor 中间件——Docs/Agent/11 §4.3。
  * 与 Core/Middleware/builtin/goalReanchor.ts（S5 桩）互补：
  * - S5 桩：基于 MiddlewareContext.data 标记的简单重锚
  * - 本模块：基于 LoopState 的完整重锚（含失败策略注入）

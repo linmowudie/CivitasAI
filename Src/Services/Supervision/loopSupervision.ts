@@ -1,7 +1,7 @@
 /**
  * @module Supervision/loopSupervision
  * @description
- * 循环监管——Docs/02 §3 步骤�?懒监听之一�?
+ * 循环监管——Docs/Agent/02 §3 步骤�?懒监听之一�?
  * 检测循环异常：无进展、死循环、互相等待死锁（T6）�?
  */
 

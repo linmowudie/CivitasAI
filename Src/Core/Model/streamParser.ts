@@ -1,5 +1,5 @@
 /**
- * 流式 SSE 解析器（Docs/02 §10.1 / §10.3）
+ * 流式 SSE 解析器（Docs/Agent/02 §10.1 / §10.3）
  *
  * 职责：
  * - 从 ReadableStream 解析 SSE data: 行
@@ -45,7 +45,7 @@ const DEFAULT_INTER_CHUNK_TIMEOUT = 15_000;
 /**
  * 从 ReadableStream 解析 SSE 流，带超时控制
  *
- * 超时策略（Docs/02 §10.1）：
+ * 超时策略（Docs/Agent/02 §10.1）：
  * - 首字节：从开始读取到第一个有效 data 行，超过 firstByteTimeoutMs 则中止
  * - 包间隔：两个相邻 data 行之间，超过 interChunkTimeoutMs 则中止
  */

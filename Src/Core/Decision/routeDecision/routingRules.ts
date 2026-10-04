@@ -1,7 +1,7 @@
 /**
  * @module Decision/RouteDecision/routingRules
  * @description
- * 路由规则配置——Docs/03 §3.3。
+ * 路由规则配置——Docs/Agent/03 §3.3。
  * 从 routingRules.json 加载，提供默认值。
  */
 

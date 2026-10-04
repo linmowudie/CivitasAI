@@ -11,6 +11,7 @@ import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
+import { resolveWithinWorkspace } from '../../../Infra/Security/workspaceGuard.js';
 
 export const grepTool: ToolDefinition = {
   spec: {
@@ -34,19 +35,29 @@ export const grepTool: ToolDefinition = {
     idempotencyKeyFields: ['pattern', 'path'],
     reversibility: 'REVERSIBLE',
     sideEffectScope: 'none',
-    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer'],
+    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer', 'regulator'],
     sandboxMode: 'none',
     timeoutMs: 15_000,
   },
 
   async execute(input, context) {
     const pattern = input['pattern'] as string;
-    const searchPath = input['path'] as string;
+    const searchPathRaw = input['path'] as string;
     const filePattern = input['filePattern'] as string | undefined;
     const maxResults = (input['maxResults'] as number) ?? 50;
 
-    if (!pattern || !searchPath) {
+    if (!pattern || !searchPathRaw) {
       return toolError(context.operationId, 'INVALID_INPUT', '缺少 pattern 或 path 参数', false);
+    }
+
+    // 任务工作目录约束（未绑定会话时退化为全局 pathGuard）
+    let searchPath = searchPathRaw;
+    if (context.workDir) {
+      const within = resolveWithinWorkspace(searchPathRaw, context.workDir);
+      if (!within.ok) {
+        return toolError(context.operationId, 'PATH_DENIED', within.error, false);
+      }
+      searchPath = within.value;
     }
 
     const check = checkPath(searchPath, 'list');

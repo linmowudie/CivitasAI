@@ -9,13 +9,18 @@
  * - reset(key)      = 删除 override 并把 effective 钉回 default
  * - export()        = 按 source 重建嵌套 JSON，供用户手动落盘
  *
- * 不写后端：避免直接改受保护的 Configs/*.json（security L0 / 启动 fail-closed 校验）。
+ * 热重载：setValue 按字段 reloadStrategy 分级入队 hotReloadStore，
+ *         到达触发时机时由 hotReloadStore 回调 applyEffective 使运行时真正生效。
+ *
+ * 云端同步：overrides 通过 syncService.pushAll 上行，pullAll 下行走 applyFromCloud。
  */
 import { create } from 'zustand';
 import { apiGet } from '@/services/api';
 import { ALL_FIELDS, FIELDS_BY_SOURCE, CONFIG_GROUPS } from '@/config/configSchema';
-import { getPath, setPath, type FieldDef } from '@/config/schemaTypes';
+import { getPath, setPath, type FieldDef, type ReloadStrategy } from '@/config/schemaTypes';
 import type { FieldValue } from '@/components/Settings/fields';
+import { useHotReloadStore } from './hotReloadStore';
+import { ipcGetConfig } from '@/services/ipcApi';
 
 const LS_KEY = 'civitas.config.overrides.v1';
 
@@ -45,6 +50,8 @@ interface ConfigState {
   loading: boolean;
   loadedSources: Record<string, boolean>;
   loadedAt: number | null;
+  /** 本地有未同步到云端的配置变更 */
+  dirty: boolean;
   hydrate: () => Promise<void>;
   effective: (key: string) => FieldValue;
   isModified: (key: string) => boolean;
@@ -54,6 +61,14 @@ interface ConfigState {
   resetGroup: (groupId: string) => void;
   resetAll: () => void;
   exportMerged: () => Record<string, unknown>;
+  /** 运行时生效：由 hotReloadStore flush 时调用，使变更真正影响运行时 */
+  applyEffective: (key: string, v: FieldValue) => void;
+  /** 从云端拉取的配置覆盖本地（服务端权威） */
+  applyFromCloud: (cloudOverrides: Record<string, FieldValue>) => void;
+  /** 返回当前所有非 DEFAULT_MARK 的 overrides，供 pushAll 同步使用 */
+  getOverridesForSync: () => Record<string, FieldValue>;
+  /** 标记已同步到云端 */
+  markSynced: () => void;
 }
 
 /** 把某 source 的加载值展开为 key→value */
@@ -72,6 +87,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loading: false,
   loadedSources: {},
   loadedAt: null,
+  dirty: false,
 
   hydrate: async () => {
     set({ loading: true });
@@ -79,9 +95,22 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     const merged: Record<string, FieldValue> = {};
     const flags: Record<string, boolean> = {};
     await Promise.all(sources.map(async s => {
-      const res = await apiGet<unknown>(`/api/configs/${s}.json`);
-      if (res.ok) {
-        Object.assign(merged, flattenSource(s, res.data));
+      // 优先 IPC 直连，降级 HTTP
+      let data: unknown = null;
+      try {
+        const ipcRes = await ipcGetConfig(`${s}.json`);
+        if (ipcRes.ok && ipcRes.data !== undefined) {
+          data = ipcRes.data;
+        } else {
+          const res = await apiGet<unknown>(`/api/configs/${s}.json`);
+          if (res.ok) data = res.data;
+        }
+      } catch {
+        const res = await apiGet<unknown>(`/api/configs/${s}.json`);
+        if (res.ok) data = res.data;
+      }
+      if (data !== null) {
+        Object.assign(merged, flattenSource(s, data));
         flags[s] = true;
       } else {
         flags[s] = false;
@@ -121,11 +150,20 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   setValue: (key, v) => {
+    const field = FIELD_MAP[key];
+    const strategy: ReloadStrategy = field?.reloadStrategy ?? 'afterReply';
+
+    // 所有级别都立即写入 overrides（持久化 + UI 立即反映）
     set(state => {
       const overrides = { ...state.overrides, [key]: v };
       persistOverrides(overrides);
-      return { overrides };
+      return { overrides, dirty: true };
     });
+
+    // 按策略入队热重载（immediate 不入队，已直接生效）
+    if (strategy !== 'immediate') {
+      useHotReloadStore.getState().scheduleReload(key, v, strategy, 'local');
+    }
   },
 
   resetField: (key) => {
@@ -170,6 +208,54 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       out[`${source}.json`] = json;
     }
     return out;
+  },
+
+  applyEffective: (key, v) => {
+    // flush 时调用：使变更真正影响运行时
+    // 目前 effective() 已返回最新值（overrides 已写入），
+    // 此方法保留为扩展点（未来可通知后端刷新参数等）
+    // 当前实现：确保 overrides 中有该值
+    set(state => {
+      if (state.overrides[key] === v) return {};
+      const overrides = { ...state.overrides, [key]: v };
+      persistOverrides(overrides);
+      return { overrides };
+    });
+  },
+
+  applyFromCloud: (cloudOverrides) => {
+    // 云端权威：覆盖本地 overrides
+    // 按各字段的 reloadStrategy 走热重载管线
+    set(state => {
+      const overrides = { ...state.overrides, ...cloudOverrides };
+      persistOverrides(overrides);
+      return { overrides, dirty: false }; // pull 后清除 dirty
+    });
+
+    // 按策略入队（不走 immediate，云端变更安全起见分级生效）
+    const hotReload = useHotReloadStore.getState();
+    for (const [key, value] of Object.entries(cloudOverrides)) {
+      const field = FIELD_MAP[key];
+      const strategy: ReloadStrategy = field?.reloadStrategy ?? 'afterReply';
+      if (strategy !== 'immediate') {
+        hotReload.scheduleReload(key, value, strategy, 'cloud');
+      }
+    }
+  },
+
+  getOverridesForSync: () => {
+    const { overrides } = get();
+    const result: Record<string, FieldValue> = {};
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value !== DEFAULT_MARK) {
+        result[key] = value;
+      }
+    }
+    return result;
+  },
+
+  markSynced: () => {
+    set({ dirty: false });
   },
 }));
 

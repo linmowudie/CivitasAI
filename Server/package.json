@@ -1,0 +1,38 @@
+{
+  "name": "@civitas/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Civitas-AI 账号与数据服务端（自托管）：账户登录、设置管理、个人数据统计、记忆存储与一键备份/恢复",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:status": "tsx scripts/migrate.ts --status",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "seed:dev": "tsx scripts/seedDevUser.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@node-rs/argon2": "^2.0.2",
+    "fastify": "^5.2.0",
+    "jose": "^5.9.6",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

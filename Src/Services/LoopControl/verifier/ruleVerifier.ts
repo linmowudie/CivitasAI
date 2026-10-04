@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/verifier/ruleVerifier
  * @description
- * L2 规则验证器——Docs/12 §3.1。
+ * L2 规则验证器——Docs/Agent/11 §3.1。
  * 规则/参考答案：清单覆盖 / 关键词 / 结构约束。
  */
 

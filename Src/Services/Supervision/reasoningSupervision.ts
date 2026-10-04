@@ -1,8 +1,8 @@
 /**
  * @module Supervision/reasoningSupervision
  * @description
- * 推理监管——Docs/02 §3 步骤�?懒监听之一�?
- * 监控模型推理质量，检测推理链异常（如重复、空推理）�?
+ * 推理监管——Docs/Agent/02 §3 步骤�?懒监听之一�?
+ * 监控模型推理质量，检测推理链异常（如重复、空推理）�?
  */
 
 import type { Result } from '../../Infra/types.js';
@@ -14,7 +14,7 @@ export interface ReasoningSupervisionResult {
   anomalyDetected: boolean;
   /** 异常类型 */
   anomalyType?: 'empty_reasoning' | 'repeated_reasoning' | 'reasoning_too_long';
-  /** 推理 token �?*/
+  /** 推理 token �?*/
   reasoningTokens: number;
 }
 
@@ -24,12 +24,12 @@ export function runReasoningSupervision(
   reasoningTokens: number,
   maxReasoningTokens: number = 10000,
 ): Result<ReasoningSupervisionResult> {
-  // 空推理检�?
+  // 空推理检�?
   if (!reasoningText.trim()) {
     return ok({ anomalyDetected: true, anomalyType: 'empty_reasoning', reasoningTokens });
   }
 
-  // 推理过长检�?
+  // 推理过长检�?
   if (reasoningTokens > maxReasoningTokens) {
     return ok({ anomalyDetected: true, anomalyType: 'reasoning_too_long', reasoningTokens });
   }

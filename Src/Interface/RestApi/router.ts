@@ -17,6 +17,13 @@ export interface ApiRequest {
   params: Record<string, string>;     // 路径参数
   query: Record<string, string>;      // 查询参数
   body: Record<string, unknown>;      // 请求体
+  /**
+   * 请求头（2026-10-04 新增）。
+   *
+   * 用途：治理身份验真（G-09 方案 B）需要读取 `Authorization: Bearer <token>`，
+   * 以便向服务端 `GET /v1/me` 查证真实 `userId`。
+   */
+  headers?: Record<string, string>;
 }
 
 export interface ApiResponse {

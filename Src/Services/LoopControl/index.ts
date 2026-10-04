@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/index
  * @description
- * Loop 控制系统统一导出——Docs/12。
+ * Loop 控制系统统一导出——Docs/Agent/11。
  * L1.5 → L2 分水岭。
  */
 
@@ -26,6 +26,7 @@ export type {
 // ── StopRules ───────────────────────────────────────────────────────
 export {
   evaluateStopRules, detectBudgetPhase, buildStopRuleSet, getEvaluationOrder,
+  setActiveStopRuleSet, getActiveStopRuleSet,
 } from './stopRules.js';
 export type {
   StopRuleSet, StopLimits, StopBudget, StopNoProgress,

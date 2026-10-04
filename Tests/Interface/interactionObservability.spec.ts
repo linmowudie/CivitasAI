@@ -8,8 +8,7 @@
  * - TokenApi（Token 总览 + 钱包）
  * - ApprovalApi（审批队列）
  * - LoopApi（事件日志 + 大屏概览）
- * - WsServer（WebSocket 客户端管理 + 推送）
- * - WsHandler（消息处理）
+ * - IpcBridge（IPC 事件转发 + 命令处理）
  * - WebServer（请求处理 + 日志）
  * - DedupMiddleware（5 道防风暴）
  * - Gate G13 综合验证
@@ -48,17 +47,8 @@ import {
   getEvents, getDashboardOverview, listArbitrationCases, registerLoopRoutes,
 } from '../../Src/Interface/RestApi/loopApi.js';
 
-// ── WsServer ────────────────────────────────────────
-import {
-  initWsServer, connectClient, disconnectClient, pushToClient,
-  broadcastToAll, consumeMessages, getConnectedClients, getClientCount,
-  resetWsServer,
-} from '../../Src/Interface/WebSocket/wsServer.js';
-
-// ── WsHandler ───────────────────────────────────────
-import {
-  handleClientMessage,
-} from '../../Src/Interface/WebSocket/wsHandler.js';
+// ── IpcBridge（Phase 0：替代 WsServer + WsHandler）──
+// IPC 桥接测试已迁移至 Tests/Interface/ipcBridge.spec.ts
 
 // ── WebServer ───────────────────────────────────────
 import {
@@ -77,8 +67,7 @@ import {
 } from '../../Src/Interface/InputDeduplication/dedupMiddleware.js';
 
 // ── EventBus ────────────────────────────────────────
-import { resetEventBus, getEventLog } from '../../Src/Services/EventBus/eventBus.js';
-import { createEvent, publish } from '../../Src/Services/EventBus/eventBus.js';
+import { resetEventBus, getEventLog, subscribe, createEvent, publish } from '../../Src/Services/EventBus/eventBus.js';
 import { EventType } from '../../Src/Services/EventBus/eventTypes.js';
 
 // ═══════════════════════════════════════════════════════
@@ -256,109 +245,11 @@ describe('LoopApi 事件与大屏', () => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 7. WsServer WebSocket 服务端
+// 7. IpcBridge（Phase 0：WebSocket 已替换为 IPC）
 // ═══════════════════════════════════════════════════════
 
-describe('WsServer WebSocket 服务端', () => {
-  beforeEach(() => {
-    resetWsServer();
-    resetEventBus();
-    initWsServer({ maxBufferSize: 10 });
-  });
-
-  it('连接客户端', () => {
-    const client = connectClient();
-    expect(client.clientId).toBeDefined();
-    expect(getClientCount()).toBe(1);
-  });
-
-  it('断开客户端', () => {
-    const client = connectClient();
-    const result = disconnectClient(client.clientId);
-    expect(result.ok).toBe(true);
-    expect(getClientCount()).toBe(0);
-  });
-
-  it('推送消息 + 消费', () => {
-    const client = connectClient();
-    pushToClient(client.clientId, {
-      type: 'test',
-      data: { msg: 'hello' },
-      timestamp: Date.now(),
-    });
-
-    const messages = consumeMessages(client.clientId);
-    expect(messages.length).toBe(1);
-    expect((messages[0].data as any).msg).toBe('hello');
-
-    // 消费后队列为空
-    expect(consumeMessages(client.clientId).length).toBe(0);
-  });
-
-  it('广播到所有客户端', () => {
-    const c1 = connectClient();
-    const c2 = connectClient();
-
-    broadcastToAll({
-      type: 'broadcast',
-      data: { msg: 'all' },
-      timestamp: Date.now(),
-    });
-
-    expect(consumeMessages(c1.clientId).length).toBe(1);
-    expect(consumeMessages(c2.clientId).length).toBe(1);
-  });
-
-  it('缓冲区超限丢弃最旧', () => {
-    initWsServer({ maxBufferSize: 3 });
-    const client = connectClient();
-
-    for (let i = 0; i < 5; i++) {
-      pushToClient(client.clientId, {
-        type: 'msg', data: { i }, timestamp: Date.now(),
-      });
-    }
-
-    const messages = consumeMessages(client.clientId);
-    expect(messages.length).toBe(3); // 只保留最后 3 条
-    expect((messages[0].data as any).i).toBe(2);
-  });
-});
-
-// ═══════════════════════════════════════════════════════
-// 8. WsHandler 消息处理
-// ═══════════════════════════════════════════════════════
-
-describe('WsHandler 消息处理', () => {
-  beforeEach(() => {
-    resetWsServer();
-    resetEventBus();
-  });
-
-  it('ping → pong', () => {
-    const client = connectClient();
-    const result = handleClientMessage(client.clientId, { type: 'ping' });
-    expect(result.ok).toBe(true);
-
-    const messages = consumeMessages(client.clientId);
-    expect(messages.some(m => m.type === 'pong')).toBe(true);
-  });
-
-  it('get_dashboard → dashboard 数据', () => {
-    const client = connectClient();
-    handleClientMessage(client.clientId, { type: 'get_dashboard' });
-
-    const messages = consumeMessages(client.clientId);
-    const dashboard = messages.find(m => m.type === 'dashboard');
-    expect(dashboard).toBeDefined();
-  });
-
-  it('未知消息类型 → 错误', () => {
-    const client = connectClient();
-    const result = handleClientMessage(client.clientId, { type: 'unknown' as any });
-    expect(result.ok).toBe(false);
-  });
-});
+// WsServer/WsHandler 测试已废弃，待 IPC 桥接专项测试覆盖
+// 原测试场景（连接/推送/广播/ping-pong）已通过 eventBus + ipcBridge 集成测试覆盖
 
 // ═══════════════════════════════════════════════════════
 // 9. WebServer 请求处理
@@ -551,13 +442,11 @@ describe('DedupMiddleware 去重中间件', () => {
 describe('Gate G13 综合验证', () => {
   beforeEach(() => {
     resetTaskApi();
-    resetWsServer();
     resetWebServer();
     resetDedupMiddleware();
     resetEventBus();
     clearRoutes();
     registerAllRoutes();
-    initWsServer();
     initDedupMiddleware({ cooldownMs: 0 });
   });
 
@@ -594,22 +483,25 @@ describe('Gate G13 综合验证', () => {
     expect(dashResp.status).toBe(200);
   });
 
-  it('G13-2: WebSocket 客户端接收实时推送', () => {
-    const client = connectClient();
-
-    // 通过 WS 获取大屏数据
-    handleClientMessage(client.clientId, { type: 'get_dashboard' });
-    const messages = consumeMessages(client.clientId);
-    expect(messages.some(m => m.type === 'dashboard')).toBe(true);
-
-    // 广播推送
-    broadcastToAll({
-      type: 'event',
-      data: { eventType: 'task:completed', taskId: 'task-1' },
-      timestamp: Date.now(),
+  it('G13-2: EventBus 事件推送（IPC 桥接）', () => {
+    // Phase 0：WebSocket 已替换为 IPC 桥接
+    // 事件推送通过 EventBus → ipcBridge → IPC 链路实现
+    // 此处验证 EventBus 基本功能
+    let received = false;
+    const sub = subscribe('task:completed' as any, () => { received = true; });
+    publish(createEvent({
+      eventType: 'task:completed' as any,
+      source: 'test',
+      payload: { taskId: 'task-1' },
+    }));
+    // 异步分发，等待一帧
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(received).toBe(true);
+        sub.unsubscribe();
+        resolve();
+      }, 10);
     });
-    const pushed = consumeMessages(client.clientId);
-    expect(pushed.length).toBe(1);
   });
 
   it('G13-3: 输入去重防风暴', () => {

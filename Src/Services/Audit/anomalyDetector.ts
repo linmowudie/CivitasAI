@@ -1,9 +1,9 @@
 /**
  * @module Audit/anomalyDetector
  * @description
- * 异常检测器——Docs/06 §2.3。
+ * 异常检测器——Docs/Agent/06 §2.3。
  * 三条规则：滚动窗口超限 / 偏离均值 / 循环检测。
- * 同 Agent 30s 冷却期（Docs/06 §5.1 防风暴）。
+ * 同 Agent 30s 冷却期（Docs/Agent/06 §5.1 防风暴）。
  */
 
 import { EventType } from '../EventBus/eventTypes.js';

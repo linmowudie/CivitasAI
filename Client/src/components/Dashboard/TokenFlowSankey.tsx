@@ -20,7 +20,7 @@ const TYPE_COLORS: Record<string, string> = {
   PROFIT_SHARING: '#10b981',  // 绿：分润
   TASK_REWARD: '#3b82f6',     // 蓝：奖励
   ARBITRATION_PENALTY: '#8b5cf6', // 紫：罚没
-  ARBITRATION_COMPENSATION: '#06b6d4', // 青：补偿
+  ARBITRATION_COMPENSATION: '#a78bfa', // 浅紫：补偿
   INITIAL_ALLOCATION: '#6b7280', // 灰：初始分配
 };
 

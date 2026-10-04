@@ -1,7 +1,7 @@
 /**
  * @module Interface/WebServer/httpServer
  * @description
- * HTTP 服务器——Docs/16 F0.1。
+ * HTTP 服务器——Docs/Client/02 F0.1。
  * Node 原生 `http.createServer`，绑定 `server.httpPort`(3000)。
  * - CORS（`server.corsOrigins`）
  * - 静态托管 `Client/dist`（仅生产模式；开发模式由 Vite 代理）
@@ -15,6 +15,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import type { HttpMethod } from '../RestApi/router.js';
 
 import { handleRequest } from './webServer.js';
+import { applyApiRateLimit } from './apiRateLimiter.js';
 
 // ── 配置 ────────────────────────────────────────────────────────────
 
@@ -57,7 +58,8 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
       if (config.corsOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        // FE-041：允许治理身份验真头（G-09 方案 B 依赖 Authorization / X-Account-Token）
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Account-Token');
         res.setHeader('Access-Control-Max-Age', '86400');
       }
 
@@ -72,8 +74,9 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
       const [pathPart] = url.split('?');
       const path = pathPart ?? '/';
 
-      // API 路由（/api/*）
+      // API 路由（/api/*）——先过限流中间件
       if (path.startsWith('/api/')) {
+        if (applyApiRateLimit(req, res)) return; // 429 已写入
         await handleApiRequest(req, res);
         return;
       }
@@ -133,10 +136,13 @@ async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Prom
   }
 
   const fullUrl = req.url ?? '/';
+  // FE-041：透传请求头 —— 此前 headers 在构造点被丢弃，
+  // 导致 approvalApi 的 `extractBearerToken(req.headers)` 恒为 null（方案 B 死代码）。
   const apiResponse = await handleRequest({
     method: (req.method ?? 'GET') as HttpMethod,
     url: fullUrl,
     body: parsedBody,
+    headers: normalizeRequestHeaders(req.headers),
   });
 
   const headers: Record<string, string> = {
@@ -146,6 +152,24 @@ async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Prom
 
   res.writeHead(apiResponse.status, headers);
   res.end(JSON.stringify(apiResponse.body));
+}
+
+// ── 请求头归一化 ────────────────────────────────────────────────────
+
+/**
+ * `IncomingMessage.headers`（值可为 string | string[] | undefined）
+ * → `Record<string, string>`（供 ApiRequest.headers 使用）。
+ * 数组值（重复头）以 `, ` 连接（与 HTTP 语义一致，RFC 9110 §5.2）。
+ */
+function normalizeRequestHeaders(
+  headers: IncomingMessage['headers'],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    out[key] = Array.isArray(value) ? value.join(', ') : value;
+  }
+  return out;
 }
 
 // ── 静态文件服务 ────────────────────────────────────────────────────

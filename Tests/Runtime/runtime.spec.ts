@@ -34,6 +34,7 @@ import { initToolResultCache, makeCacheKey, cacheToolResult, getCachedToolResult
 // ── Supervision ───────────────────────────────────────
 
 import { runPreSupervision } from '../../Src/Services/Supervision/preSupervision.js';
+import type { RateLimitConfig } from '../../Src/Infra/Contracts/rateLimitTypes.js';
 import { runCompressSupervision } from '../../Src/Services/Supervision/compressSupervision.js';
 import { runSummarySupervision } from '../../Src/Services/Supervision/summarySupervision.js';
 import { runReasoningSupervision } from '../../Src/Services/Supervision/reasoningSupervision.js';
@@ -71,7 +72,7 @@ import { createKeywordReranker } from '../../Src/Services/Retrieval/reranker.js'
 // ── Loop ──────────────────────────────────────────────
 
 import {
-  validateLoopConfig, createLoopConfig, createRoleLoopConfig, DEFAULT_LOOP_CONFIG, LOOP_LIMITS,
+  validateLoopConfig, createLoopConfig, createRoleLoopConfig, DEFAULT_LOOP_CONFIG, LOOP_LIMITS, setRoleOverrides,
 } from '../../Src/Core/Loop/loopConfig.js';
 import { createIterationState, decideIteration, getIterationStats } from '../../Src/Core/Loop/iterationController.js';
 import { createLoopState, startLoop, pauseLoop, resumeLoop, terminateLoop, assertStepOrder, recordLoopEvent } from '../../Src/Core/Loop/loopEngine.js';
@@ -252,15 +253,35 @@ describe('S5 · Supervision 监管', () => {
   it('前置监管：频率限制', () => {
     const now = Date.now();
     const timestamps = Array.from({ length: 35 }, () => now - 1000);
+    // 显式传入限流配置：本用例验证"超限即拦截"的行为，
+    // 不应依赖全局默认阈值（默认值已按本地 UI 需要调整）
+    const strictConfig: RateLimitConfig = {
+      maxRequestsPerMinute: 10,
+      maxTokensPerMinute: 100_000,
+      maxToolCallsPerMinute: 60,
+      burstAllowance: 1.0,
+    };
     const r = runPreSupervision({
       userInput: 'test',
       agentId: 'agent-1',
       sessionId: 'sess-1',
       recentCallTimestamps: timestamps,
-    });
+    }, strictConfig);
+    expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.rateLimited).toBe(true);
     }
+
+    // 反向用例：窗口内不超限时不应误报
+    const few = Array.from({ length: 2 }, () => now - 1000);
+    const ok2 = runPreSupervision({
+      userInput: 'test',
+      agentId: 'agent-1',
+      sessionId: 'sess-1',
+      recentCallTimestamps: few,
+    }, strictConfig);
+    expect(ok2.ok).toBe(true);
+    if (ok2.ok) expect(ok2.value.rateLimited).toBe(false);
   });
 
   it('压缩监管：关键条目丢失触发干预', () => {
@@ -527,6 +548,21 @@ describe('S5 · Pipeline 管道', () => {
 // ════════════════════════════════════════════════════════
 
 describe('S5 · LoopConfig', () => {
+  beforeEach(() => {
+    // roleOverrides 单一事实源 = Configs/loopConfig.json（与 loopConfig.ts 消除硬编码一致）。
+    // 测试注入与 JSON 一致的 roleOverrides，验证 createRoleLoopConfig 的行为。
+    setRoleOverrides({
+      prime_director: { max_iterations: 100, token_budget: 500_000, temperature: 0.3 },
+      partner: { max_iterations: 50, token_budget: 200_000, temperature: 0.3 },
+      worker: { max_iterations: 30, token_budget: 100_000, temperature: 0.2 },
+      reviewer: { max_iterations: 5, token_budget: 50_000, temperature: 0.0 },
+      assembly_node: { max_iterations: 10, token_budget: 60_000, temperature: 0.1 },
+      arbitrator: { max_iterations: 5, token_budget: 50_000, temperature: 0.0 },
+      auditor: { max_iterations: 20, token_budget: 80_000, temperature: 0.0 },
+      regulator: { max_iterations: 15, token_budget: 80_000, temperature: 0.1 },
+    });
+  });
+
   it('G5-3: 默认配置验证通过', () => {
     const r = validateLoopConfig(DEFAULT_LOOP_CONFIG);
     expect(r.ok).toBe(true);
@@ -551,8 +587,9 @@ describe('S5 · LoopConfig', () => {
     const r = createRoleLoopConfig('prime_director');
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.value.max_iterations).toBe(50);
-      expect(r.value.token_budget).toBe(200_000);
+      // 默认值与 loopConfig.json roleOverrides 对齐
+      expect(r.value.max_iterations).toBe(100);
+      expect(r.value.token_budget).toBe(500_000);
     }
   });
 

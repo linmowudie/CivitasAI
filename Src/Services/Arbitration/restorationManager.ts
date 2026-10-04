@@ -1,7 +1,7 @@
 /**
  * @module Arbitration/restorationManager
  * @description
- * 恢复管理器——Docs/05 §5 现场恢复。
+ * 恢复管理器——Docs/Agent/05 §5 现场恢复。
  * 指定恢复者 → 执行补偿动作 → 二次广播 RESTORATION_ACK。
  * 两种策略：self_healing（失败方自愈）/ global_takeover（全局接管）。
  */

@@ -1,0 +1,15 @@
+{
+  /* FE-009：Electron 主进程 / preload 的独立类型检查配置。
+   * 根 tsconfig.json 的 include 仅含 Src/**，导致 electron/*.ts 从未被 tsc 检查
+   * （历史上入口二次启动、ESM 下 __dirname、preload 输出为 ESM 三个问题均因此漏网）。
+   * 本配置以 noEmit 方式把 electron/** 纳入检查，由 npm run typecheck:electron / build 调用。
+   * rootDir 覆盖为 "."：electron/main.ts 会静态导入 ../Src/main.js，included 文件跨越 Src/ 与 electron/。 */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "baseUrl": "."
+  },
+  "include": ["electron/**/*.ts"],
+  "exclude": ["node_modules", "dist", "Tests", "Client"]
+}

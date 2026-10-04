@@ -1,10 +1,12 @@
 /**
  * 集成测试：Agent 权限模型与工具可见性——分裂运行验证
  *
- * 三轮测试：
- * R1: prime_director 入口 → 可见工具集包含 SAFE + CONTROLLED，不含 DANGEROUS
+ * R1: prime_director 入口 → 可见 requiredRoles 全集（含 DANGEROUS；执行管控走审批）
  * R2: worker 尝试调用 agent.recruit → ROLE_FORBIDDEN
- * R3: regulator(L0) 可见全部 vs partner(L1) 仅 SAFE+CONTROLLED
+ * R3: regulator / arbitrator（L0）按 requiredRoles 观察；prime_director 可见 DANGEROUS
+ *
+ * ★ FE-051（2026-10-04）收敛：可见性唯一真相源 = `requiredRoles`
+ *   （Docs/Agent/10 §3.3.1 v2.2 两轴正交），原 dangerLevel×trustLevel 单轴预期已同步重写。
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -32,7 +34,7 @@ describe('Agent 权限分裂运行验证', () => {
 
   // ━━━ R1: prime_director 入口级工具可见性 ━━━
   describe('R1: prime_director 入口级（L1）', () => {
-    it('可见 SAFE + CONTROLLED 工具', () => {
+    it('可见 requiredRoles 全集：SAFE + CONTROLLED + DANGEROUS', () => {
       const visible = getVisibleToolNames({ role: 'prime_director' });
 
       // SAFE 工具应可见
@@ -44,15 +46,21 @@ describe('Agent 权限分裂运行验证', () => {
       expect(visible).toContain('file.write');
       expect(visible).toContain('file.edit');
 
-      // DANGEROUS 工具不可见
-      expect(visible).not.toContain('shell.exec');
-      expect(visible).not.toContain('code.eval');
+      // DANGEROUS：requiredRoles 含 prime_director → 可见
+      // （FE-051：可见性不按危险级裁剪；执行管控由 toolSafetyGate 审批承担）
+      expect(visible).toContain('shell.exec');
+      expect(visible).toContain('code.eval');
     });
 
-    it('partner 与 prime_director 工具集完全一致（同级对等）', () => {
+    it('partner 与 prime_director 工具集对等（partner 另有评审提交通道，FE-050）', () => {
       const pdTools = getVisibleToolNames({ role: 'prime_director' });
       const partnerTools = getVisibleToolNames({ role: 'partner' });
-      expect(partnerTools.sort()).toEqual(pdTools.sort());
+      // FE-050：partner 是执行级（可被编排派发），需要 agent.submit_review 提交通道；
+      // prime_director 不自报完成 → 不持有该工具。其余工具集对等。
+      const partnerWithoutReview = partnerTools.filter(t => t !== 'agent.submit_review');
+      expect(partnerWithoutReview.sort()).toEqual(pdTools.sort());
+      expect(partnerTools).toContain('agent.submit_review');
+      expect(pdTools).not.toContain('agent.submit_review');
     });
 
     it('信任级别为 L1', () => {
@@ -63,20 +71,24 @@ describe('Agent 权限分裂运行验证', () => {
 
   // ━━━ R2: worker 角色权限限制 ━━━
   describe('R2: worker 执行子级（L2）', () => {
-    it('仅可见 SAFE 工具', () => {
+    it('可见 requiredRoles 全集（读 + 写 + 执行；FE-051 两轴正交）', () => {
       const visible = getVisibleToolNames({ role: 'worker' });
 
-      // SAFE 可见
+      // 读类可见
       expect(visible).toContain('file.read');
       expect(visible).toContain('dir.list');
 
-      // CONTROLLED 不可见
-      expect(visible).not.toContain('file.write');
-      expect(visible).not.toContain('file.edit');
+      // 写类可见（Worker 职能即执行；v2.2 修订否决了 L2 仅 SAFE 的单轴模型）
+      expect(visible).toContain('file.write');
+      expect(visible).toContain('file.edit');
 
-      // DANGEROUS 不可见
-      expect(visible).not.toContain('shell.exec');
-      expect(visible).not.toContain('code.eval');
+      // 执行类可见（管控在审批层，不在可见性层）
+      expect(visible).toContain('shell.exec');
+      expect(visible).toContain('code.eval');
+      expect(visible).toContain('agent.submit_review');
+
+      // 不在 worker 白名单 → 不可见
+      expect(visible).not.toContain('agent.recruit');
     });
 
     it('executeTool 调用 agent.recruit → ROLE_FORBIDDEN', async () => {
@@ -117,31 +129,33 @@ describe('Agent 权限分裂运行验证', () => {
 
   // ━━━ R3: L0 治理级 vs L1 入口级 对比 ━━━
   describe('R3: 治理级（L0）vs 入口级（L1）', () => {
-    it('regulator(L0) 可见所有非 FORBIDDEN 工具', () => {
+    it('regulator(L0) 按 requiredRoles：只读观察类可见，不含写入/执行', () => {
       const visible = getVisibleToolNames({ role: 'regulator' });
       const allTools = getVisibleToolsForRole('regulator');
 
-      // L0 应看到所有注册工具（无 FORBIDDEN 级别工具）
-      expect(allTools.length).toBeGreaterThanOrEqual(11);
-      expect(visible).toContain('shell.exec');    // DANGEROUS — L0 可见
-      expect(visible).toContain('code.eval');      // DANGEROUS — L0 可见
-      expect(visible).toContain('file.write');     // CONTROLLED — L0 可见
-      expect(visible).toContain('file.read');      // SAFE — L0 可见
+      expect(allTools.length).toBeGreaterThanOrEqual(6);
+      expect(visible).toContain('file.read');       // 只读 — regulator 可见
+      expect(visible).toContain('tool.search');
+      expect(visible).not.toContain('shell.exec');  // 治理层不执行副作用
+      expect(visible).not.toContain('file.write');
+      expect(visible).not.toContain('tool.execute');
     });
 
-    it('arbitrator(L0) 同样可见全部工具', () => {
+    it('arbitrator(L0) 可见集 ⊇ regulator（仲裁需取证/修复，另含写入与执行类）', () => {
       const regTools = getVisibleToolNames({ role: 'regulator' });
       const arbTools = getVisibleToolNames({ role: 'arbitrator' });
-      expect(arbTools.sort()).toEqual(regTools.sort());
+      for (const t of regTools) expect(arbTools).toContain(t);
+      expect(arbTools).toContain('file.write');  // 修复需要写入
+      expect(arbTools).toContain('shell.exec');  // 取证需要执行（管控在审批层）
     });
 
-    it('prime_director(L1) 不可见 DANGEROUS 工具', () => {
+    it('prime_director(L1) 可见 DANGEROUS（requiredRoles 命中；管控在审批层）', () => {
       const visible = getVisibleToolNames({ role: 'prime_director' });
-      expect(visible).not.toContain('shell.exec');
-      expect(visible).not.toContain('code.eval');
+      expect(visible).toContain('shell.exec');
+      expect(visible).toContain('code.eval');
     });
 
-    it('L0 可通过 isToolAllowed 使用 DANGEROUS，L1 不可', () => {
+    it('（历史矩阵）isToolAllowed 纯函数语义不变——已废弃，不是可见性闸门', () => {
       expect(isToolAllowed('DANGEROUS', 'L0')).toBe(true);
       expect(isToolAllowed('DANGEROUS', 'L1')).toBe(false);
       expect(isToolAllowed('CONTROLLED', 'L1')).toBe(true);

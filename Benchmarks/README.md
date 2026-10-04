@@ -18,7 +18,7 @@ node Scripts/experimentMatrix.cjs   # 矩阵守门：强制四条覆盖规则，
 npm test                            # 执行 Tests/Experiments/ 下锚定用例
 ```
 
-设计文档：[Docs/17-实验矩阵与评估/实验矩阵设计.md](../Docs/17-实验矩阵与评估/实验矩阵设计.md)。
+设计文档：[Docs/Agent/15-实验矩阵与评估/实验矩阵设计.md](../Docs/Agent/15-实验矩阵与评估/实验矩阵设计.md)。
 
 ## 约定
 

@@ -1,5 +1,5 @@
 /**
- * 工作区管理器（Docs/02 §2 / Gate G1）
+ * 工作区管理器（Docs/Agent/02 §2 / Gate G1）
  *
  * 职责：
  * - 为每个 session_key 创建隔离的工作目录

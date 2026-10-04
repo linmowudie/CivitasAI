@@ -1,7 +1,7 @@
 /**
  * @module Interface/RestApi/taskApi
  * @description
- * 任务 API——Docs/09 §2.2。
+ * 任务 API——Docs/Client/01 §2.2。
  * 任务提交 / 查询 / 详情 / 取消。前端全部走服务接口，无直连 Infra。
  * F0.5：POST 触发 orchestrator.receiveTask()；DELETE 取消任务。
  */

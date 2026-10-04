@@ -1,5 +1,5 @@
 /**
- * OpenAI 兼容 Provider（Docs/02 §10）
+ * OpenAI 兼容 Provider（Docs/Agent/02 §10）
  *
  * 支持所有 OpenAI Chat Completions 兼容的 API：
  * - OpenAI (api.openai.com)
@@ -86,7 +86,7 @@ export class OpenAIProvider extends LlmProvider {
       const url = `${this.config.base_url}/chat/completions`;
 
       const body: OpenAIRequest = {
-        model: options.model,
+        model: this.resolveRequestModel(options.model),
         messages: options.messages.map(m => ({ role: m.role, content: m.content })),
         temperature: options.temperature,
         max_tokens: options.max_tokens,
@@ -152,7 +152,7 @@ export class OpenAIProvider extends LlmProvider {
       const url = `${this.config.base_url}/chat/completions`;
 
       const body: OpenAIRequest = {
-        model: options.model,
+        model: this.resolveRequestModel(options.model),
         messages: options.messages.map(m => ({ role: m.role, content: m.content })),
         temperature: options.temperature,
         max_tokens: options.max_tokens,
@@ -210,8 +210,23 @@ export class OpenAIProvider extends LlmProvider {
             if (choice?.delta) {
               const delta = choice.delta.content ?? '';
               const reasoningDelta = choice.delta.reasoning_content;
+              const rawToolCalls = choice.delta.tool_calls;
 
-              if (delta || reasoningDelta) {
+              // 工具调用**增量**透传（修复：此前只累积不上报，导致模型生成工具参数期间界面无反馈）
+              const toolCallDelta = rawToolCalls?.length
+                ? rawToolCalls.map((tc) => {
+                    const d: {
+                      index: number; id?: string; name?: string; argumentsDelta?: string;
+                    } = { index: tc.index };
+                    if (tc.id) d.id = tc.id;
+                    if (tc.function?.name) d.name = tc.function.name;
+                    if (tc.function?.arguments) d.argumentsDelta = tc.function.arguments;
+                    return d;
+                  })
+                : undefined;
+
+              // 纯工具调用增量也要上报（此时 delta/reasoning 均为空）
+              if (delta || reasoningDelta || toolCallDelta) {
                 fullContent += delta;
                 if (reasoningDelta) fullReasoning += reasoningDelta;
 
@@ -219,12 +234,13 @@ export class OpenAIProvider extends LlmProvider {
                   delta,
                   reasoning_delta: reasoningDelta,
                   finish_reason: choice.finish_reason ?? undefined,
+                  ...(toolCallDelta ? { tool_call_delta: toolCallDelta } : {}),
                 });
               }
 
               // 累积流式工具调用
-              if (choice.delta.tool_calls) {
-                for (const tc of choice.delta.tool_calls) {
+              if (rawToolCalls) {
+                for (const tc of rawToolCalls) {
                   const idx = tc.index;
                   const existing = toolCallMap.get(idx);
                   if (existing) {

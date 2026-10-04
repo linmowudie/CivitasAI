@@ -1,7 +1,7 @@
 /**
  * @module Scripts/traceAnalysis
  * @description
- * Trace 分析脚本——Docs/14 §S14。
+ * Trace 分析脚本——Docs/Agent/13 §S14。
  * 分析事件日志中的 trace_id 链路完整性、耗时分布、Token 消耗。
  * 用法：npx tsx Scripts/traceAnalysis.ts [--traceId=xxx] [--limit=50]
  */

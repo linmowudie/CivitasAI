@@ -1,6 +1,6 @@
 # Prompts — 外置提示词库
 
-提示词与代码分离，按用途分目录；启动时由 `main.ts` 第 ⑩ 步加载（热加载机制规划中）。
+提示词与代码分离，按用途分目录；启动时由 `main.ts` 第 ⑩ 步装载到内存注册表 `Src/Services/Prompts/promptRegistry`（热加载机制规划中）。
 
 ## 结构
 
@@ -14,6 +14,6 @@ versions/   # manifest.json —— 提示词版本清单（文件 → 版本哈�
 
 ## 约定
 
-- 文件名即角色/用途标识，与 `Configs/loopConfig.json` 的 `roleOverrides` 中 `model`/提示词引用对应
+- 文件名即角色标识（`{role}.md`），与 `Configs/loopConfig.json` 的 `roleOverrides` 角色键 1:1 对应；运行期由 `promptRegistry.getRolePrompt(role)` 查询（角色段置于系统提示最前，会话内字节恒定）
 - 修改提示词后须在 `versions/manifest.json` 登记版本，保证可回溯（Maker-Checker 验证依赖同一版本）
-- 模板内可用 `{{placeholder}}` 占位符，由上下文组装阶段填充
+- 模板内可用 `{{placeholder}}` 占位符（填充机制随四层分区装配接线，当前未启用）

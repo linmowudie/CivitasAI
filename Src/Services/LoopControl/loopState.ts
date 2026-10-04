@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/loopState
  * @description
- * LoopState——Docs/12 §4.2。
+ * LoopState——Docs/Agent/11 §4.2。
  * 不可变区（goal / immutableConstraints）与可变区分离。
  * 核心红线：任何压缩/摘要机制不得修改 goal 与 immutableConstraints（ADR-0005）。
  *
@@ -17,7 +17,7 @@ import type {
   UserRole,
 } from './types.js';
 
-// ── VerifierSpec（Docs/12 §3.2）────────────────────────────────────
+// ── VerifierSpec（Docs/Agent/11 §3.2）────────────────────────────────────
 
 export type VerifierSpec =
   | { level: 'L1'; kind: 'test'; payload: { command: string; expectExit: 0 } }
@@ -34,7 +34,7 @@ export type VerifierSpec =
       reason: string; reviewerRoles: UserRole[]; timeoutSec: number;
     } };
 
-// ── VerifierResult（Docs/12 §3.2）──────────────────────────────────
+// ── VerifierResult（Docs/Agent/11 §3.2）──────────────────────────────────
 
 export interface VerifierResult {
   pass: boolean;
@@ -46,7 +46,7 @@ export interface VerifierResult {
   durationMs: number;
 }
 
-// ── FailedAttempt（Docs/12 §4.2）───────────────────────────────────
+// ── FailedAttempt（Docs/Agent/11 §4.2）───────────────────────────────────
 
 export interface FailedAttempt {
   attemptId: string;
@@ -57,7 +57,7 @@ export interface FailedAttempt {
   costTokens: number;
 }
 
-// ── FingerprintRecord（Docs/12 §4.2）───────────────────────────────
+// ── FingerprintRecord（Docs/Agent/11 §4.2）───────────────────────────────
 
 export interface FingerprintRecord {
   fingerprint: string;
@@ -67,7 +67,7 @@ export interface FingerprintRecord {
   recordedAt: number;
 }
 
-// ── PendingApproval（Docs/12 §6.2）─────────────────────────────────
+// ── PendingApproval（Docs/Agent/11 §6.2）─────────────────────────────────
 
 export interface ApprovalDecider {
   role: UserRole;
@@ -77,6 +77,8 @@ export interface ApprovalDecider {
 export interface PendingApproval {
   approvalId: string;
   loopId: string;
+  /** 追踪 ID（创建时的快照；落库 pending_approvals.trace_id 需要） */
+  traceId?: string;
   iteration: number;
   requestedAt: number;
   requestedBy: string;
@@ -87,13 +89,33 @@ export interface PendingApproval {
   defaultOnTimeout: 'reject' | 'abort_loop';
   deciders: ApprovalDecider[];
   decisionPolicy: DecisionPolicy;
+  /**
+   * 法定人数（2026-10-04 新增）：需要多少个**不同角色**的**不同身份**通过才放行。
+   *
+   * 规则（按请求方层级）：L2 请求（= L1 自治域）→ 用户 / L1 / L0 **任意两方**；
+   * L1 自身或治理请求 → 用户 + L0 两方。未设置时退回旧语义（全部审批人角色都需通过）。
+   */
+  requiredApprovals?: number;
   status: ApprovalStatus;
   decidedBy?: string[];
   decidedAt?: number;
   decisionReason?: string;
+  /** 关联的工具调用 ID（前端据此把审批内嵌到对话中对应的工具行） */
+  toolCallId?: string;
+  /** 关联工具名 */
+  toolName?: string;
+  /** 触发该审批的会话 ID */
+  sessionId?: string;
+  /**
+   * 数据属主（账号隔离）：未登录 = 'local'，登录 = 服务端 userId。
+   * 审批队列是进程内内存态，若不带属主，同机换账号后 B 会看到 A 的待审批项。
+   */
+  owner?: string;
+  /** 是否为自动审批（无需用户确认，仅展示"审查中"动画后自动通过） */
+  autoApproved?: boolean;
 }
 
-// ── SuspensionRecord（Docs/05 定义 · Docs/12 §4.2 引用）────────────
+// ── SuspensionRecord（Docs/Agent/05 定义 · Docs/Agent/11 §4.2 引用）────────────
 
 export interface SuspensionRecord {
   reason: string;
@@ -102,7 +124,7 @@ export interface SuspensionRecord {
   conflictId?: string;
 }
 
-// ── LoopState（Docs/12 §4.2）───────────────────────────────────────
+// ── LoopState（Docs/Agent/11 §4.2）───────────────────────────────────────
 
 export interface LoopState {
   schemaVersion: 1;

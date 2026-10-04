@@ -1,7 +1,7 @@
 /**
  * @module Arbitration/dynamicScaling
  * @description
- * 动态仲裁者扩缩器——Docs/05 §5.2。
+ * 动态仲裁者扩缩器——Docs/Agent/05 §5.2。
  * 按冲突频率动态调整辅助仲裁者数量：f = k·n^m。
  * 每 monitoringInterval 采集指标，连续 3 个窗口超阈值 → 扩容；
  * 连续 3 个窗口低于阈值一半 → 缩容。

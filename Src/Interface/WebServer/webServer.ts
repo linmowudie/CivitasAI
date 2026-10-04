@@ -1,7 +1,7 @@
 /**
  * @module Interface/WebServer/webServer
  * @description
- * Web 服务器——Docs/09 §3。
+ * Web 服务器——Docs/Client/01 §3。
  * Phase 0-2：内存请求模拟（不绑定端口）；Phase 3 接 Node http 模块。
  * 整合 REST 路由 + WebSocket 桥接。
  */
@@ -30,6 +30,13 @@ export async function handleRequest(request: {
   method: HttpMethod;
   url: string;
   body?: Record<string, unknown>;
+  /**
+   * 请求头（2026-10-04，FE-041 修复）。
+   * 必须由真实 HTTP 链路（httpServer）透传 —— 治理身份验真（G-09 方案 B）
+   * 依赖读取 `Authorization: Bearer <token>`，此前该字段在构造点被丢弃，
+   * 导致方案 B 永不生效（恒回退方案 A）。
+   */
+  headers?: Record<string, string>;
 }): Promise<ApiResponse> {
   const start = Date.now();
 
@@ -48,13 +55,14 @@ export async function handleRequest(request: {
     return response;
   }
 
-  // 构造 ApiRequest
+  // 构造 ApiRequest（headers 透传：FE-041）
   const apiReq: ApiRequest = {
     method: request.method,
     path,
     params: matched.params,
     query,
     body: request.body ?? {},
+    ...(request.headers !== undefined ? { headers: request.headers } : {}),
   };
 
   // 执行 handler

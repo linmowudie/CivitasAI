@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/middleware/budgetSentinelControl
  * @description
- * Loop 控制级预算哨兵——Docs/12 §2.3。
+ * Loop 控制级预算哨兵——Docs/Agent/11 §2.3。
  * 与 Core/Middleware/builtin/budgetSentinel.ts（S5 桩）互补：
  * 本模块基于 StopRuleSet 做四阶段预算检测（warm/soft/expand/hard）。
  *

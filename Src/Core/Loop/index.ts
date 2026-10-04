@@ -1,5 +1,5 @@
-export type { LoopConfig, LOOP_LIMITS } from './loopConfig.js';
-export { DEFAULT_LOOP_CONFIG, validateLoopConfig, createLoopConfig, createRoleLoopConfig, ROLE_OVERRIDES } from './loopConfig.js';
+export type { LoopConfig, LoopLimits } from './loopConfig.js';
+export { DEFAULT_LOOP_CONFIG, LOOP_LIMITS, validateLoopConfig, createLoopConfig, createRoleLoopConfig, ROLE_OVERRIDES, setRoleOverrides, getRoleOverrides, setLoopLimits, getLoopLimits } from './loopConfig.js';
 export type { ExitReason, IterationState, IterationDecisionInput, IterationDecision } from './iterationController.js';
 export { createIterationState, decideIteration, getIterationStats } from './iterationController.js';
 export type { LoopPhase, LoopState, LoopStep, LoopEvent, LoopEngineOptions } from './loopEngine.js';

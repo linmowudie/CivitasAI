@@ -1,10 +1,10 @@
 /**
  * @module Decision/RouteDecision/routeDecision
  * @description
- * 路由决策器——Docs/03 §3.3。
+ * 路由决策器——Docs/Agent/03 §3.3。
  * 按优先级顺序匹配路由规则，首个命中即返回。
  *
- * 决策优先级（Docs/03 §3.3 表格）：
+ * 决策优先级（Docs/Agent/03 §3.3 表格）：
  * 1. Token 超多 或 域多 → CONSORTIUM
  * 2. 匹配 SOP → ASSEMBLY_LINE
  * 3. 耦合度低 + 子任务够多 → DELEGATION
@@ -22,7 +22,7 @@ import { getRoutingRules } from './routingRules.js';
 
 /**
  * 根据复杂度报告决定路由模式。
- * 严格按 Docs/03 §3.3 优先级顺序判定。
+ * 严格按 Docs/Agent/03 §3.3 优先级顺序判定。
  */
 export function decideRoute(report: ComplexityReport): Result<RouteDecisionResult> {
   const rules = getRoutingRules();

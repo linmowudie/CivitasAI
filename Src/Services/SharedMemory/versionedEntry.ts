@@ -1,13 +1,13 @@
 /**
  * @module SharedMemory/versionedEntry
  * @description
- * 版本化条目——Docs/07 §8.2。
+ * 版本化条目——Docs/Agent/07 §8.2。
  * GlobalWorkspace 条目携带版本号 + 因果令牌 + 冲突策略。
  */
 
 import type { AssertionLevel } from '../EventBus/eventTypes.js';
 
-// ── WorkspaceEntry（Docs/07 §3.1 + §8.2）───────────────────────────
+// ── WorkspaceEntry（Docs/Agent/07 §3.1 + §8.2）───────────────────────────
 
 export type ContentType = 'fact' | 'decision' | 'verdict' | 'contract' | 'status';
 export type EntryStatus = 'active' | 'superseded' | 'discarded';
@@ -23,7 +23,7 @@ export interface WorkspaceEntry {
   // 内容
   content: string;
   contentType: ContentType;
-  assertion: AssertionLevel;            // Docs/07 §8.4
+  assertion: AssertionLevel;            // Docs/Agent/07 §8.4
 
   // 元数据
   metadata: {
@@ -33,7 +33,7 @@ export interface WorkspaceEntry {
     evidenceChain?: string[];
   };
 
-  // 版本控制（Docs/07 §8.2）
+  // 版本控制（Docs/Agent/07 §8.2）
   version: number;
   lastModifiedBy: string;
   conflictStrategy: ConflictStrategy;

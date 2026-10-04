@@ -3,7 +3,7 @@
  * @description
  * 跨层共享内核契约——中间件类型单一真相源。
  *
- * 依据 Docs/02 §1.1 五层单向依赖红线：Core 可依赖 Services/Tools/Infra，
+ * 依据 Docs/Agent/02 §1.1 五层单向依赖红线：Core 可依赖 Services/Tools/Infra，
  * Services 可依赖 Tools/Infra，下层绝对不可引用上层。
  *
  * 中间件引擎实现位于 Core/Middleware（registry / 六钩子执行器），
@@ -18,7 +18,7 @@
 
 // ── 钩子类型 ──────────────────────────────────────────
 
-/** 六种中间件钩子（Docs/02 §4.1） */
+/** 六种中间件钩子（Docs/Agent/02 §4.1） */
 export type MiddlewareHook =
   | 'beforeAgent'
   | 'beforeModel'
@@ -83,7 +83,7 @@ export type AfterAgentHook = (ctx: MiddlewareContext, result: unknown) => Promis
 
 export type HookFunction = BeforeAgentHook | BeforeModelHook | WrapModelCallHook | WrapToolCallHook | AfterModelHook | AfterAgentHook;
 
-/** Agent 中间件定义（Docs/02 §4.2） */
+/** Agent 中间件定义（Docs/Agent/02 §4.2） */
 export interface AgentMiddleware {
   /** 中间件名称 */
   name: string;

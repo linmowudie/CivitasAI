@@ -24,8 +24,6 @@
     "dashboardPollIntervalSec": 5,
     "approvalQueueRefreshSec": 3,
     "streamFlushIntervalMs": 100,
-    "maxEventBufferSize": 500,
-    "wsReconnectBackoffMs": 1000,
-    "wsReconnectMaxAttempts": 5
+    "maxEventBufferSize": 500
   }
 }

@@ -24,9 +24,11 @@ const riskIconColor: Record<string, string> = {
 interface ApprovalCardProps {
   approval: Approval;
   onDecide: (approvalId: string, approve: boolean) => void;
+  /** 决策提交中（FE-012：按钮即刻反馈，避免"看似无效"重复点击） */
+  deciding?: boolean;
 }
 
-export default function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
+export default function ApprovalCard({ approval, onDecide, deciding = false }: ApprovalCardProps) {
   const a = approval;
   const [remaining, setRemaining] = useState<number | null>(null);
   const progress = getApprovalProgress(a);
@@ -44,7 +46,11 @@ export default function ApprovalCard({ approval, onDecide }: ApprovalCardProps) 
   }, [a.status, a.requestedAt, a.timeoutSec]);
 
   const formatTimer = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-  const payloadStr = typeof a.payload === 'string' ? a.payload : JSON.stringify(a.payload, null, 2);
+  // payload 可能缺失（例如决策接口只回传状态）——JSON.stringify(undefined) 返回 undefined，
+  // 直接取 .length 会让整个审批视图白屏，故兜底为空串。
+  const payloadStr = typeof a.payload === 'string'
+    ? a.payload
+    : (JSON.stringify(a.payload ?? null, null, 2) ?? '');
   const truncatedPayload = payloadStr.length > 120 ? payloadStr.slice(0, 120) + '…' : payloadStr;
 
   return (
@@ -128,24 +134,39 @@ export default function ApprovalCard({ approval, onDecide }: ApprovalCardProps) 
               <div className="flex gap-2">
                 <button
                   onClick={() => onDecide(a.approvalId, true)}
-                  className="btn btn-success text-xs"
+                  disabled={deciding}
+                  className="btn btn-success text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Check size={14} />批准
+                  <Check size={14} />{deciding ? '提交中…' : '批准'}
                 </button>
                 <button
                   onClick={() => onDecide(a.approvalId, false)}
-                  className="btn btn-danger text-xs"
+                  disabled={deciding}
+                  className="btn btn-danger text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <X size={14} />拒绝
                 </button>
               </div>
             </>
           ) : (
-            <span className={`badge ${
-              a.status === 'APPROVED' ? 'badge-success' : 'badge-danger'
-            }`}>
-              {a.status === 'APPROVED' ? '已通过' : a.status === 'TIMEOUT' ? '超时拒绝' : '已拒绝'}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className={`badge ${
+                a.status === 'APPROVED' ? 'badge-success' : 'badge-danger'
+              }`}>
+                {a.status === 'APPROVED' ? '已通过' : a.status === 'TIMEOUT' ? '超时拒绝' : '已拒绝'}
+              </span>
+              {/* 决策者与原因（审计回溯） */}
+              {a.decidedBy && a.decidedBy.length > 0 && (
+                <span className="text-[10px] text-text-muted font-mono" title={a.decisionReason}>
+                  {a.decidedBy.join(', ')}
+                </span>
+              )}
+              {a.decisionReason && (
+                <span className="text-[10px] text-text-muted max-w-48 truncate" title={a.decisionReason}>
+                  {a.decisionReason}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>

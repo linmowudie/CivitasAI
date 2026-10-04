@@ -1,5 +1,5 @@
 /**
- * Provider 抽象基类（Docs/02 §10.4 / Docs/11 §6）
+ * Provider 抽象基类（Docs/Agent/02 §10.4 / Docs/Agent/10 §6）
  *
  * 所有 LLM Provider 必须实现此接口。
  * context_window 为必填字段，缺失则拒注。
@@ -24,6 +24,11 @@ export interface ModelSpec {
 
 /** Provider 配置 */
 export interface ProviderConfig {
+  /**
+   * 注册名——内存注册表的唯一键，也是模型全限定名前缀（`${provider}/${modelId}`）。
+   * 同类型多实例必须使用不同的注册名（如 `openai-compatible`、`openai-compatible-2`），
+   * 否则后注册实例会覆盖先注册的（FE-036）；可用 `uniqueProviderName()` 生成。
+   */
   readonly provider: string;
   readonly base_url: string;
   readonly api_key_ref: string;
@@ -78,9 +83,27 @@ export interface StreamChunk {
   readonly reasoning_delta?: string;
   readonly finish_reason?: string;
   readonly usage?: CallResult['usage'];
+  /**
+   * 工具调用**增量**（2026-10-03 新增，修复"工具块只在完全生成后才出现"）。
+   *
+   * 背景：模型生成一次工具调用可能要几十秒（尤其写文件这类长参数），
+   * 而工具只会在**整段响应结束**后才由 Loop 执行 —— 若增量不透传到上层，
+   * 这段时间界面完全空白，用户感觉"卡住了/等全部生成才出现"。
+   * 透传后上层可在**模型刚开始生成工具调用时**就预创建工具块并显示"生成中/准备写入"。
+   */
+  readonly tool_call_delta?: ReadonlyArray<{
+    /** 同一响应内的工具调用序号（用于区分并行调用） */
+    readonly index: number;
+    /** 工具调用 ID（通常首个增量即给出） */
+    readonly id?: string;
+    /** 函数名（可能分片到达，需累积） */
+    readonly name?: string;
+    /** 参数 JSON 片段 */
+    readonly argumentsDelta?: string;
+  }>;
 }
 
-/** 错误分类（Docs/02 §10.2） */
+/** 错误分类（Docs/Agent/02 §10.2） */
 export type ErrorCategory =
   | 'auth'           // 401/403 → FATAL，不重试
   | 'rate_limited'   // 429 → 退避 5s 重试 1 次
@@ -118,7 +141,7 @@ export abstract class LlmProvider {
   readonly config: ProviderConfig;
 
   constructor(config: ProviderConfig) {
-    // 验证 context_window 必填（Docs/02 §10.4）
+    // 验证 context_window 必填（Docs/Agent/02 §10.4）
     for (const model of config.models) {
       if (!model.context_window || model.context_window <= 0) {
         throw new Error(`模型 ${model.id} 缺少 context_window，拒注`);
@@ -159,7 +182,7 @@ export abstract class LlmProvider {
     onChunk: (chunk: StreamChunk) => void,
   ): Promise<Result<CallResult>>;
 
-  /** 解析 API Key 引用（env:XXX 格式） */
+  /** 解析 API Key 引用（env:XXX 或 inline:XXX 格式） */
   protected resolveApiKey(): string {
     const ref = this.config.api_key_ref;
     if (ref.startsWith('env:')) {
@@ -170,10 +193,25 @@ export abstract class LlmProvider {
       }
       return value;
     }
+    if (ref.startsWith('inline:')) {
+      // 运行时直接传入的 API Key（不持久化，应用重启后失效）
+      return ref.slice(7);
+    }
     throw new ProviderError('auth', `不支持的 api_key_ref 格式: ${ref}`);
   }
 
-  /** 分类 HTTP 错误（Docs/02 §10.2） */
+  /**
+   * 归一化模型名：调用方可能传入限定名（provider/model），
+   * 而各家 API 只接受裸模型 id。统一在此剥离 provider 前缀，
+   * 避免把 "huawei-maas/DeepSeek-V4-Flash" 这类字符串发给上游，
+   * 得到 "model does not support the token plan subscription" 这类误导性 404。
+   */
+  protected resolveRequestModel(requested: string): string {
+    const slash = requested.indexOf('/');
+    return slash >= 0 ? requested.slice(slash + 1) : requested;
+  }
+
+  /** 分类 HTTP 错误（Docs/Agent/02 §10.2） */
   protected classifyHttpError(statusCode: number, body: string): ProviderError {
     switch (statusCode) {
       case 401:

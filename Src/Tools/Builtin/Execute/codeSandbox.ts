@@ -1,8 +1,10 @@
 /**
  * 代码沙箱工具（DANGEROUS）
  *
- * 在受限环境中执行代码片段。
- * 当前实现为 Node.js vm 模块的简化封装。
+ * 在受限环境中执行代码片段。**诚实边界（FE-070）**：
+ * 本实现为 Node.js `node:vm` 的封装（超时限制 + 无 require/process 透传），
+ * `vm` **不是安全边界**（可被逃逸）——真实隔离执行（子进程 + 白名单）属后续专项；
+ * 风险由此工具的 DANGEROUS 级 + 审批门控 + EffectJournal 副作用留痕承担。
  */
 
 import { runInNewContext } from 'node:vm';
@@ -15,7 +17,7 @@ export const codeSandbox: ToolDefinition = {
   spec: {
     name: 'code.eval',
     version: '0.1.0',
-    description: '在沙箱环境中执行 JavaScript/TypeScript 代码片段。',
+    description: '在受限环境执行 JavaScript/TypeScript 代码片段（node:vm 隔离——非安全边界，需审批）。',
     inputSchema: {
       type: 'object',
       properties: {

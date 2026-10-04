@@ -1,5 +1,5 @@
 /**
- * 模型路由器（Docs/02 §10.4）
+ * 模型路由器（Docs/Agent/02 §10.4）
  *
  * 职责：
  * - 注册 Provider 及其模型
@@ -61,6 +61,22 @@ export function registerProvider(provider: LlmProvider): Result<void> {
 }
 
 /**
+ * 生成唯一注册名（FE-036）：base 未被占用则原样返回，否则依次尝试 `base-2`、`base-3`……
+ *
+ * 背景：注册表以注册名为键 —— 同类型多实例（如两个 OpenAI 兼容供应商）若都用类型名
+ * 注册，后注册的会**覆盖**先注册的（模型一并被顶掉）。调用方在注册前经此函数取得
+ * 唯一名（如 `openai-compatible-2`），即可多实例共存。
+ */
+export function uniqueProviderName(base: string): string {
+  const trimmed = base.trim() || 'provider';
+  if (!providers.has(trimmed)) return trimmed;
+  for (let n = 2; ; n++) {
+    const candidate = `${trimmed}-${n}`;
+    if (!providers.has(candidate)) return candidate;
+  }
+}
+
+/**
  * 设置路由配置
  */
 export function setRoutingConfig(config: RoutingConfig): void {
@@ -90,6 +106,16 @@ export function resolveModel(qualifiedName: QualifiedModelName): Result<{ provid
  */
 export function getProviders(): LlmProvider[] {
   return Array.from(providers.values());
+}
+
+/**
+ * 注销 Provider 及其所有模型（运行时动态移除）
+ */
+export function unregisterProvider(name: string): void {
+  providers.delete(name);
+  for (const [key, entry] of modelRegistry) {
+    if (entry.provider.name === name) modelRegistry.delete(key);
+  }
 }
 
 /**

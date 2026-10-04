@@ -1,7 +1,7 @@
 /**
  * @module Context/assembler
  * @description
- * 上下文装配器——Docs/02 §5 步骤④�?
+ * 上下文装配器——Docs/Agent/02 §5 步骤④�?
  *
  * �?S→L→M→H 顺序装配上下文，检查分区预算上限，
  * 处理 Cache 命中（S/L 区不变内容可�?Prompt Cache 缓存）�?

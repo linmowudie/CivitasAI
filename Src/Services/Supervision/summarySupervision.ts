@@ -1,8 +1,8 @@
 /**
  * @module Supervision/summarySupervision
  * @description
- * 摘要监管——Docs/02 §3 步骤�?懒监听之一�?
- * 监控上下文摘要质量，确保摘要保留关键信息�?
+ * 摘要监管——Docs/Agent/02 §3 步骤�?懒监听之一�?
+ * 监控上下文摘要质量，确保摘要保留关键信息�?
  */
 
 import type { Result } from '../../Infra/types.js';
@@ -12,9 +12,9 @@ import { ok } from '../../Infra/types.js';
 export interface SummarySupervisionResult {
   /** 摘要是否合格 */
   summaryQualityOk: boolean;
-  /** 摘要压缩�?*/
+  /** 摘要压缩�?*/
   summaryRatio: number;
-  /** 是否触发了摘�?*/
+  /** 是否触发了摘�?*/
   summaryTriggered: boolean;
 }
 

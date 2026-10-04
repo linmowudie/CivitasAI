@@ -1,13 +1,29 @@
 /**
- * AppLayout——侧边导航 + 离线横幅 + 底部状态栏 + 主内容区。
- * F1.6：从 App.tsx 抽出布局骨架。
+ * AppLayout —— 三栏自适应工作界面布局。
+ *
+ * 设计规格：Docs/Client/02-前端改造基础/三栏自适应工作界面设计规格.md
+ *
+ * 结构：
+ *   ┌────────────┬─┬──────────────────────────┬─┬────────────────┐
+ *   │ 左侧副容器 │││      主容器               │││  右侧副容器     │
+ *   │ (可拖拽)   │││   (flex: 1, min-w 400)   │││  (可拖拽)       │
+ *   └────────────┘│└──────────────────────────┘│└────────────────┘
+ *
+ * 替代原侧边导航 + 主内容区二栏结构。
+ * 左侧：任务列表 + 功能列表（驱动 mainView）
+ * 中间：按 mainView 切换视图（conversation/task/feature/agent）
+ * 右侧：预览标签（L1 Agent / SubAgent / 终端 / 概要 / 文件查看 / 文件预览）
  */
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import {
-  MessageSquare, LayoutDashboard, Cpu, ListTodo, ShieldCheck, Bug,
-  Scale, GitBranch, Activity, Wallet, Settings, Workflow,
-} from 'lucide-react';
-import ChatView from '@/views/ChatView';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEventBus } from '@/hooks/useEventBus';
+import { useUIStore } from '@/stores/uiStore';
+import { useResizablePanels } from './hooks/useResizablePanels';
+import LeftPanel from './LeftPanel';
+import MainContainer from './MainContainer';
+import RightPanel from './RightPanel';
+import OfflineBanner from './OfflineBanner';
+
+/* 非三栏工作区的独立视图（保留路由兼容） */
 import Dashboard from '@/views/Dashboard';
 import AgentMonitor from '@/views/AgentMonitor';
 import TaskPanel from '@/views/TaskPanel';
@@ -18,92 +34,109 @@ import TraceReplay from '@/views/TraceReplay';
 import TokenLedger from '@/views/TokenLedger';
 import SystemConfig from '@/views/SystemConfig';
 import WorkingModes from '@/views/WorkingModes';
-import OfflineBanner from './OfflineBanner';
-import StatusBar from './StatusBar';
-import { useWebSocket } from '@/hooks/useWebSocket';
-
-const navItems = [
-  { to: '/chat', icon: MessageSquare, label: 'Agent 对话' },
-  { to: '/', icon: LayoutDashboard, label: '总控大屏' },
-  { to: '/agents', icon: Cpu, label: 'Agent 监控' },
-  { to: '/tasks', icon: ListTodo, label: '任务面板' },
-  { to: '/working-modes', icon: Workflow, label: '工作方式' },
-  { to: '/approvals', icon: ShieldCheck, label: '审批队列' },
-  { to: '/loop-debug', icon: Bug, label: 'Loop 调试' },
-  { to: '/arbitration', icon: Scale, label: '仲裁中心' },
-  { to: '/trace', icon: GitBranch, label: '链路回放' },
-  { to: '/token-ledger', icon: Wallet, label: 'Token 账本' },
-  { to: '/system-config', icon: Settings, label: '系统配置' },
-];
 
 /**
- * 自带内部滚动容器的视图（左右分栏 / 全屏画布类）。
- * 这些路由的主内容区必须 overflow-hidden，否则主内容区会成为第二个滚动容器，
- * 与内部滚动区叠在一起导致「滚消息区时会话列表跟着一起滚」。
+ * 三栏工作区布局（用于 /chat 及 mainView 驱动的视图）
  */
-const selfScrollingViews = ['/chat'];
-
-export default function AppLayout() {
-  // 全局 WS 连接（仅挂载一次）
-  useWebSocket();
-  const location = useLocation();
+function WorkspaceLayout() {
+  const { leftPanelOpen, rightPanelOpen } = useUIStore();
+  const { containerRef, leftPanelWidth, rightPanelWidth, startDrag, HANDLE_WIDTH } = useResizablePanels();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* ── 侧边导航 ──────────────────────────────────── */}
-      <aside className="w-[200px] flex-shrink-0 flex flex-col border-r border-surface-700 bg-surface-900">
-        {/* Logo */}
-        <div className="px-4 py-5 flex items-center gap-2.5 border-b border-surface-700">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
-            <Activity size={16} className="text-white" />
+    <div
+      ref={containerRef}
+      className="flex-1 min-h-0 flex overflow-hidden relative"
+    >
+      {/* ── 左侧副容器 ── */}
+      {leftPanelOpen ? (
+        <>
+          <div
+            style={{ width: leftPanelWidth, flexShrink: 0 }}
+            className="h-full min-h-0 overflow-hidden"
+          >
+            <LeftPanel />
           </div>
-          <div>
-            <div className="text-sm font-bold text-text-primary tracking-tight">Civitas-AI</div>
-            <div className="text-[10px] text-text-muted font-mono">智体城邦 v0.1.0</div>
+          {/* 左拖拽手柄 */}
+          <div
+            className="flex-shrink-0 cursor-col-resize hover:bg-brand-500/20 transition-colors"
+            style={{ width: HANDLE_WIDTH }}
+            onMouseDown={(e) => startDrag('left', e)}
+          />
+        </>
+      ) : (
+        /* 收起态：保留左上角展开角标（Canvas L765-779），否则面板无法恢复 */
+        <LeftPanel />
+      )}
+
+      {/* ── 主容器 ── */}
+      <MainContainer />
+
+      {/* ── 右拖拽手柄 ── */}
+      {rightPanelOpen ? (
+        <>
+          <div
+            className="flex-shrink-0 cursor-col-resize hover:bg-brand-500/20 transition-colors"
+            style={{ width: HANDLE_WIDTH }}
+            onMouseDown={(e) => startDrag('right', e)}
+          />
+          <div
+            style={{ width: rightPanelWidth, flexShrink: 0 }}
+            className="h-full min-h-0 overflow-hidden"
+          >
+            <RightPanel />
           </div>
-        </div>
+        </>
+      ) : (
+        /* 收起态：保留右上角展开角标（Canvas L781-795），否则第三栏无法打开 */
+        <RightPanel />
+      )}
+    </div>
+  );
+}
 
-        {/* 导航项 */}
-        <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5">
-          {navItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? 'active' : ''}`
-              }
-            >
-              <item.icon size={16} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
+/**
+ * 独立全屏视图布局（用于非工作区路由）
+ */
+function StandaloneView({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      {children}
+    </div>
+  );
+}
 
-      {/* ── 主内容区 ──────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <OfflineBanner />
-        <main
-          className={selfScrollingViews.includes(location.pathname)
-            ? 'flex-1 min-h-0 overflow-hidden'
-            : 'flex-1 overflow-y-auto'}
-        >
+export default function AppLayout() {
+  /* 全局事件总线连接（仅挂载一次） */
+  useEventBus();
+
+  return (
+    <div className="flex h-full overflow-hidden bg-surface-950">
+      {/* ── 工作区卡片（圆角边框容器） ── */}
+      <div className="flex-1 flex flex-col p-1">
+        <div className="flex-1 flex flex-col border border-surface-700 rounded-xl overflow-hidden relative">
+          <OfflineBanner />
+
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/chat" element={<ChatView />} />
-            <Route path="/agents" element={<AgentMonitor />} />
-            <Route path="/tasks" element={<TaskPanel />} />
-            <Route path="/working-modes" element={<WorkingModes />} />
-            <Route path="/approvals" element={<ApprovalQueue />} />
-            <Route path="/loop-debug" element={<LoopDebugger />} />
-            <Route path="/arbitration" element={<ArbitrationView />} />
-            <Route path="/trace" element={<TraceReplay />} />
-            <Route path="/token-ledger" element={<TokenLedger />} />
-            <Route path="/system-config" element={<SystemConfig />} />
+            {/* 默认路由重定向到三栏工作区 */}
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+
+            {/* 三栏工作区路由 */}
+            <Route path="/chat" element={<WorkspaceLayout />} />
+            <Route path="/workspace" element={<WorkspaceLayout />} />
+
+            {/* 独立视图路由（保留兼容，使用简化布局） */}
+            <Route path="/dashboard" element={<StandaloneView><Dashboard /></StandaloneView>} />
+            <Route path="/agents" element={<StandaloneView><AgentMonitor /></StandaloneView>} />
+            <Route path="/tasks" element={<StandaloneView><TaskPanel /></StandaloneView>} />
+            <Route path="/working-modes" element={<StandaloneView><WorkingModes /></StandaloneView>} />
+            <Route path="/approvals" element={<StandaloneView><ApprovalQueue /></StandaloneView>} />
+            <Route path="/loop-debug" element={<StandaloneView><LoopDebugger /></StandaloneView>} />
+            <Route path="/arbitration" element={<StandaloneView><ArbitrationView /></StandaloneView>} />
+            <Route path="/trace" element={<StandaloneView><TraceReplay /></StandaloneView>} />
+            <Route path="/token-ledger" element={<StandaloneView><TokenLedger /></StandaloneView>} />
+            <Route path="/system-config" element={<StandaloneView><SystemConfig /></StandaloneView>} />
           </Routes>
-        </main>
-        <StatusBar />
+        </div>
       </div>
     </div>
   );

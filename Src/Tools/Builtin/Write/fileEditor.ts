@@ -8,7 +8,9 @@ import { createHash } from 'node:crypto';
 
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
-import { safeReadFile, safeWriteFile } from '../../../Infra/Fs/fsSafe.js';
+import { safeReadFile } from '../../../Infra/Fs/fsSafe.js';
+import { atomicWrite } from '../../../Infra/Fs/atomicWrite.js';
+import { resolveWithinWorkspace } from '../../../Infra/Security/workspaceGuard.js';
 import { contentOutputSchema } from '../_shared.js';
 
 export const fileEditor: ToolDefinition = {
@@ -38,13 +40,23 @@ export const fileEditor: ToolDefinition = {
   },
 
   async execute(input, context) {
-    const filePath = input['path'] as string;
+    const rawPath = input['path'] as string;
     const search = input['search'] as string;
     const replace = input['replace'] as string;
     const useRegex = input['useRegex'] as boolean ?? false;
 
-    if (!filePath || !search) {
+    if (!rawPath || !search) {
       return toolError(context.operationId, 'INVALID_INPUT', '缺少 path 或 search 参数', false);
+    }
+
+    // 任务工作目录约束（未绑定会话时退化为全局 pathGuard）
+    let filePath = rawPath;
+    if (context.workDir) {
+      const within = resolveWithinWorkspace(rawPath, context.workDir);
+      if (!within.ok) {
+        return toolError(context.operationId, 'PATH_DENIED', within.error, false);
+      }
+      filePath = within.value;
     }
 
     // 读取原文件
@@ -88,8 +100,8 @@ export const fileEditor: ToolDefinition = {
       return toolError(context.operationId, 'NO_MATCH', `未找到匹配: ${search}`, true);
     }
 
-    // 写入修改后的内容
-    const writeResult = safeWriteFile(filePath, modified);
+    // 写入修改后的内容（FE-066：原子写入——临时文件 + fsync + rename，失败不影响原文件）
+    const writeResult = atomicWrite(filePath, modified);
     if (!writeResult.ok) {
       return toolError(context.operationId, 'FILE_WRITE_FAILED', writeResult.error, true);
     }

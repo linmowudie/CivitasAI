@@ -1,0 +1,12 @@
+{
+  "tools": {
+    "comment": "工具头部（tools 参数）冻结集：只放高频热工具 + 元工具。同一会话内必须保持恒定，否则会破坏提供商前缀缓存。",
+    "hot": [
+      "file.read", "file.write", "file.edit",
+      "dir.list", "file.grep", "shell.exec",
+      "todo.write", "web.search",
+      "tool.search", "tool.execute"
+    ],
+    "maxHeaderTools": 12
+  }
+}

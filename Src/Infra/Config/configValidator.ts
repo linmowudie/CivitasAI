@@ -1,9 +1,9 @@
 /**
- * 配置校验器（Docs/11 §1.2 / Docs/15 §7）
+ * 配置校验器（Docs/Agent/10 §1.2 / Docs/Agent/14 §7）
  *
  * 职责：
  * - 校验配置值类型是否正确（类型错误 → 启动失败，不用默认值兜底）
- * - 校验数值天花板（Docs/15 §7.1）
+ * - 校验数值天花板（Docs/Agent/14 §7.1）
  * - 校验枚举值合法性
  * - 校验跨段一致性（如 profitSharing 权重和 = 1）
  */
@@ -74,7 +74,7 @@ export function validateDefaultConfig(config: Record<string, unknown>): Result<V
 }
 
 /**
- * 校验 loopConfig.json 硬约束（Docs/15 §7.1）
+ * 校验 loopConfig.json 硬约束（Docs/Agent/14 §7.1）
  */
 export function validateLoopConfig(config: Record<string, unknown>): Result<ValidationError[]> {
   const errors: ValidationError[] = [];

@@ -1,7 +1,7 @@
 /**
  * @module Decision/Orchestrator/progressTracker
  * @description
- * 进度追踪器——Docs/03 §6。
+ * 进度追踪器——Docs/Agent/03 §6。
  * 监控各 Agent 的执行状态，检测超时/停滞/循环/连续失败。
  */
 
@@ -109,7 +109,7 @@ export function getAllProgress(): AgentProgress[] {
   return [...progressMap.values()].map(p => ({ ...p }));
 }
 
-// ── 异常检测（Docs/03 §6.2）────────────────────────────────────────
+// ── 异常检测（Docs/Agent/03 §6.2）────────────────────────────────────────
 
 export interface AnomalyReport {
   assignmentId: string;

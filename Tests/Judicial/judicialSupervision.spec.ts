@@ -185,7 +185,7 @@ describe('Tribunal 六步治理闭环', () => {
       newMemoryContent: 'A', oldMemoryContent: 'B', taskDescription: 'T',
     });
 
-    const verdict = reasonVerdict(filed.value.caseId);
+    const verdict = reasonVerdict(filed.value.caseId, 'arbitrator');
     expect(verdict.ok).toBe(true);
     if (verdict.ok) {
       expect(verdict.value.verdict).toBe('new_wins');
@@ -205,9 +205,9 @@ describe('Tribunal 六步治理闭环', () => {
     assembleCapsule(filed.value.caseId, {
       newMemoryContent: 'X', oldMemoryContent: 'Y', taskDescription: 'Z',
     });
-    reasonVerdict(filed.value.caseId);
+    reasonVerdict(filed.value.caseId, 'arbitrator');
 
-    const r1 = issueSuspension(filed.value.caseId);
+    const r1 = issueSuspension(filed.value.caseId, 'arbitrator');
     expect(r1.ok).toBe(true);
 
     // 同 conflictId 第二次挂起 → 冷却期跳过
@@ -221,8 +221,8 @@ describe('Tribunal 六步治理闭环', () => {
       assembleCapsule(filed2.value.caseId, {
         newMemoryContent: 'X', oldMemoryContent: 'Y', taskDescription: 'Z',
       });
-      reasonVerdict(filed2.value.caseId);
-      const r2 = issueSuspension(filed2.value.caseId);
+      reasonVerdict(filed2.value.caseId, 'arbitrator');
+      const r2 = issueSuspension(filed2.value.caseId, 'arbitrator');
       expect(r2.ok).toBe(true);
     }
   });
@@ -256,10 +256,10 @@ describe('Tribunal 六步治理闭环', () => {
     assembleCapsule(filed.value.caseId, {
       newMemoryContent: 'A', oldMemoryContent: 'B', taskDescription: 'T',
     });
-    reasonVerdict(filed.value.caseId);
+    reasonVerdict(filed.value.caseId, 'arbitrator');
 
     const before = getEventLog({ eventType: 'arbitration:knowledge_consolidation' as any }).length;
-    const result = consolidateKnowledge(filed.value.caseId);
+    const result = consolidateKnowledge(filed.value.caseId, 'arbitrator');
     expect(result.ok).toBe(true);
     const after = getEventLog({ eventType: 'arbitration:knowledge_consolidation' as any }).length;
     expect(after).toBe(before + 1);
@@ -545,17 +545,17 @@ describe('BehaviorCode 行为准则', () => {
       action: 'warn',
       severity: 'low',
       enforceable: false,
-    });
+    }, 'regulatory_authority');
     expect(getRule('custom-001')).toBeDefined();
 
-    updateVersion('1.1.0');
+    updateVersion('1.1.0', 'regulatory_authority');
     expect(getCurrentCode()!.version).toBe('1.1.0');
   });
 
   it('删除规则', () => {
     initBehaviorCode();
     const before = getRules().length;
-    removeRule('resource-001');
+    removeRule('resource-001', 'regulatory_authority');
     expect(getRules().length).toBe(before - 1);
     expect(getRule('resource-001')).toBeUndefined();
   });
@@ -576,6 +576,7 @@ describe('BroadcastChannel 广播通道', () => {
       type: 'system_notice',
       title: '系统维护',
       content: '今晚 22:00 维护',
+      actorRole: 'regulatory_authority',
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -589,6 +590,7 @@ describe('BroadcastChannel 广播通道', () => {
       title: '规则更新',
       content: '新增 safety-003',
       requiresAck: true,
+      actorRole: 'regulatory_authority',
     });
 
     const unacked = getUnacknowledged('agent-1');
@@ -631,6 +633,7 @@ describe('FinalArbiter 最终裁决', () => {
     const result = issueFinalVerdict({
       case_: c,
       reason: 'deadlock',
+      actorRole: 'regulatory_authority',
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -651,6 +654,7 @@ describe('FinalArbiter 最终裁决', () => {
     const result = issueFinalVerdict({
       case_: filed.value,
       reason: 'deadlock',
+      actorRole: 'regulatory_authority',
     });
     expect(result.ok).toBe(false); // filed 状态不允许
   });
@@ -688,7 +692,8 @@ describe('RegulatoryAuthority 监管局', () => {
       type: 'force_terminate',
       reason: 'Agent 严重违规',
       targetAgentIds: ['a-bad'],
-    });
+      actorRole: 'regulatory_authority',
+      });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.executed).toBe(true);
@@ -705,6 +710,7 @@ describe('RegulatoryAuthority 监管局', () => {
       content: '系统异常',
       priority: 'critical',
       requiresAck: true,
+      actorRole: 'regulatory_authority',
     });
     expect(msg.ok).toBe(true);
   });
@@ -791,7 +797,7 @@ describe('FreezeManager 冻结管理', () => {
   });
 
   it('冻结 Agent → WALLET_FROZEN 事件', () => {
-    const result = freezeAgent('a1', '异常消耗');
+    const result = freezeAgent('a1', '异常消耗', 'auditor');
     expect(result.ok).toBe(true);
     expect(isFrozen('a1')).toBe(true);
 
@@ -800,14 +806,14 @@ describe('FreezeManager 冻结管理', () => {
   });
 
   it('重复冻结 → 错误', () => {
-    freezeAgent('a1', '原因1');
-    const r = freezeAgent('a1', '原因2');
+    freezeAgent('a1', '原因1', 'auditor');
+    const r = freezeAgent('a1', '原因2', 'auditor');
     expect(r.ok).toBe(false);
   });
 
   it('解冻 Agent → WALLET_UNFROZEN 事件', () => {
-    freezeAgent('a1', '测试');
-    const r = unfreezeAgent('a1', 'admin');
+    freezeAgent('a1', '测试', 'auditor');
+    const r = unfreezeAgent('a1', 'admin', 'auditor');
     expect(r.ok).toBe(true);
     expect(isFrozen('a1')).toBe(false);
 
@@ -817,7 +823,7 @@ describe('FreezeManager 冻结管理', () => {
 
   it('自动解冻：过期自动解冻', () => {
     setAutoUnfreezeSec(0); // 立即过期
-    freezeAgent('a1', '短冻结');
+    freezeAgent('a1', '短冻结', 'auditor');
 
     const expired = checkAutoUnfreeze();
     expect(expired).toContain('a1');
@@ -887,7 +893,7 @@ describe('ResourceAuditBureau 审计局', () => {
     monitorAgent('a2', 600); // 触发 critical
     expect(isFrozen('a2')).toBe(true);
 
-    const audit = investigate('a2');
+    const audit = investigate('a2', 'auditor');
     expect(audit.ok).toBe(true);
     if (audit.ok) {
       expect(audit.value.finding).toBe('false_positive'); // 单次 critical
@@ -976,7 +982,7 @@ describe('Gate G12 综合验证', () => {
     c.status = 'deadlocked';
 
     // 升级监管局
-    const intervention = escalateDeadlock(c, 'deadlock');
+    const intervention = escalateDeadlock(c, 'deadlock', 'regulatory_authority');
     expect(intervention.ok).toBe(true);
     if (intervention.ok) {
       expect(intervention.value.verdict.isDeadlocked).toBe(false);
@@ -1025,7 +1031,7 @@ describe('Gate G12 综合验证', () => {
     expect(monitor.frozen).toBe(true);
 
     // 稽查 → 单次 critical → 误报 → 解冻
-    const audit = investigate('audit-agent');
+    const audit = investigate('audit-agent', 'auditor');
     expect(audit.ok).toBe(true);
     if (audit.ok) {
       expect(audit.value.finding).toBe('false_positive');

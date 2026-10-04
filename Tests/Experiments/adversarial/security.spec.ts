@@ -294,10 +294,10 @@ describe('实验矩阵 · 恶意攻击（SEC）', () => {
 
   // @matrix:SEC-FREEZEEVADE
   it('SEC-FREEZEEVADE 被冻结 Agent 无法绕过冻结', () => {
-    const r = freezeAgent('bad-agent', 'anomaly: rolling window exceeded');
+    const r = freezeAgent('bad-agent', 'anomaly: rolling window exceeded', 'auditor');
     expect(r.ok).toBe(true);
     expect(isFrozen('bad-agent')).toBe(true);
     // 重复冻结被拒
-    expect(freezeAgent('bad-agent', 'again').ok).toBe(false);
+    expect(freezeAgent('bad-agent', 'again', 'auditor').ok).toBe(false);
   });
 });

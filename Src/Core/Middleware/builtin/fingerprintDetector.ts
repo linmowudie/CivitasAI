@@ -1,7 +1,7 @@
 /**
  * @module Middleware/builtin/fingerprintDetector
  * @description
- * 指纹检测中间件——Docs/12 循环控制。
+ * 指纹检测中间件——Docs/Agent/11 循环控制。
  * 检测模型输出指纹，用于发现重复/死循环。
  * 挂载点：afterModel（priority=10）。
  */

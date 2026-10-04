@@ -1,7 +1,7 @@
 /**
  * @module Arbitration/capsuleAssembler
  * @description
- * 胶囊组装器——Docs/05 §3.2。
+ * 胶囊组装器——Docs/Agent/05 §3.2。
  * 按需拉取证据，组装轻量级裁决上下文。
  * 最小信息原则：仲裁者绝不加载全局上下文，只看到"案卷"。
  */
@@ -35,33 +35,45 @@ export function initCapsuleAssembler(source: EvidenceSource): void {
 
 /**
  * 组装上下文胶囊。
- * Phase 0-2：使用内存证据源；Phase 3 拉取真实向量库/DB 数据。
+ *
+ * 证据优先级（FE-062 收敛）：
+ *  - 内存证据源存在且提供 memoryId 内容 → 拉取真实证据 + Agent 历史；
+ *  - 否则使用**内容直传**（tribunal 入口路径：案件已持有新旧记忆原文）；
+ *  - 均无 → 简化占位（'简化模式'）。
+ *
+ * 注：本模块为胶囊组装的唯一实现（tribunal.assembleCapsule 委托此处，消除双实现漂移）。
  */
 export function assembleCapsule(params: {
   conflictId: string;
-  newMemoryId: string;
-  oldMemoryId: string;
+  newMemoryId?: string;
+  oldMemoryId?: string;
+  /** 内容直传（无证据源时使用；tribunal 入口路径） */
+  newMemoryContent?: string;
+  oldMemoryContent?: string;
   plaintiffAgentId: string;
   defendantAgentId: string;
-  taskId: string;
+  taskId?: string;
+  taskDescription?: string;
   tokenBudget?: number;
 }): Result<ContextCapsule> {
   if (!evidenceSource) {
-    // 无证据源时使用简化组装
+    // 无证据源：内容直传（tribunal 路径）或简化占位
     return ok(createSimpleCapsule(params));
   }
 
   const src = evidenceSource;
 
-  // [2a] 拉取证据
-  const newContent = src.getMemoryContent(params.newMemoryId) ?? '(证据缺失)';
-  const oldContent = src.getMemoryContent(params.oldMemoryId) ?? '(证据缺失)';
-  const newMeta = src.getMemoryMetadata(params.newMemoryId);
-  const oldMeta = src.getMemoryMetadata(params.oldMemoryId);
+  // [2a] 拉取证据（memoryId 可用时）；否则回退直传内容
+  const newContent = (params.newMemoryId ? src.getMemoryContent(params.newMemoryId) : undefined)
+    ?? params.newMemoryContent ?? '(证据缺失)';
+  const oldContent = (params.oldMemoryId ? src.getMemoryContent(params.oldMemoryId) : undefined)
+    ?? params.oldMemoryContent ?? '(证据缺失)';
+  const newMeta = params.newMemoryId ? src.getMemoryMetadata(params.newMemoryId) : {};
+  const oldMeta = params.oldMemoryId ? src.getMemoryMetadata(params.oldMemoryId) : {};
 
   // [2b] 拉取环境上下文
-  const taskCtx = src.getTaskContext(params.taskId) ?? {
-    description: '(任务上下文缺失)',
+  const taskCtx = (params.taskId ? src.getTaskContext(params.taskId) : undefined) ?? {
+    description: params.taskDescription ?? '(任务上下文缺失)',
     constraints: [],
   };
 
@@ -104,18 +116,32 @@ export function assembleCapsule(params: {
 
 function createSimpleCapsule(params: {
   conflictId: string;
+  newMemoryContent?: string;
+  oldMemoryContent?: string;
   plaintiffAgentId: string;
   defendantAgentId: string;
+  taskDescription?: string;
   tokenBudget?: number;
 }): ContextCapsule {
   return {
     capsuleId: `capsule-simple-${++capsuleCounter}`,
     conflictId: params.conflictId,
     evidence: {
-      newMemory: { content: '(简化模式)', metadata: {}, agentId: params.plaintiffAgentId },
-      oldMemory: { content: '(简化模式)', metadata: {}, agentId: params.defendantAgentId },
+      newMemory: {
+        content: params.newMemoryContent ?? '(简化模式)',
+        metadata: { source: params.plaintiffAgentId },
+        agentId: params.plaintiffAgentId,
+      },
+      oldMemory: {
+        content: params.oldMemoryContent ?? '(简化模式)',
+        metadata: { source: params.defendantAgentId },
+        agentId: params.defendantAgentId,
+      },
     },
-    taskContext: { parentTaskDescription: '(简化模式)', constraints: [] },
+    taskContext: {
+      parentTaskDescription: params.taskDescription ?? '(简化模式)',
+      constraints: [],
+    },
     agentHistory: { plaintiffOps: [], defendantOps: [] },
     tokenBudget: params.tokenBudget ?? 5000,
     createdAt: Date.now(),

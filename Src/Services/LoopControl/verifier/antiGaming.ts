@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/verifier/antiGaming
  * @description
- * Reward Hacking 防御——Docs/12 §3.4。
+ * Reward Hacking 防御——Docs/Agent/11 §3.4。
  * 每个 VerifierSpec 声明时必须同时声明 anti-gaming 补充信号。
  * Goodhart 定律：当度量变成目标，它就不再是好的度量。
  */

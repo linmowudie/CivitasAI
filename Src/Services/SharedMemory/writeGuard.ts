@@ -1,7 +1,7 @@
 /**
  * @module SharedMemory/writeGuard
  * @description
- * 写入守卫——Docs/07 §3.2 + §8.1 + §8.4。
+ * 写入守卫——Docs/Agent/07 §3.2 + §8.1 + §8.4。
  * 拦截异常写入，检测版本冲突与语义冲突。
  *
  * 红线：goal / immutable_constraints / successCriteria 禁止写入 GlobalWorkspace。
@@ -15,7 +15,7 @@ import { ok, err } from '../../Infra/types.js';
 
 import type { WorkspaceEntry, WriteResult, VersionConflict } from './versionedEntry.js';
 
-// ── 禁止写入的键（Docs/07 §8.1 红线）───────────────────────────────
+// ── 禁止写入的键（Docs/Agent/07 §8.1 红线）───────────────────────────────
 
 const FORBIDDEN_KEYS = new Set([
   'goal', 'immutable_constraints', 'successCriteria',

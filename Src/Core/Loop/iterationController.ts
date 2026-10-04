@@ -1,7 +1,7 @@
 /**
  * @module Loop/iterationController
  * @description
- * Iteration controller - Docs/02 3 step 10.
+ * Iteration controller - Docs/Agent/02 3 step 10.
  */
 
 export type ExitReason = 'success' | 'max_iterations' | 'budget_exhausted' | 'no_progress' | 'risk';
@@ -59,7 +59,7 @@ export function decideIteration(state: IterationState, input: IterationDecisionI
     state.exitMessage = `Max iterations reached (${state.current}/${state.max})`;
     return { shouldContinue: false, exitReason: 'max_iterations', exitMessage: state.exitMessage };
   }
-  // 成功退出：本轮有文本输出且无工具调用 = 模型给出最终答复（Docs/02 五类退出之 success）
+  // 成功退出：本轮有文本输出且无工具调用 = 模型给出最终答复（Docs/Agent/02 五类退出之 success）
   if (input.hasOutput && !input.hadToolCall) {
     state.terminated = true; state.exitReason = 'success';
     state.exitMessage = 'Agent produced final output without tool calls';

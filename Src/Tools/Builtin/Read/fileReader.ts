@@ -12,6 +12,7 @@ import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { safeReadFile } from '../../../Infra/Fs/fsSafe.js';
 import { contentOutputSchema } from '../_shared.js';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
+import { resolveWithinWorkspace } from '../../../Infra/Security/workspaceGuard.js';
 
 export const fileReader: ToolDefinition = {
   spec: {
@@ -33,17 +34,27 @@ export const fileReader: ToolDefinition = {
     idempotencyKeyFields: ['path'],
     reversibility: 'REVERSIBLE',
     sideEffectScope: 'none',
-    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer'],
+    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer', 'regulator'],
     sandboxMode: 'none',
     timeoutMs: 10_000,
   },
 
   async execute(input, context) {
-    const filePath = input['path'] as string;
+    const rawPath = input['path'] as string;
     const encoding = (input['encoding'] as BufferEncoding) ?? 'utf-8';
 
-    if (!filePath) {
+    if (!rawPath) {
       return toolError(context.operationId, 'INVALID_INPUT', '缺少 path 参数', false);
+    }
+
+    // 任务工作目录约束：路径必须落在会话工作目录内（未绑定会话时退化为全局 pathGuard）
+    let filePath = rawPath;
+    if (context.workDir) {
+      const within = resolveWithinWorkspace(rawPath, context.workDir);
+      if (!within.ok) {
+        return toolError(context.operationId, 'PATH_DENIED', within.error, false);
+      }
+      filePath = within.value;
     }
 
     const result = safeReadFile(filePath, { encoding });

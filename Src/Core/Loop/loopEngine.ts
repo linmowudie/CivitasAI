@@ -1,7 +1,7 @@
 /**
  * @module Loop/loopEngine
  * @description
- * Main loop engine - Docs/02 3 ten-step sequence.
+ * Main loop engine - Docs/Agent/02 3 ten-step sequence.
  */
 
 import type { Result } from '../../Infra/types.js';

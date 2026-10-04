@@ -1,5 +1,5 @@
 /**
- * 重试策略（Docs/02 §10.2）
+ * 重试策略（Docs/Agent/02 §10.2）
  *
  * 根据错误分类决定重试次数和退避时间。
  */
@@ -16,7 +16,7 @@ export interface RetryDecision {
   readonly fallbackToNext: boolean;
 }
 
-// ===== 重试矩阵（Docs/02 §10.2）=====
+// ===== 重试矩阵（Docs/Agent/02 §10.2）=====
 
 const RETRY_MATRIX: Record<ErrorCategory, RetryDecision> = {
   auth: {

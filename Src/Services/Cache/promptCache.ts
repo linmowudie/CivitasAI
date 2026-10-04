@@ -1,7 +1,7 @@
 /**
  * @module Cache/promptCache
  * @description
- * Prompt Cache 管理——Docs/02 §5.1�?
+ * Prompt Cache 管理——Docs/Agent/02 §5.1�?
  *
  * S 区因 Prompt Cache 命中而实际只�?5% 价格（分件系�?0.05）�?
  * 通过前缀 hash 检�?Cache 命中情况�?
@@ -154,4 +154,18 @@ export function clearCache(): void {
   cacheStore.clear();
   totalLookups = 0;
   totalHits = 0;
+}
+
+/**
+ * 计算系统提示前缀 hash（FE-064：modelCaller 登记/查询复用观测用）。
+ * 取前 4000 字符（与常见提供商前缀缓存窗口对齐）。
+ */
+export function hashPromptPrefix(text: string): string {
+  let hash = 0x811c9dc5;
+  const sample = text.slice(0, 4000);
+  for (let i = 0; i < sample.length; i++) {
+    hash ^= sample.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16);
 }

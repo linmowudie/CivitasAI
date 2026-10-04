@@ -13,7 +13,7 @@ import ModeShell from './ModeShell';
 import { DEMO_REGULATION, type RegulationDemo, type AckTarget } from './demoData';
 
 const TYPE_LABEL: Record<RegulationDemo['type'], { label: string; color: string }> = {
-  rule_update:     { label: '行为准则更新', color: '#22d3ee' },
+  rule_update:     { label: '行为准则更新', color: '#3b82f6' },
   emergency_alert: { label: '紧急干预', color: '#ef4444' },
   verdict_notice:  { label: '裁决告知', color: '#8b5cf6' },
   patrol_result:   { label: '巡检结果', color: '#10b981' },
@@ -36,9 +36,9 @@ function BroadcastRipple({ targets, ackDeadline }: {
     <svg width={size} height={size} className="block">
       <defs>
         <radialGradient id="ripple" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} />
-          <stop offset="70%" stopColor="#22d3ee" stopOpacity={0.05} />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
+          <stop offset="70%" stopColor="#3b82f6" stopOpacity={0.05} />
+          <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
         </radialGradient>
       </defs>
       {/* 三层同心网格环 */}
@@ -53,7 +53,7 @@ function BroadcastRipple({ targets, ackDeadline }: {
         transformOrigin: 'center',
       }} />
       {/* 中心：监管局 */}
-      <circle cx={cx} cy={cy} r={22} fill="#0891b2" stroke="#22d3ee" strokeWidth={2} />
+      <circle cx={cx} cy={cy} r={22} fill="#2563eb" stroke="#3b82f6" strokeWidth={2} />
       <text x={cx} y={cy - 3} textAnchor="middle" className="text-[10px] fill-white font-semibold">
         监管局
       </text>

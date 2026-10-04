@@ -1,5 +1,5 @@
 /**
- * 工具规格定义（Docs/11 §6.1）
+ * 工具规格定义（Docs/Agent/10 §6.1）
  *
  * 所有工具注册时必须提供完整的 ToolSpec。
  * v2 新增三必填字段：idempotency / reversibility / sideEffectScope。
@@ -21,10 +21,10 @@ export interface JsonSchema {
   readonly enum?: string[];
 }
 
-/** 幂等性声明（Docs/11 §6.1 / Docs/13 §7） */
+/** 幂等性声明（Docs/Agent/10 §6.1 / Docs/Agent/12 §7） */
 export type Idempotency = 'YES' | 'NO' | 'CONDITIONAL';
 
-/** 可逆性声明（Docs/11 §6.1） */
+/** 可逆性声明（Docs/Agent/10 §6.1） */
 export type Reversibility = 'REVERSIBLE' | 'PARTIAL' | 'IRREVERSIBLE';
 
 /** 副作用范围 */
@@ -44,7 +44,7 @@ export interface RateLimit {
 }
 
 /**
- * 工具规格（Docs/11 §6.1）
+ * 工具规格（Docs/Agent/10 §6.1）
  *
  * 所有字段均为必填（除 idempotencyKeyFields 和 rateLimitPerAgent）。
  * 缺失任何必填字段 → Registry 拒注。
@@ -61,7 +61,7 @@ export interface ToolSpec {
   /** 输出 Schema（必须包含 status + recoverable） */
   readonly outputSchema: JsonSchema;
 
-  /** 危险分级（Docs/11 §3.3） */
+  /** 危险分级（Docs/Agent/10 §3.3） */
   readonly dangerLevel: DangerLevel;
 
   // v2 新增三项必填
@@ -99,14 +99,27 @@ export interface ToolExecutionContext {
   readonly agentRole: UserRole;
   /** Loop ID（用于 EffectJournal） */
   readonly loopId?: string;
+  /**
+   * 会话 ID（任务归属）。
+   *
+   * 用途：需要**按会话落库**的工具（如 `todo.write` 计划清单）据此确定归属；
+   * 由 Loop 在执行工具时注入（会话未绑定时为 undefined）。
+   */
+  readonly sessionId?: string;
   /** trace_id */
   readonly traceId?: string;
+  /**
+   * 任务工作目录（会话绑定）。
+   * 路径型工具据此把入参路径收敛到工作目录内（见 Infra/Security/workspaceGuard）；
+   * 缺省时退化为全局 pathGuard 约束。
+   */
+  readonly workDir?: string;
   /** AbortSignal */
   readonly signal?: AbortSignal;
 }
 
 /**
- * 工具统一返回格式（Docs/11 §6.2）
+ * 工具统一返回格式（Docs/Agent/10 §6.2）
  */
 export interface ToolResult {
   readonly role: 'tool';

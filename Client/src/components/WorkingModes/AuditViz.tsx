@@ -74,8 +74,8 @@ export default function AuditViz({ data = DEMO_AUDIT }: { data?: AuditDemo }) {
         <svg width={width} height={height} className="block">
           <defs>
             <linearGradient id="auditAreaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+              <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
             <pattern id="hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"
               width="8" height="8">
@@ -133,7 +133,7 @@ export default function AuditViz({ data = DEMO_AUDIT }: { data?: AuditDemo }) {
 
           {/* 面积 + 曲线 */}
           <path d={areaPath} fill="url(#auditAreaGrad)" />
-          <path d={linePath} fill="none" stroke="#22d3ee" strokeWidth={1.8} strokeLinejoin="round" />
+          <path d={linePath} fill="none" stroke="#10b981" strokeWidth={1.8} strokeLinejoin="round" />
 
           {/* 采样点 */}
           {data.samples.map((s, i) => {
@@ -141,7 +141,7 @@ export default function AuditViz({ data = DEMO_AUDIT }: { data?: AuditDemo }) {
             const near = !over && s.tokens > data.rollingBudgetTokens * 0.8;
             return (
               <circle key={i} cx={xOf(s.ts)} cy={yOf(s.tokens)} r={hovered === i ? 4 : 2.5}
-                fill={over ? '#ef4444' : near ? '#f59e0b' : '#22d3ee'}
+                fill={over ? '#ef4444' : near ? '#f59e0b' : '#10b981'}
                 onMouseEnter={() => setHovered(i)}
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: 'pointer' }} />

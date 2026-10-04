@@ -165,7 +165,7 @@ export function fmtTime(ts: number): string {
 
 export const STATUS_COLOR: Record<StepStatus, string> = {
   pending:   '#6b7280',
-  running:   '#06b6d4',
+  running:   '#3b82f6',
   done:      '#10b981',
   failed:    '#ef4444',
   suspended: '#f59e0b',

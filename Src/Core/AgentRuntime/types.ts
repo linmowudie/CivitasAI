@@ -1,12 +1,12 @@
 /**
  * @module AgentRuntime/types
  * @description
- * Agent 运行时公共类型——Docs/02 §6。
+ * Agent 运行时公共类型——Docs/Agent/02 §6。
  * Agent 生命周期 6 态 + Loop 阶段 6 态 + 退出原因 7 值。
  * 枚举三处同形（agents.status / loops.phase / loops.stopped_reason）。
  */
 
-// ── Agent 生命周期状态（Docs/02 §6 · 6 值）────────────────────────
+// ── Agent 生命周期状态（Docs/Agent/02 §6 · 6 值）────────────────────────
 
 export type AgentStatus =
   | 'creating'     // 创建中
@@ -16,7 +16,7 @@ export type AgentStatus =
   | 'expelled'     // 开除
   | 'destroyed';   // 已销毁
 
-// ── Loop 阶段（Docs/02 §6 · 6 值）─────────────────────────────────
+// ── Loop 阶段（Docs/Agent/02 §6 · 6 值）─────────────────────────────────
 
 export type LoopPhase =
   | 'planning'           // 规划中
@@ -26,7 +26,7 @@ export type LoopPhase =
   | 'completed'          // 完成
   | 'failed';            // 失败
 
-// ── Loop 退出原因（Docs/02 §6 · 7 值）─────────────────────────────
+// ── Loop 退出原因（Docs/Agent/02 §6 · 7 值）─────────────────────────────
 
 export type StoppedReason =
   | 'success'        // 成功
@@ -59,6 +59,8 @@ export interface AgentInstance {
   updatedAt: number;
   lastTaskId?: string;
   consecutiveFailures: number;
+  /** 角色系统提示词（FE-052：创建时从 promptRegistry 按角色装载；落库 agents.system_prompt） */
+  systemPrompt?: string;
 
   // 审批状态（Loop 级，非 Agent 态）
   awaitingApproval: boolean;
@@ -71,6 +73,8 @@ export interface CreateAgentParams {
   model: string;
   taskId?: string;
   parentAgentId?: string;
+  /** 显式系统提示词（缺省由 agentFactory 从 promptRegistry 按角色装载） */
+  systemPrompt?: string;
 }
 
 // ── 任务提交结果 ────────────────────────────────────────────────────
@@ -79,6 +83,8 @@ export interface SubmitResult {
   taskId: string;
   agentId: string;
   status: 'submitted' | 'accepted' | 'rejected';
+  /** 评审记录 ID（FE-050：提交时生成，贯穿提交/审核/工具返回值） */
+  reviewId?: string;
   reviewerComment?: string;
   reviewedAt?: number;
 }

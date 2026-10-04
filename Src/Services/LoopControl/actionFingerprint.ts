@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/actionFingerprint
  * @description
- * 动作指纹系统——Docs/12 §5。
+ * 动作指纹系统——Docs/Agent/11 §5。
  * fingerprint = SHA-256(toolName + canonicalJson(toolArgs))。
  * 检测重复动作，支撑 §5.2 的四条检测规则。
  */
@@ -68,7 +68,7 @@ export type FingerprintAction =
   | { type: 'deadlock_protection'; reason: string };
 
 /**
- * 检测指纹重复——Docs/12 §5.2
+ * 检测指纹重复——Docs/Agent/11 §5.2
  *
  * 四条规则（按动作强度升序）：
  * 1. 单次迭代内 fingerprint 相同 ≥ singleIterationWarnThreshold → WARN

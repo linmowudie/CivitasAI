@@ -1,7 +1,7 @@
 /**
  * @module LoopScheduler/scheduler
  * @description
- * Loop 调度器——Docs/14 §S8。
+ * Loop 调度器——Docs/Agent/13 §S8。
  * 整合去重 + 熔断，防止事件风暴。
  */
 

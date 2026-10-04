@@ -1,5 +1,5 @@
 /**
- * 核心模型调用器（Docs/02 §10）
+ * 核心模型调用器（Docs/Agent/02 §10）
  *
  * 职责：
  * - 统一的 LLM 调用入口
@@ -14,11 +14,33 @@ import { resolveModel, getFallbackProviders, getRoutingConfig } from '../../Infr
 import { LlmProvider } from '../../Infra/Llm/Provider/providerBase.js';
 import type { CallOptions, CallResult, StreamChunk, ChatMessage, ErrorCategory } from '../../Infra/Llm/Provider/providerBase.js';
 import { getRetryDecision, delay } from '../../Infra/Llm/Provider/retryPolicy.js';
+import { lookupCache, registerCacheEntry, hashPromptPrefix } from '../../Services/Cache/promptCache.js';
 
 // ===== 类型导出 =====
 export type { CallResult, StreamChunk, ChatMessage };
 
 // ===== 公开 API =====
+
+/**
+ * FE-064：登记/查询系统前缀复用（观测口径）。
+ *
+ * 语义：同一 system 前缀的**第二次调用**判定为前缀复用命中；
+ * 首次调用登记前缀 hash 与 prompt_tokens（用于估算可缓存 token 规模）。
+ * 全链 fail-soft——观测不影响模型调用主链路。
+ */
+function trackPromptPrefix(messages: ChatMessage[], promptTokens: number): void {
+  try {
+    const system = messages.find(m => m.role === 'system');
+    if (!system?.content) return;
+    const hash = hashPromptPrefix(system.content);
+    const hit = lookupCache(hash);
+    if (!hit && promptTokens > 0) {
+      registerCacheEntry(hash, promptTokens);
+    }
+  } catch {
+    /* 观测失败不阻断 */
+  }
+}
 
 /**
  * 非流式调用（带重试和降级）
@@ -61,7 +83,10 @@ export async function callModel(
   try {
     // 首次尝试
     const result = await callWithRetry(provider, finalOpts);
-    if (result.ok) return result;
+    if (result.ok) {
+      trackPromptPrefix(finalOpts.messages, result.value.usage.prompt_tokens);
+      return result;
+    }
 
     // 如果需要降级到备选 Provider
     const error = result.error;
@@ -123,7 +148,12 @@ export async function callModelStream(
     tools: options?.tools,
   };
 
-  return provider.chatStream(callOpts, onChunk);
+  return provider.chatStream(callOpts, onChunk).then((outcome) => {
+    if (outcome.ok) {
+      trackPromptPrefix(callOpts.messages, outcome.value.usage.prompt_tokens);
+    }
+    return outcome;
+  });
 }
 
 // ===== 内部函数 =====

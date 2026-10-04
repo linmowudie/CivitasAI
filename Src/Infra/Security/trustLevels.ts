@@ -1,5 +1,5 @@
 /**
- * 信任分级管理（Docs/11 §3.2 / Docs/03 §信任隔离）
+ * 信任分级管理（Docs/Agent/10 §3.2 / Docs/Agent/03 §信任隔离）
  *
  * 职责：
  * - 定义三级信任模型：L0（系统级）/ L1（用户级）/ L2（外部级）
@@ -11,7 +11,7 @@
  * - L1 入口级：Prime Director, Partner — 接收用户输入、递归派发子 Agent、协作
  * - L2 执行子级：Worker, Reviewer, Assembly Node — 仅执行上级派发任务
  *
- * 枚举三处同形（Docs/11 §1.2.1）：TS / DB / 配置文件不做大小写转换。
+ * 枚举三处同形（Docs/Agent/10 §1.2.1）：TS / DB / 配置文件不做大小写转换。
  */
 
 import type { TrustLevel } from '../types.js';
@@ -31,7 +31,7 @@ export interface TrustLevelInfo {
   readonly canGlobalReadWrite: boolean;
 }
 
-/** 工具危险分级（Docs/11 §3.3 · 豁免 X3：SCREAMING_SNAKE_CASE） */
+/** 工具危险分级（Docs/Agent/10 §3.3 · 豁免 X3：SCREAMING_SNAKE_CASE） */
 export type DangerLevel = 'SAFE' | 'CONTROLLED' | 'DANGEROUS' | 'FORBIDDEN';
 
 /** 工具危险级别描述 */
@@ -191,7 +191,14 @@ export function isValidDangerLevel(level: string): level is DangerLevel {
 /**
  * 判断工具是否被允许在指定信任级别下使用
  *
- * 规则：
+ * @deprecated（2026-10-04，FE-051）**不是工具可见性闸门**。
+ *   Docs/Agent/10 §3.3.1（v2.2）已裁定可见性唯一真相源为 `ToolSpec.requiredRoles`
+ *   （`toolFactory.isSpecVisibleForRole` / `toolHeader` / `toolRegistry.executeTool` 三处同口径）；
+ *   本矩阵为废弃的"dangerLevel × trustLevel"单轴模型，与 worker/reviewer 职能矛盾
+ *   （会导致 Worker 无法使用 file.write/shell.exec —— 已由 v2.2 修订否决）。
+ *   保留仅供威胁模型参考与历史测试锚定，**禁止用于可见性/执行许可判定**。
+ *
+ * 规则（历史语义）：
  * - L0 可使用所有工具（除 FORBIDDEN）
  * - L1 可使用 SAFE 和 CONTROLLED
  * - L2 仅可使用 SAFE

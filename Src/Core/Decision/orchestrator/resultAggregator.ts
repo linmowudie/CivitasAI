@@ -1,7 +1,7 @@
 /**
  * @module Decision/Orchestrator/resultAggregator
  * @description
- * 结果聚合器——Docs/03 §4.2 [6] + §7A.2。
+ * 结果聚合器——Docs/Agent/03 §4.2 [6] + §7A.2。
  * 整合各子任务结果，生成最终交付物。
  * 支持确定性合并（不同文件直接拼装）+ 冲突检测。
  */
@@ -115,7 +115,7 @@ function detectConflicts(results: SubtaskResult[]): string[] {
   return conflicts;
 }
 
-// ── 质量评分计算（Docs/03 §7.7）────────────────────────────────────
+// ── 质量评分计算（Docs/Agent/03 §7.7）────────────────────────────────────
 
 /**
  * 计算质量分（用于 Token 分润）。

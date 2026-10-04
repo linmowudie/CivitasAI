@@ -1,13 +1,15 @@
 /**
  * @module Middleware/middlewareRegistry
  * @description
- * Middleware registry - Docs/02 4.
+ * Middleware registry - Docs/Agent/02 4.
  * Manages registration, sorting, and execution of six-hook middleware.
  */
 
 import type { AgentMiddleware, MiddlewareHook, MiddlewareContext } from '../../Infra/Contracts/middlewareTypes.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
+import { EventType } from '../../Services/EventBus/eventTypes.js';
 
 const middlewares: AgentMiddleware[] = [];
 
@@ -70,14 +72,49 @@ export async function executePrePostHooks(
 ): Promise<{ shortCircuited: boolean; result?: unknown }> {
   const hooks = getMiddlewaresForHook(hook);
 
+  // FE-053：链式载荷——首个钩子收到 args[0]（如 beforeModel 的装配素材），
+  // 后续钩子收到前一个钩子的返回值；最终载荷经 `result` 回传给调用方。
+  // 修复前每个钩子都收到原始 args 且返回值被整体丢弃——BeforeModelHook 契约
+  // （返回改写后的 messages）在生产不可达。
+  let carried: unknown = args[0];
+
   for (const mw of hooks) {
-    const result = await (mw.execute as (...args: any[]) => Promise<any>)(ctx, ...args);
+    const result = await (mw.execute as (...args: any[]) => Promise<any>)(ctx, carried, ...args.slice(1));
     if (result && typeof result === 'object' && 'shortCircuit' in result && result.shortCircuit) {
+      // 推送 middleware:before_model 事件（Docs/Client/03 §4.1）
+      publish(createEvent({
+        eventType: EventType.MIDDLEWARE_BEFORE_MODEL,
+        source: `middleware/${mw.name}`,
+        traceId: ctx.traceId,
+        payload: {
+          middlewareName: mw.name,
+          action: 'reject',
+          reason: (result.result as any)?.content ?? 'short-circuited',
+          timestamp: Date.now(),
+        },
+      }));
       return { shortCircuited: true, result: result.result };
     }
+
+    // 推送中间件通过事件
+    if (hook === 'beforeModel') {
+      publish(createEvent({
+        eventType: EventType.MIDDLEWARE_BEFORE_MODEL,
+        source: `middleware/${mw.name}`,
+        traceId: ctx.traceId,
+        payload: {
+          middlewareName: mw.name,
+          action: 'pass',
+          timestamp: Date.now(),
+        },
+      }));
+    }
+
+    // FE-053：仅当钩子显式返回值时更新链式载荷（`undefined` 不覆盖）
+    if (result !== undefined) carried = result;
   }
 
-  return { shortCircuited: false };
+  return { shortCircuited: false, result: carried };
 }
 
 export async function executeWrapHooks<TInput, TOutput>(

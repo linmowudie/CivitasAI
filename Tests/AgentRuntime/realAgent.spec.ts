@@ -31,7 +31,7 @@ import {
   assignTask, submitForReview, reviewSubmission,
   isTaskApproved, getPendingReviewCount, resetAgentRuntime,
 } from '../../Src/Core/AgentRuntime/agentRuntime.js';
-import { performReview, resetReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
+import { performReview, resetReviewer, configureReviewer } from '../../Src/Services/ReviewerAgent/reviewerAgent.js';
 
 // ── EventBus ────────────────────────────────────────
 import { resetEventBus, initEventBus, publish, createEvent } from '../../Src/Services/EventBus/eventBus.js';
@@ -180,11 +180,11 @@ describe('S9 · 真实 Agent 集成测试', () => {
     const debitRes = debit(worker.agentId, workerResponse.value.usage.total_tokens, 'trace-r1');
     expect(debitRes.ok).toBe(true);
 
-    // 5. Worker 提交审核
+    // 5. Worker 提交审核（FE-056：评审按 summary/artifacts 契约读取成果）
     const submit = submitForReview({
       taskId: 'task-encode-001',
       workerAgentId: worker.agentId,
-      payload: { output: workerOutput, artifacts: ['add.ts'] },
+      payload: { summary: workerOutput.slice(0, 800), output: workerOutput, artifacts: ['add.ts'] },
     });
     expect(submit.ok).toBe(true);
     expect(getAgent(worker.agentId)?.awaitingApproval).toBe(true);
@@ -202,8 +202,9 @@ describe('S9 · 真实 Agent 集成测试', () => {
     const reviewerOutput = reviewerResponse.value.content;
     console.log(`[Round 1] Reviewer 输出: ${reviewerOutput.slice(0, 100)}`);
 
-    // 7. Reviewer 审核通过
-    const review = performReview({
+    // 7. Reviewer 审核通过（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定）
+    configureReviewer({ judgeModel: '' });
+    const review = await performReview({
       taskId: 'task-encode-001',
       reviewerAgentId: reviewer.agentId,
     });
@@ -257,11 +258,11 @@ describe('S9 · 真实 Agent 集成测试', () => {
     console.log(`[Round 2] Worker 输出: ${output.slice(0, 150)}...`);
     expect(output.length).toBeGreaterThan(0);
 
-    // Worker 提交
+    // Worker 提交（FE-056：评审按 summary 契约读取成果）
     submitForReview({
       taskId: 'task-design-002',
       workerAgentId: worker.agentId,
-      payload: { design: output },
+      payload: { summary: output.slice(0, 800), design: output },
     });
 
     // Reviewer 调用 LLM 审核
@@ -273,8 +274,9 @@ describe('S9 · 真实 Agent 集成测试', () => {
     expect(reviewerResponse.ok).toBe(true);
     console.log(`[Round 2] Reviewer 输出: ${reviewerResponse.value.content.slice(0, 100)}`);
 
-    // 审核通过
-    const review = performReview({
+    // 审核通过（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定）
+    configureReviewer({ judgeModel: '' });
+    const review = await performReview({
       taskId: 'task-design-002',
       reviewerAgentId: reviewer.agentId,
     });
@@ -349,15 +351,16 @@ describe('S9 · 真实 Agent 集成测试', () => {
     const output2 = response2.value.content;
     console.log(`[Round 3-2] Worker 改进输出: ${output2.slice(0, 150)}...`);
 
-    // 第二次提交
+    // 第二次提交（FE-056：评审按 summary 契约读取成果）
     submitForReview({
       taskId: 'task-analyze-003',
       workerAgentId: worker.agentId,
-      payload: { analysis: output2, revision: 2 },
+      payload: { summary: output2.slice(0, 800), analysis: output2, revision: 2 },
     });
 
-    // 第二次审核：通过
-    const accept = performReview({
+    // 第二次审核：通过（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定）
+    configureReviewer({ judgeModel: '' });
+    const accept = await performReview({
       taskId: 'task-analyze-003',
       reviewerAgentId: reviewer.agentId,
     });
@@ -409,23 +412,24 @@ describe('S9 · 真实 Agent 集成测试', () => {
     debit(w1.value.agentId, r1.value.usage.total_tokens, 'trace-parallel');
     debit(w2.value.agentId, r2.value.usage.total_tokens, 'trace-parallel');
 
-    // 两个 Worker 都提交
+    // 两个 Worker 都提交（FE-056：评审按 summary 契约读取成果）
     submitForReview({
       taskId: 'task-p1',
       workerAgentId: w1.value.agentId,
-      payload: { output: r1.value.content },
+      payload: { summary: r1.value.content.slice(0, 800), output: r1.value.content },
     });
     submitForReview({
       taskId: 'task-p2',
       workerAgentId: w2.value.agentId,
-      payload: { output: r2.value.content },
+      payload: { summary: r2.value.content.slice(0, 800), output: r2.value.content },
     });
 
     expect(getPendingReviewCount()).toBe(2);
 
-    // Reviewer 依次审核
-    performReview({ taskId: 'task-p1', reviewerAgentId: rv.value.agentId });
-    performReview({ taskId: 'task-p2', reviewerAgentId: rv.value.agentId });
+    // Reviewer 依次审核（FE-056：四级验证管线 L1+L2；显式禁用 L3 保持判定稳定）
+    configureReviewer({ judgeModel: '' });
+    await performReview({ taskId: 'task-p1', reviewerAgentId: rv.value.agentId });
+    await performReview({ taskId: 'task-p2', reviewerAgentId: rv.value.agentId });
 
     expect(isTaskApproved('task-p1')).toBe(true);
     expect(isTaskApproved('task-p2')).toBe(true);

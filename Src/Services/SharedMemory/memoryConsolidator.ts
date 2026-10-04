@@ -1,7 +1,7 @@
 /**
  * @module SharedMemory/memoryConsolidator
  * @description
- * 知识沉淀器——Docs/07 §3.4。
+ * 知识沉淀器——Docs/Agent/07 §3.4。
  * 从 GlobalWorkspace 提炼有价值的观察到 LongTermMemory。
  * 触发条件：仲裁裁决完成 / 任务完成 / 定期巡检。
  */

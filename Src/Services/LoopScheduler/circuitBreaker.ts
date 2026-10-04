@@ -1,7 +1,7 @@
 /**
  * @module LoopScheduler/circuitBreaker
  * @description
- * 熔断器——Docs/14 §S8 Gate G8。
+ * 熔断器——Docs/Agent/13 §S8 Gate G8。
  * 60s 内重复 100 次触发 → 熔断生效，只启动 1 个 Loop。
  * 防风暴 5 道之一。
  */

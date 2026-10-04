@@ -1,5 +1,5 @@
 /**
- * Recovery Scanner — 启动崩溃恢复扫描（Docs/13 §6.1 / §6.2）
+ * Recovery Scanner — 启动崩溃恢复扫描（Docs/Agent/12 §6.1 / §6.2）
  *
  * 职责：
  * - 扫描未完成的 Loop（phase NOT IN ('completed','failed')）
@@ -53,7 +53,7 @@ export function initRecoveryScanner(config: Partial<RecoveryConfig>): void {
 }
 
 /**
- * 执行启动恢复扫描（Docs/13 §6.1）
+ * 执行启动恢复扫描（Docs/Agent/12 §6.1）
  *
  * 步骤：
  * 1. 解析超时的 EXECUTING → UNKNOWN
@@ -107,7 +107,7 @@ export function getAutoResumePlans(plans: RecoveryPlan[]): RecoveryPlan[] {
 // ===== 内部函数 =====
 
 /**
- * 为单个 Loop 分类恢复策略（Docs/13 §6.2 矩阵）
+ * 为单个 Loop 分类恢复策略（Docs/Agent/12 §6.2 矩阵）
  */
 function classifyLoop(loop: LoopRow): RecoveryPlan {
   const loopId = loop.loop_id;
@@ -120,7 +120,7 @@ function classifyLoop(loop: LoopRow): RecoveryPlan {
   const unknownResult = getUnknownEffects(loopId);
   const unknownEffects: EffectRecord[] = unknownResult.ok ? unknownResult.value : [];
 
-  // 四分支裁决（Docs/13 §6.2）
+  // 四分支裁决（Docs/Agent/12 §6.2）
   const strategy = classify(loop, lastCkpt, unknownEffects);
   const reason = buildReason(loop, lastCkpt, unknownEffects, strategy);
 
@@ -135,7 +135,7 @@ function classifyLoop(loop: LoopRow): RecoveryPlan {
 }
 
 /**
- * 恢复策略分类（Docs/13 §6.2 矩阵）
+ * 恢复策略分类（Docs/Agent/12 §6.2 矩阵）
  */
 function classify(
   loop: LoopRow,

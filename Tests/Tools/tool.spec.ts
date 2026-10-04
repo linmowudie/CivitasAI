@@ -226,11 +226,11 @@ describe('S4 Tools 层', () => {
       }
     });
 
-    it('registerBuiltinTools 注册 11 个工具', () => {
+    it('registerBuiltinTools 注册全部内置工具（数量以清单为准）', () => {
       const result = registerBuiltinTools();
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value).toBe(11);
+        expect(result.value).toBe(BUILTIN_TOOLS.length);
       }
     });
 
@@ -265,27 +265,32 @@ describe('S4 Tools 层', () => {
     });
   });
 
-  // ===== Factory =====
+  // ===== Factory（FE-051 收敛：可见性唯一真相源 = requiredRoles） =====
   describe('Factory', () => {
     beforeEach(() => { registerBuiltinTools(); });
 
-    it('L0 治理级角色（regulator）可见所有非 FORBIDDEN 工具', () => {
+    it('regulator 按 requiredRoles：只读观察类可见，写入/危险类不可见', () => {
       const visible = getVisibleToolNames({ role: 'regulator' });
-      expect(visible.length).toBe(11); // 全部可见
+      expect(visible).toContain('file.read');       // 只读（regulator 在白名单中）
+      expect(visible).toContain('tool.search');
+      expect(visible).not.toContain('file.write');  // 写入类不含 regulator
+      expect(visible).not.toContain('shell.exec');  // DANGEROUS 不含 regulator（治理层不执行副作用）
     });
 
-    it('L1 入口级（prime_director）可见 SAFE + CONTROLLED', () => {
+    it('prime_director 可见 requiredRoles 全集（含 DANGEROUS；执行管控由审批承担）', () => {
       const visible = getVisibleToolNames({ role: 'prime_director' });
       expect(visible).toContain('file.read');   // SAFE
       expect(visible).toContain('file.write');  // CONTROLLED
-      expect(visible).not.toContain('shell.exec'); // DANGEROUS
+      expect(visible).toContain('shell.exec');  // DANGEROUS（v2.2 两轴正交：可见 ≠ 无管控）
     });
 
-    it('L2 执行子级（worker）仅可见 SAFE', () => {
+    it('worker 可见 requiredRoles 全集（含写入/执行类），不可见 agent.recruit', () => {
       const visible = getVisibleToolNames({ role: 'worker' });
-      expect(visible).toContain('file.read');   // SAFE
-      expect(visible).not.toContain('file.write');  // CONTROLLED → L2 不可见
-      expect(visible).not.toContain('shell.exec'); // DANGEROUS → L2 不可见
+      expect(visible).toContain('file.read');
+      expect(visible).toContain('file.write');
+      expect(visible).toContain('shell.exec');
+      expect(visible).toContain('agent.submit_review');
+      expect(visible).not.toContain('agent.recruit'); // 仅 L1 入口级可招募
     });
 
     it('excludedTools 强制排除', () => {
@@ -364,7 +369,7 @@ describe('S4 Tools 层', () => {
     it('所有工具通过 Schema 严格校验', () => {
       registerBuiltinTools();
       const specs = getAllToolSpecs();
-      expect(specs.length).toBe(11);
+      expect(specs.length).toBe(BUILTIN_TOOLS.length);
 
       for (const spec of specs) {
         const validation = validateToolSpec(spec);

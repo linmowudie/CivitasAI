@@ -1,17 +1,20 @@
 /**
- * 工具工厂（Docs/14 §S4）
+ * 工具工厂（Docs/Agent/13 §S4）
  *
  * 职责：
  * - 按 Agent 角色裁剪可见工具集
  * - 提供工具集获取接口
  *
- * 工具可见性由角色信任级别 + 工具 dangerLevel 决定。
+ * ★ FE-051（2026-10-04）工具可见性双轨收敛：
+ *   Docs/Agent/10 §3.3.1（v2.2）裁定"可见性唯一真相源 = `ToolSpec.requiredRoles`"，
+ *   `dangerLevel × trustLevel` 单轴裁剪为废弃模型（与 worker/reviewer 职能矛盾）。
+ *   本模块三个可见性函数已统一到 `isSpecVisibleForRole`，与生产链路
+ *   （`toolHeader.buildToolHeader` / `toolRegistry.executeTool`）口径逐字一致。
  */
 
 import type { ToolSpec } from '../Traits/toolSpec.js';
 import type { UserRole } from '../../Infra/types.js';
 import { getAllToolSpecs } from '../Registry/toolRegistry.js';
-import { isToolAllowed, getTrustLevel } from '../../Infra/Security/trustLevels.js';
 
 // ===== 类型定义 =====
 
@@ -19,7 +22,7 @@ import { isToolAllowed, getTrustLevel } from '../../Infra/Security/trustLevels.j
 export interface RoleToolConfig {
   /** 角色 */
   readonly role: UserRole;
-  /** 额外允许的工具名（覆盖默认信任级别限制） */
+  /** 额外允许的工具名（显式覆盖角色白名单，属配置级放行） */
   readonly additionalTools?: string[];
   /** 显式禁止的工具名 */
   readonly excludedTools?: string[];
@@ -28,18 +31,26 @@ export interface RoleToolConfig {
 // ===== 公开 API =====
 
 /**
+ * 工具可见性的**唯一判定谓词**（FE-051 收敛点）。
+ *
+ * 规则：`requiredRoles` 显式白名单命中即可见。
+ * 与 `toolHeader.ts`（上下文装配）与 `toolRegistry.executeTool`（执行期硬校验）
+ * 保持同一口径；危险工具的执行管控由 `toolSafetyGate` 审批承担，不在此处裁剪。
+ */
+export function isSpecVisibleForRole(spec: ToolSpec, role: UserRole): boolean {
+  return spec.requiredRoles.includes(role);
+}
+
+/**
  * 获取指定角色可见的工具列表
  *
  * 规则：
- * - L0 角色可使用所有工具（除 FORBIDDEN）
- * - L1 角色可使用 SAFE + CONTROLLED
- * - L2 角色仅可使用 SAFE
- * - additionalTools 可覆盖限制
- * - excludedTools 强制排除
+ * - `requiredRoles` 命中 → 可见（与生产链路同一口径）
+ * - `excludedTools` 强制排除
+ * - `additionalTools` 配置级放行（显式覆盖白名单，非信任级别推导）
  */
 export function getVisibleTools(config: RoleToolConfig): ToolSpec[] {
   const allTools = getAllToolSpecs();
-  const trustLevel = getTrustLevel(config.role);
   const additional = new Set(config.additionalTools ?? []);
   const excluded = new Set(config.excludedTools ?? []);
 
@@ -47,10 +58,10 @@ export function getVisibleTools(config: RoleToolConfig): ToolSpec[] {
     // 显式排除
     if (excluded.has(tool.name)) return false;
 
-    // 信任级别检查
-    if (isToolAllowed(tool.dangerLevel, trustLevel)) return true;
+    // 角色白名单（唯一真相源）
+    if (isSpecVisibleForRole(tool, config.role)) return true;
 
-    // 额外允许
+    // 配置级放行
     if (additional.has(tool.name)) return true;
 
     return false;
@@ -65,34 +76,20 @@ export function getVisibleToolNames(config: RoleToolConfig): string[] {
 }
 
 /**
- * 按 requiredRoles 主门禁获取指定角色可见的工具列表
+ * 按 `requiredRoles` 获取指定角色可见的工具列表。
  *
- * 规则：
- * - 工具的 requiredRoles 包含当前角色 → 可见
- * - 当前角色为 L0 治理级 → 所有工具可见（除 FORBIDDEN）
- * - 否则不可见
+ * 与 `toolHeader.buildToolHeader` 口径逐字一致（不再有 L0 兜底第二轨，FE-051）。
  */
 export function getVisibleToolsForRole(role: UserRole): ToolSpec[] {
-  const allTools = getAllToolSpecs();
-  const trustLevel = getTrustLevel(role);
-
-  return allTools.filter(tool => {
-    // requiredRoles 主门禁
-    if (tool.requiredRoles.includes(role)) return true;
-    // L0 治理级兜底：可使用所有非 FORBIDDEN 工具
-    if (trustLevel === 'L0' && tool.dangerLevel !== 'FORBIDDEN') return true;
-    return false;
-  });
+  return getAllToolSpecs().filter(tool => isSpecVisibleForRole(tool, role));
 }
 
 /**
- * 检查工具对指定角色是否可见
+ * 检查工具对指定角色是否可见（与执行期硬校验同一谓词，消除"可见但被拒"漂移）
  */
 export function isToolVisible(toolName: string, role: UserRole): boolean {
   const allTools = getAllToolSpecs();
   const tool = allTools.find(t => t.name === toolName);
   if (!tool) return false;
-
-  const trustLevel = getTrustLevel(role);
-  return isToolAllowed(tool.dangerLevel, trustLevel);
+  return isSpecVisibleForRole(tool, role);
 }

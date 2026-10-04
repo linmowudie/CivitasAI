@@ -1,13 +1,14 @@
 /**
  * @module Regulation/behaviorCode
  * @description
- * 行为准则管理器——Docs/06 §1.3。
+ * 行为准则管理器——Docs/Agent/06 §1.3。
  * 加载/更新/发布《智能体行为准则》。
  * Phase 0-2：内置默认准则；Phase 3 支持动态更新。
  */
 
 import { EventType } from '../EventBus/eventTypes.js';
 import { createEvent, publish } from '../EventBus/eventBus.js';
+import { requireGovernanceRole } from '../Governance/governanceGuard.js';
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
 
@@ -39,7 +40,7 @@ export interface BehaviorCode {
 let currentCode: BehaviorCode | null = null;
 const history: BehaviorCode[] = [];
 
-// ── 默认准则（Docs/06 §1.3 Phase 1 最小集）─────────────────────────
+// ── 默认准则（Docs/Agent/06 §1.3 Phase 1 最小集）─────────────────────────
 
 const DEFAULT_RULES: BehaviorRule[] = [
   {
@@ -121,6 +122,10 @@ export function getRule(ruleId: string): BehaviorRule | undefined {
 
 /**
  * 检查某行为是否违反行为准则。
+ *
+ * 可执行规则语法（v1，FE-060 增强）：
+ *  - `tool.forbid(<name>)` / `tool.forbid(<prefix>.*)`：禁止调用指定工具（精确或前缀通配）；
+ *  - 历史关键词匹配保留（safety-001/002、cooperation-001），enforceable=false 的声明式规则不强制。
  */
 export function checkViolation(params: {
   agentId: string;
@@ -130,7 +135,20 @@ export function checkViolation(params: {
   if (!currentCode) return { violated: false, rules: [] };
 
   const violatedRules = currentCode.rules.filter(rule => {
-    // Phase 0-2：简单关键词匹配
+    // 仅 enforceable 规则参与强制（声明式/目标态规则不阻断执行）
+    if (!rule.enforceable) return false;
+
+    // v1 可执行语法：tool.forbid(<pattern>)
+    const forbidMatch = /^tool\.forbid\((.+)\)$/.exec(rule.condition.trim());
+    if (forbidMatch) {
+      const pattern = forbidMatch[1]?.trim() ?? '';
+      if (pattern.endsWith('.*')) {
+        return params.action.startsWith(pattern.slice(0, -1)); // 'shell.*' → 前缀 'shell.'
+      }
+      return params.action === pattern;
+    }
+
+    // 历史关键词匹配（Phase 0-2 兼容）
     if (rule.ruleId === 'safety-001' && params.action.includes('access_private')) return true;
     if (rule.ruleId === 'safety-002' && params.action.includes('prompt_injection')) return true;
     if (rule.ruleId === 'cooperation-001' && params.action.includes('consecutive_failure')) return true;
@@ -144,8 +162,15 @@ export function checkViolation(params: {
 }
 
 // ── 更新准则 ────────────────────────────────────────────────────────
+//
+// ★ FE-043（2026-10-04）：立法动作守卫下沉到本层 —— 此前只有
+//   `regulatoryAuthority.addBehaviorRule/removeBehaviorRule` 代理层有守卫，
+//   底层 `addRule/removeRule/updateVersion` 可被任意角色直调（清单 G-04 声称已实现，
+//   实际存在旁路）。现所有入口 fail-closed，代理层不再重复守卫（避免双重留痕）。
 
-export function addRule(rule: BehaviorRule): Result<void> {
+export function addRule(rule: BehaviorRule, actorRole: string): Result<void> {
+  const guard = requireGovernanceRole(actorRole, '新增行为规则（监管立法）');
+  if (!guard.ok) return err(guard.error);
   if (!currentCode) return err('行为准则未初始化');
   if (currentCode.rules.some(r => r.ruleId === rule.ruleId)) {
     return err(`规则 ${rule.ruleId} 已存在`);
@@ -156,7 +181,9 @@ export function addRule(rule: BehaviorRule): Result<void> {
   return ok(undefined);
 }
 
-export function removeRule(ruleId: string): Result<void> {
+export function removeRule(ruleId: string, actorRole: string): Result<void> {
+  const guard = requireGovernanceRole(actorRole, '删除行为规则（监管立法）');
+  if (!guard.ok) return err(guard.error);
   if (!currentCode) return err('行为准则未初始化');
   const idx = currentCode.rules.findIndex(r => r.ruleId === ruleId);
   if (idx < 0) return err(`规则 ${ruleId} 不存在`);
@@ -166,7 +193,9 @@ export function removeRule(ruleId: string): Result<void> {
   return ok(undefined);
 }
 
-export function updateVersion(version: string): Result<void> {
+export function updateVersion(version: string, actorRole: string): Result<void> {
+  const guard = requireGovernanceRole(actorRole, '更新行为准则版本（监管立法）');
+  if (!guard.ok) return err(guard.error);
   if (!currentCode) return err('行为准则未初始化');
 
   const old = { ...currentCode };

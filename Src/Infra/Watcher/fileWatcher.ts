@@ -1,7 +1,7 @@
 /**
  * @module Watcher/fileWatcher
  * @description
- * 文件监听器——Docs/14 §S8。
+ * 文件监听器——Docs/Agent/13 §S8。
  * 监听 Data/Workspace 目录变更，用于检测外部文件修改。
  * Phase 0-2 简化实现。
  */

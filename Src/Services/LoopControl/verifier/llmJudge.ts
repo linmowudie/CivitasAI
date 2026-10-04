@@ -1,7 +1,7 @@
 /**
  * @module LoopControl/verifier/llmJudge
  * @description
- * L3 独立 LLM 评分器——Docs/12 §3.1。
+ * L3 独立 LLM 评分器——Docs/Agent/11 §3.1。
  * 必须使用与产出者不同的模型（ADR-0004 / P2 Maker ≠ Checker）。
  * L3 输出必须结构化：{pass, evidence[], defectCategory}。
  */
@@ -103,27 +103,68 @@ function buildJudgePrompt(artifact: string, rubric: unknown[], minScore: number)
     artifact.slice(0, 4000),
     '',
     'Respond in JSON: {"score": number, "pass": boolean, "evidence": [...], "defectCategory": string}',
+    'Only output the raw JSON object itself. Do NOT wrap it in markdown code fences and do NOT add any explanation.',
   ].join('\n');
+}
+
+/**
+ * 从模型回复中提取 JSON 对象文本（真实模型常带 markdown 围栏或解释文字）。
+ * 优先失败时依次尝试：```json 围栏块 → 首个 '{' 到最后一个 '}' 的片段。
+ */
+function extractJsonText(response: string): string | null {
+  const fenced = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced && fenced[1]) return fenced[1].trim();
+  const start = response.indexOf('{');
+  const end = response.lastIndexOf('}');
+  if (start >= 0 && end > start) return response.slice(start, end + 1);
+  return null;
 }
 
 function parseJudgeResponse(
   response: string,
   minScore: number,
 ): { pass: boolean; evidence: Array<{ kind: string; data: unknown }>; defectCategory: 'quality_low' | 'logic_error' | 'spec_missing' | 'risk_violation' } {
-  try {
-    const json = JSON.parse(response);
+  const parsed = tryParseJudgeJson(response);
+  if (parsed) {
+    const score = typeof parsed['score'] === 'number' ? parsed['score'] : 0;
     return {
-      pass: Boolean(json.pass) && (json.score ?? 0) >= minScore,
-      evidence: [{ kind: 'judge_rubric', data: json }],
-      defectCategory: json.defectCategory ?? 'quality_low',
-    };
-  } catch {
-    return {
-      pass: false,
-      evidence: [{ kind: 'judge_rubric', data: { raw: response.slice(0, 500) } }],
-      defectCategory: 'quality_low',
+      pass: Boolean(parsed['pass']) && score >= minScore,
+      evidence: [{ kind: 'judge_rubric', data: parsed }],
+      defectCategory: normalizeDefectCategory(parsed['defectCategory']),
     };
   }
+  return {
+    pass: false,
+    evidence: [{ kind: 'judge_rubric', data: { raw: response.slice(0, 500) } }],
+    defectCategory: 'quality_low',
+  };
+}
+
+/** 归一化 defectCategory（未知值回退 quality_low） */
+function normalizeDefectCategory(
+  value: unknown,
+): 'quality_low' | 'logic_error' | 'spec_missing' | 'risk_violation' {
+  if (value === 'logic_error' || value === 'spec_missing' || value === 'risk_violation' || value === 'quality_low') {
+    return value;
+  }
+  return 'quality_low';
+}
+
+/** 容错 JSON 解析：直接 parse → 围栏/片段提取后 parse */
+function tryParseJudgeJson(response: string): Record<string, unknown> | null {
+  const attempts: string[] = [response.trim()];
+  const extracted = extractJsonText(response);
+  if (extracted && extracted !== attempts[0]) attempts.push(extracted);
+
+  for (const text of attempts) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch { /* 尝试下一种 */ }
+  }
+  return null;
 }
 
 function estimateTokens(text: string): number {

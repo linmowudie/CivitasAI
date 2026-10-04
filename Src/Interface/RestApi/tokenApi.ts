@@ -1,7 +1,7 @@
 /**
  * @module Interface/RestApi/tokenApi
  * @description
- * Token API——Docs/09 §2.4。
+ * Token API——Docs/Client/01 §2.4。
  * 钱包总览 / 交易流水 / 系统池余额 / 税率。
  */
 

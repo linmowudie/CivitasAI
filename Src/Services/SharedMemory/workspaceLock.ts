@@ -1,7 +1,7 @@
 /**
  * @module SharedMemory/workspaceLock
  * @description
- * 工作区锁——Docs/07 §8.3。
+ * 工作区锁——Docs/Agent/07 §8.3。
  * 支持 READ / WRITE / EXCLUSIVE 三种锁模式。
  * 并行 Agent 通过锁机制隔离工作区。
  */

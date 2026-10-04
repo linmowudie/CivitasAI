@@ -1,5 +1,5 @@
 /**
- * 数据库连接管理（Docs/02 §7.1 ⑥ / Docs/10 §1）
+ * 数据库连接管理（Docs/Agent/02 §7.1 ⑥ / Docs/Agent/09 §1）
  *
  * 职责：
  * - 管理三个 SQLite 数据库连接（main / events / memory）
@@ -30,6 +30,8 @@ export interface DatabaseConfig {
   memoryPath: string;
   walMode?: boolean;
   busyTimeoutMs?: number;
+  /** effect_journal 所在 main 库的 synchronous 级别（Docs/Agent/12 §10：须读 durable.effect.writeSynchronous，默认 FULL） */
+  writeSynchronous?: string;
 }
 
 /** 数据库连接集合 */
@@ -55,9 +57,10 @@ export function initDatabase(config: DatabaseConfig): Result<DatabaseConnections
   if (connections) return ok(connections);
 
   try {
-    const mainDb = openDatabase(config.mainPath, config);
-    const eventsDb = openDatabase(config.eventsPath, config);
-    const memoryDb = openDatabase(config.memoryPath, config);
+    const syncMode = config.writeSynchronous ?? 'FULL';
+    const mainDb = openDatabase(config.mainPath, config, syncMode);
+    const eventsDb = openDatabase(config.eventsPath, config, 'NORMAL');
+    const memoryDb = openDatabase(config.memoryPath, config, 'NORMAL');
 
     connections = { main: mainDb, events: eventsDb, memory: memoryDb };
     return ok(connections);
@@ -119,7 +122,7 @@ export function isDatabaseInitialized(): boolean {
 /**
  * 打开单个数据库连接
  */
-function openDatabase(dbPath: string, config: DatabaseConfig): Database.Database {
+function openDatabase(dbPath: string, config: DatabaseConfig, synchronousMode: string): Database.Database {
   const resolvedPath = resolve(dbPath);
 
   // 确保目录存在
@@ -139,7 +142,9 @@ function openDatabase(dbPath: string, config: DatabaseConfig): Database.Database
   }
   db.pragma(`busy_timeout = ${busyTimeout}`);
   db.pragma('foreign_keys = ON');
-  db.pragma('synchronous = NORMAL'); // WAL 模式下 NORMAL 足够
+  // synchronous 级别：main 库（承载 effect_journal）默认 FULL，其余库 NORMAL。
+  // 由 durable.effect.writeSynchronous 控制，见 Docs/Agent/12 §10。
+  db.pragma(`synchronous = ${synchronousMode}`);
 
   return db;
 }

@@ -264,7 +264,7 @@ describe('S9 · AgentRuntime', () => {
     expect(updatedWorker?.consecutiveFailures).toBe(1);
   });
 
-  it('performReview（ReviewerAgent 集成）', () => {
+  it('performReview（ReviewerAgent 集成）', async () => {
     const worker = createAgent({ role: 'worker', model: 'gpt-4o' }, 'trace-1');
     const reviewer = createAgent({ role: 'reviewer', model: 'gpt-4o' }, 'trace-1');
     if (!worker.ok || !reviewer.ok) return;
@@ -273,10 +273,11 @@ describe('S9 · AgentRuntime', () => {
     submitForReview({
       taskId: 'task-1',
       workerAgentId: worker.value.agentId,
-      payload: { result: 'done' },
+      // FE-056：评审按 summary/artifacts 契约读取成果（空提交会被 L2 拒绝）
+      payload: { summary: '任务完成：实现了核心逻辑', result: 'done' },
     });
 
-    const result = performReview({
+    const result = await performReview({
       taskId: 'task-1',
       reviewerAgentId: reviewer.value.agentId,
     });
@@ -292,7 +293,7 @@ describe('S9 · AgentRuntime', () => {
 describe('S9 · Gate G9 综合验证', () => {
   beforeEach(fullReset);
 
-  it('G9-complete: Worker 完整生命周期', () => {
+  it('G9-complete: Worker 完整生命周期', async () => {
     // 1. 创建 Worker + Reviewer
     const worker = createAgent({ role: 'worker', model: 'gpt-4o' }, 'trace-1');
     const reviewer = createAgent({ role: 'reviewer', model: 'gpt-4o' }, 'trace-1');
@@ -307,19 +308,19 @@ describe('S9 · Gate G9 综合验证', () => {
     assignTask(worker.value.agentId, 'task-1', 'trace-1');
     expect(getAgent(worker.value.agentId)?.status).toBe('running');
 
-    // 4. Worker 提交审核
+    // 4. Worker 提交审核（FE-056：评审按 summary/artifacts 契约读取成果）
     submitForReview({
       taskId: 'task-1',
       workerAgentId: worker.value.agentId,
-      payload: { artifacts: ['file1.ts'] },
+      payload: { summary: '产出 file1.ts 并完成自测', artifacts: ['file1.ts'] },
     });
     expect(getAgent(worker.value.agentId)?.awaitingApproval).toBe(true);
 
     // 5. 未审核前 → 任务未通过
     expect(isTaskApproved('task-1')).toBe(false);
 
-    // 6. Reviewer 审核通过
-    performReview({
+    // 6. Reviewer 审核通过（四级验证管线 L1+L2；本测试无 Provider → 无 L3）
+    await performReview({
       taskId: 'task-1',
       reviewerAgentId: reviewer.value.agentId,
     });

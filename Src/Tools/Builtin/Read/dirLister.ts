@@ -11,6 +11,7 @@ import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
 import { contentOutputSchema } from '../_shared.js';
 import { checkPath } from '../../../Infra/Security/pathGuard.js';
+import { resolveWithinWorkspace } from '../../../Infra/Security/workspaceGuard.js';
 
 export const dirLister: ToolDefinition = {
   spec: {
@@ -32,17 +33,26 @@ export const dirLister: ToolDefinition = {
     idempotencyKeyFields: ['path'],
     reversibility: 'REVERSIBLE',
     sideEffectScope: 'none',
-    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer'],
+    requiredRoles: ['prime_director', 'arbitrator', 'auditor', 'partner', 'worker', 'assembly_node', 'reviewer', 'regulator'],
     sandboxMode: 'none',
     timeoutMs: 10_000,
   },
 
   async execute(input, context) {
-    const dirPath = input['path'] as string;
+    let dirPath = input['path'] as string;
     const recursive = input['recursive'] as boolean ?? false;
 
     if (!dirPath) {
       return toolError(context.operationId, 'INVALID_INPUT', '缺少 path 参数', false);
+    }
+
+    // 任务工作目录约束：未给 path 时默认列工作目录根（未绑定会话时退化为全局 pathGuard）
+    if (context.workDir) {
+      const within = resolveWithinWorkspace(dirPath === '' ? '.' : dirPath, context.workDir);
+      if (!within.ok) {
+        return toolError(context.operationId, 'PATH_DENIED', within.error, false);
+      }
+      dirPath = within.value;
     }
 
     const check = checkPath(dirPath, 'list');

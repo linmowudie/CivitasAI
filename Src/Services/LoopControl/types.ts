@@ -1,12 +1,12 @@
 /**
  * @module LoopControl/types
  * @description
- * Loop 控制系统公共类型——Docs/12 §4.2 / §7.2。
+ * Loop 控制系统公共类型——Docs/Agent/11 §4.2 / §7.2。
  * FailureCategory 全集（8 成员）由本模块唯一定义，
  * FailedAttempt / FailureFeedback / failure_feedbacks.category 均引用此处。
  */
 
-// ── FailureCategory（Docs/12 §7.2 · 8 成员，唯一定义处）──────────────
+// ── FailureCategory（Docs/Agent/11 §7.2 · 8 成员，唯一定义处）──────────────
 
 export type FailureCategory =
   | 'schema'
@@ -18,7 +18,7 @@ export type FailureCategory =
   | 'budget_soft'
   | 'budget_hard';
 
-// ── NextAction（动作全集 · Docs/12 §7.2）────────────────────────────
+// ── NextAction（动作全集 · Docs/Agent/11 §7.2）────────────────────────────
 
 /** 推荐下一步动作（5 值） */
 export type NextAction =

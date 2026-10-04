@@ -1,7 +1,7 @@
 /**
  * @module Audit/patrolScheduler
  * @description
- * 巡检调度器——Docs/06 §2.5。
+ * 巡检调度器——Docs/Agent/06 §2.5。
  * 定期全量审计所有 Agent 的 Token 使用。
  * 标记"需关注"Agent → 生成巡检报告 → 发布 PATROL_REPORT 事件。
  */

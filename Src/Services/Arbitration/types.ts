@@ -1,7 +1,7 @@
 /**
  * @module Arbitration/types
  * @description
- * 仲裁系统公共类型——Docs/05。
+ * 仲裁系统公共类型——Docs/Agent/05。
  * 仲裁案件、上下文胶囊、裁决结果、恢复计划。
  */
 
@@ -33,7 +33,7 @@ export type ConflictType =
   | 'contradiction'        // 逻辑矛盾
   | 'duplication';         // 重复
 
-// ── 上下文胶囊（Docs/05 §3.2）──────────────────────────────────────
+// ── 上下文胶囊（Docs/Agent/05 §3.2）──────────────────────────────────────
 
 export interface ContextCapsule {
   capsuleId: string;

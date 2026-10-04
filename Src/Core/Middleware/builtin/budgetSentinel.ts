@@ -1,7 +1,7 @@
 /**
  * @module Middleware/builtin/budgetSentinel
  * @description
- * 预算哨兵中间件——Docs/12 循环控制。
+ * 预算哨兵中间件——Docs/Agent/11 循环控制。
  * 监控 Token 消耗，接近预算时发出警告。
  * 挂载点：wrapModelCall（priority=50，最外层包裹）。
  */

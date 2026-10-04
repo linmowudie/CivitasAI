@@ -2,25 +2,40 @@
  * MessageBubble——单条消息气泡。
  * F2.3：助手消息使用 Markdown 渲染 + 模型名 + Token 消耗标注。
  * F2.10：思维链（CoT）区块——流式时展开展示，流结束后默认折叠、可点击切换。
+ *
+ * Phase 1 改造：使用 AI 组件族（MessageShell + CoTFolder + ToolGroup + StreamBuffer）组合。
+ * MessageBubble 变为薄组合层，实际渲染委托给各族组件。
+ *
+ * 2026-10-01 修复（顺序渲染）：助手气泡按**片段发生顺序**渲染
+ * （思考 → 工具 → 正文 → 下一轮思考/工具/正文 …），
+ * 而不是把思考与工具聚合到气泡顶部、正文追加在下方。
+ * 历史消息（DB 加载）没有 segments，回退为"正文"渲染。
  */
-import { useState, useEffect } from 'react';
-import { Bot, User, Zap, AlertCircle, RefreshCw, Brain, ChevronDown, ChevronRight, Wrench, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import MarkdownRenderer from './MarkdownRenderer';
-import type { ChatMessage, MessageStatus, ToolCallEntry } from '@/stores/chatStore';
+import { MessageShell } from '@/ai-components/core/MessageShell';
+import { CoTFolder } from '@/ai-components/core/CoTFolder';
+import { StreamBuffer } from '@/ai-components/core/StreamBuffer';
+import { ToolGroup } from '@/ai-components/harness/ToolGroup';
+import { Wrench, RefreshCw, Type } from 'lucide-react';
+import type { ReactNode } from 'react';
+import type { ChatMessage, MessageSegment } from '@/stores/chatStore';
 
-const statusIcon: Record<MessageStatus, React.ReactNode> = {
-  queued: <span className="w-2 h-2 rounded-full bg-text-muted animate-pulse" />,
-  streaming: <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse-dot" />,
-  complete: null,
-  error: <AlertCircle size={12} className="text-danger" />,
-  stopped: <span className="w-2 h-2 rounded-full bg-warning" />,
-  regenerating: <RefreshCw size={12} className="text-brand-400 animate-spin" />,
-};
-
-const statusLabel: Record<MessageStatus, string> = {
-  queued: '排队中', streaming: '生成中', complete: '', error: '生成失败',
-  stopped: '已停止', regenerating: '重新生成中',
-};
+/**
+ * 子容器类型判定（FE-014，对齐 Canvas 原型 text/loop/tool/harness 的独立类型头）：
+ * - 含工具调用 → Tool（⚡，Harness 族执行帧）
+ * - 多轮迭代（>1）→ Loop（⟳）
+ * - 纯正文/思考 → Text（T）
+ * data 类暂无对应数据源，出现真实数据容器时再扩展。
+ */
+function inferKind(msg: ChatMessage): { label: string; icon: ReactNode } | null {
+  if (msg.role !== 'assistant') return null;
+  if (msg.toolCalls?.length) {
+    return { label: 'Tool', icon: <Wrench size={10} /> };
+  }
+  if ((msg.totalIterations ?? 0) > 1) {
+    return { label: 'Loop', icon: <RefreshCw size={10} /> };
+  }
+  return { label: 'Text', icon: <Type size={10} /> };
+}
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -30,194 +45,84 @@ interface MessageBubbleProps {
   onThumbDown?: () => void;
 }
 
-export default function MessageBubble({ msg, onCopy, onRegenerate, onThumbUp, onThumbDown }: MessageBubbleProps) {
+export default function MessageBubble({ msg }: MessageBubbleProps) {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const isStreaming = msg.status === 'streaming' || msg.status === 'regenerating';
   const hasReasoning = !isUser && !!msg.reasoning;
   const hasToolCalls = !isUser && !!msg.toolCalls?.length;
-  const totalIterations = msg.totalIterations ?? 0;
+  const segments = msg.segments ?? [];
+  const kind = inferKind(msg);
 
-  // 思维链折叠状态：流式期间强制展开，结束后默认折叠
-  const [reasoningOpen, setReasoningOpen] = useState(isStreaming);
-  useEffect(() => { setReasoningOpen(isStreaming); }, [isStreaming]);
-
-  // 工具调用折叠状态
-  const [toolCallsOpen, setToolCallsOpen] = useState(true);
-
-  if (isSystem) {
-    return (
-      <div className="flex justify-center my-3">
-        <div className="system-event">
-          <Zap size={12} className="text-brand-400" />
-          <span>{msg.content}</span>
-        </div>
-      </div>
-    );
-  }
+  /**
+   * 按序渲染单个片段；只有最后一段享受"流式中"表现（思考自动展开等）。
+   * key 用片段序号：片段只会追加、不会重排，因此序号稳定；
+   * （曾用文本长度做 key，导致两段等长片段 key 冲突 → React 丢子节点）
+   */
+  const renderSegment = (seg: MessageSegment, index: number, isLast: boolean) => {
+    const live = isStreaming && isLast;
+    const key = `seg-${index}`;
+    switch (seg.kind) {
+      case 'reasoning':
+        return <CoTFolder key={key} reasoning={seg.text} isStreaming={live} />;
+      case 'tools':
+        return (
+          <ToolGroup
+            key={key}
+            toolCalls={seg.toolCalls}
+            iteration={seg.iteration}
+          />
+        );
+      case 'text':
+        return <StreamBuffer key={key} content={seg.text} isStreaming={live} />;
+    }
+  };
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} mb-4 group`}>
-      {/* 头像 */}
-      <div className={`chat-avatar ${isUser ? 'user' : 'agent'}`}>
-        {isUser ? <User size={16} /> : <Bot size={16} />}
-      </div>
+    <MessageShell
+      role={msg.role}
+      status={msg.status}
+      createdAt={msg.created_at}
+      model={msg.model}
+      tokensUsed={msg.tokens_used}
+      totalIterations={msg.totalIterations}
+      error={msg.error}
+      kindLabel={kind?.label}
+      kindIcon={kind?.icon}
+    >
+      {/* 系统消息：内容由 MessageShell 直接渲染 */}
+      {isSystem && msg.content}
 
-      {/* 消息体 */}
-      <div className={`flex-1 ${isUser ? 'flex flex-col items-end' : ''}`} style={{ maxWidth: '80%' }}>
-        {/* 名称 + 时间 + 模型/Token */}
-        <div className={`flex items-center gap-2 mb-1 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <span className="text-xs font-medium text-text-secondary">
-            {isUser ? '你' : 'Assistant'}
-          </span>
-          <span className="text-[10px] text-text-muted font-mono">
-            {new Date(msg.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {msg.model && !isUser && (
-            <span className="text-[10px] text-text-muted font-mono px-1 rounded bg-surface-700">{msg.model}</span>
-          )}
-          {msg.tokens_used != null && !isUser && (
-            <span className="text-[10px] text-text-muted font-mono flex items-center gap-0.5">
-              <Zap size={9} /> {msg.tokens_used} tok
-            </span>
-          )}
-          {totalIterations > 0 && !isUser && (
-            <span className="text-[10px] text-brand-400 font-mono">
-              {totalIterations} 轮迭代
-            </span>
-          )}
-          {/* 状态指示 */}
-          {msg.status !== 'complete' && (
-            <span className="flex items-center gap-1 text-[10px] text-text-muted">
-              {statusIcon[msg.status]}
-              {statusLabel[msg.status]}
-            </span>
-          )}
-        </div>
-
-        {/* 气泡 */}
-        <div className={`chat-bubble ${isUser ? 'user' : 'agent'}`}>
-          {/* 思维链（CoT）区块：仅助手消息且有 reasoning 内容时展示 */}
-          {hasReasoning && (
-            <div className="mb-2 rounded-lg bg-surface-800/60 border border-surface-700 overflow-hidden">
-              <button
-                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-text-muted hover:bg-surface-700/40 transition-colors"
-                onClick={() => setReasoningOpen(o => !o)}
-              >
-                <Brain size={12} className={isStreaming ? 'text-brand-400 animate-pulse' : 'text-text-muted'} />
-                <span>{isStreaming ? '思考中…' : '思考过程'}</span>
-                {reasoningOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              </button>
-              {reasoningOpen && (
-                <div className="px-3 pb-2 text-[11px] leading-relaxed text-text-muted whitespace-pre-wrap border-t border-surface-700/60 pt-1.5">
-                  {msg.reasoning}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 工具调用区块 */}
-          {hasToolCalls && (
-            <div className="mb-2 rounded-lg bg-surface-800/60 border border-surface-700 overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] text-text-muted hover:bg-surface-700/40 transition-colors"
-                onClick={() => setToolCallsOpen(o => !o)}
-              >
-                <div className="flex items-center gap-1.5">
-                  <Wrench size={12} className="text-brand-400" />
-                  <span>工具调用</span>
-                  {totalIterations > 1 && (
-                    <span className="text-[9px] bg-surface-700 px-1 rounded">{totalIterations} 轮</span>
-                  )}
-                  <span className="text-[9px] text-text-muted">{msg.toolCalls!.length} 次</span>
-                </div>
-                {toolCallsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              </button>
-              {toolCallsOpen && (
-                <div className="border-t border-surface-700/60">
-                  {msg.toolCalls!.map((tc, i) => (
-                    <ToolCallItem key={`${tc.id}-${i}`} tc={tc} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {isUser ? (
-            <div className="chat-content">{msg.content}</div>
-          ) : (
-            /* 正文尚未开始但思维链已流式输出时，不渲染空 Markdown 容器 */
-            (msg.content || !hasReasoning) && (
-              <MarkdownRenderer content={msg.content} isStreaming={isStreaming} />
-            )
-          )}
-        </div>
-
-        {/* 错误提示 */}
-        {msg.status === 'error' && (
-          <div className="mt-1 text-[11px] text-danger flex items-center gap-1">
-            <AlertCircle size={11} />
-            <span>生成出错，可点击重新生成</span>
+      {/* 助手/用户消息：组合 Core 族 + Harness 族组件 */}
+      {!isSystem && (
+        isUser ? (
+          <div className="chat-content">{msg.content}</div>
+        ) : segments.length > 0 ? (
+          /* 按事件顺序追加渲染 */
+          <div className="flex flex-col">
+            {segments.map((seg, i) => renderSegment(seg, i, i === segments.length - 1))}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── 工具调用条目子组件 ─────────────────────────────────────────────
-
-function ToolCallItem({ tc }: { tc: ToolCallEntry }) {
-  const [expanded, setExpanded] = useState(false);
-  const argsStr = Object.keys(tc.arguments).length > 0
-    ? JSON.stringify(tc.arguments, null, 2)
-    : '';
-
-  return (
-    <div className="border-b border-surface-700/40 last:border-b-0">
-      <button
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-surface-700/30 transition-colors"
-        onClick={() => setExpanded(o => !o)}
-      >
-        {tc.status === 'success' ? (
-          <CheckCircle2 size={12} className="text-success flex-shrink-0" />
-        ) : tc.status === 'error' ? (
-          <XCircle size={12} className="text-danger flex-shrink-0" />
         ) : (
-          <Loader2 size={12} className="text-warning flex-shrink-0 animate-spin" />
-        )}
-        <span className="font-mono font-semibold text-text-primary truncate">{tc.name}</span>
-        {argsStr && (
-          <span className="text-[9px] text-text-muted ml-auto flex-shrink-0">
-            {expanded ? '收起' : '参数'}
-          </span>
-        )}
-      </button>
+          <>
+            {/* 回退（历史消息 / 无片段）：思考 → 工具 → 正文 */}
+            {hasReasoning && (
+              <CoTFolder reasoning={msg.reasoning!} isStreaming={isStreaming} />
+            )}
 
-      {expanded && argsStr && (
-        <div className="px-3 pb-2">
-          <div className="text-[10px] text-text-muted mb-1 font-mono">参数：</div>
-          <pre className="text-[10px] text-text-secondary font-mono bg-surface-900 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">
-            {argsStr}
-          </pre>
-        </div>
-      )}
+            {hasToolCalls && (
+              <ToolGroup
+                toolCalls={msg.toolCalls!}
+                totalIterations={msg.totalIterations}
+              />
+            )}
 
-      {expanded && tc.content && (
-        <div className="px-3 pb-2">
-          <div className="text-[10px] text-text-muted mb-1 font-mono">结果：</div>
-          <pre className="text-[10px] text-text-secondary font-mono bg-surface-900 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap">
-            {tc.content}
-          </pre>
-        </div>
+            {/* 正文尚未开始但思维链已流式输出时，不渲染空 Markdown 容器 */}
+            {(msg.content || !hasReasoning) && (
+              <StreamBuffer content={msg.content} isStreaming={isStreaming} />
+            )}
+          </>
+        )
       )}
-
-      {expanded && tc.error && (
-        <div className="px-3 pb-2">
-          <div className="text-[10px] text-danger font-mono">
-            {tc.error.code}: {tc.error.message}
-          </div>
-        </div>
-      )}
-    </div>
+    </MessageShell>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * 配置加载器（Docs/11 §1.2 / Docs/02 §7.1 ①）
+ * 配置加载器（Docs/Agent/10 §1.2 / Docs/Agent/02 §7.1 ①）
  *
  * 职责：
  * - 加载 default.json → {env}.json → local.json 三层合并

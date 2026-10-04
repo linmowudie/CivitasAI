@@ -1,5 +1,5 @@
 /**
- * 双轨日志写入器（Docs/02 §2 / Docs/02 §7.1 ②）
+ * 双轨日志写入器（Docs/Agent/02 §2 / Docs/Agent/02 §7.1 ②）
  *
  * 职责：
  * - 双轨分离：business.log（业务日志）+ system.log（系统日志）
@@ -56,7 +56,7 @@ export interface LogLine {
   readonly message: string;
   /** 附加数据 */
   readonly data?: Record<string, unknown>;
-  /** trace_id（Docs/09 §6.1） */
+  /** trace_id（Docs/Client/01 §6.1） */
   readonly traceId?: string;
   /** span_id */
   readonly spanId?: string;

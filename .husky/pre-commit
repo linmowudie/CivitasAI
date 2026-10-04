@@ -14,8 +14,9 @@ npx pretty-quick --staged --pattern '**/*.ts' 2>/dev/null || true
 echo "[pre-commit] Running ESLint on staged files..."
 npx eslint --ext .ts $(git diff --cached --name-only --diff-filter=ACM | grep '\.ts$' | tr '\n' ' ') 2>/dev/null || true
 
-# 3. TypeScript 类型检查
+# 3. TypeScript 类型检查（Src + electron 两组配置）
 echo "[pre-commit] Running TypeScript type check..."
 npx tsc --noEmit
+npx tsc --noEmit -p tsconfig.electron.json
 
 echo "[pre-commit] All checks passed."

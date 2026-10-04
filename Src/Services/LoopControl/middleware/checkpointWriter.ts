@@ -1,9 +1,9 @@
 /**
  * @module LoopControl/middleware/checkpointWriter
  * @description
- * Checkpoint 写入中间件——Docs/13 §5.1。
+ * Checkpoint 写入中间件——Docs/Agent/12 §5.1。
  * 每轮 iteration 末尾无论成功或失败均写 checkpoint。
- * 对应 Docs/12 §4.1：每轮 checkpoint 是持久执行的基础。
+ * 对应 Docs/Agent/11 §4.1：每轮 checkpoint 是持久执行的基础。
  *
  * 挂载点：afterAgent（在 StopRuleEvaluator 之后）。
  */

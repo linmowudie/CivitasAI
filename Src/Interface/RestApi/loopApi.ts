@@ -1,7 +1,7 @@
 /**
  * @module Interface/RestApi/loopApi
  * @description
- * Loop API——Docs/09 §2。
+ * Loop API——Docs/Client/01 §2。
  * Loop 状态查询 / 事件日志 / 仲裁案件。
  */
 

@@ -1,7 +1,7 @@
 /**
  * @module Recruitment/terminationRationale
  * @description
- * 终止理由记录——Docs/03 §7.6。
+ * 终止理由记录——Docs/Agent/03 §7.6。
  * 开除 Agent 前必须写 TerminationRationale，否则审计局会回滚开除决定。
  */
 
@@ -40,7 +40,7 @@ export function recordTermination(params: {
     return err(`无效的终止原因: ${params.reason}`);
   }
 
-  // external_error 不计入 Worker 失败（Docs/03 §7.6 表格）
+  // external_error 不计入 Worker 失败（Docs/Agent/03 §7.6 表格）
   if (params.reason === 'external_error' && params.consecutiveFailures > 0) {
     return err('外部异常不应计入 Worker 失败次数');
   }

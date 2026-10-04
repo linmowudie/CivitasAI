@@ -1,0 +1,56 @@
+/* FallbackUI 样式——族错误降级提示 */
+
+.fallback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: var(--color-surface-800, #1e1e2e);
+  border: 1px solid var(--color-warning, #f5a623);
+  font-size: 11px;
+  color: var(--color-text-muted, #888);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.message {
+  color: var(--color-warning, #f5a623);
+  font-weight: 500;
+}
+
+.detail {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--color-surface-900, #11111b);
+  color: var(--color-danger, #f38ba8);
+  font-size: 10px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.retry {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--color-surface-600, #45475a);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #888);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.retry:hover {
+  background: var(--color-surface-700, #313244);
+  color: var(--color-text-primary, #cdd6f4);
+}

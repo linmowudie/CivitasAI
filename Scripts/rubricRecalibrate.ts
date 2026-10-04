@@ -1,7 +1,7 @@
 /**
  * @module Scripts/rubricRecalibrate
  * @description
- * 评分标准重校准——Docs/14 §S14。
+ * 评分标准重校准——Docs/Agent/13 §S14。
  * 用人工标注集对比 LLM Judge 评分，计算一致率。
  * 目标：一致率 ≥ 85%。
  * 用法：npx tsx Scripts/rubricRecalibrate.ts

@@ -98,10 +98,11 @@ describe('E2E: 冲突仲裁端到端', () => {
     if (!c) return;
     c.status = 'deadlocked';
 
-    // 监管局介入
+    // 监管局介入（FE-042：终局裁决为治理执法，须以 L0 角色发起）
     const intervention = issueFinalVerdict({
       case_: c,
       reason: 'deadlock',
+      actorRole: 'regulatory_authority',
     });
     expect(intervention.ok).toBe(true);
     if (intervention.ok) {
@@ -124,7 +125,7 @@ describe('E2E: 冲突仲裁端到端', () => {
     expect(isFrozen('audit-e2e-agent')).toBe(true);
 
     // 稽查 → 误报 → 解冻
-    const audit = investigate('audit-e2e-agent');
+    const audit = investigate('audit-e2e-agent', 'auditor');
     expect(audit.ok).toBe(true);
     expect(isFrozen('audit-e2e-agent')).toBe(false);
   });

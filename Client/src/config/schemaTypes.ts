@@ -16,6 +16,9 @@
 
 export type FieldType = 'boolean' | 'number' | 'enum' | 'string' | 'string[]';
 
+/** 热重载策略：配置变更何时生效 */
+export type ReloadStrategy = 'immediate' | 'afterReply' | 'onNavigate' | 'onRestart';
+
 export type Control =
   | 'toggle'    // 布尔开关
   | 'slider'    // number + [min,max] 连续/离散区间（带数字输入联动）
@@ -36,7 +39,7 @@ export interface FieldDef {
   label: string;
   type: FieldType;
   control: Control;
-  /** 出厂默认值（来自 Docs/15 参数总典，作为「默认值」基准） */
+  /** 出厂默认值（来自 Docs/Agent/14 参数总典，作为「默认值」基准） */
   default: number | string | boolean | string[];
   min?: number;
   max?: number;
@@ -47,10 +50,12 @@ export interface FieldDef {
   /** 枚举选项的中文说明 */
   enumLabels?: Record<string, string>;
   description?: string;
-  /** 硬约束提示（违反 = 启动失败/门禁拦截，Docs/15 §7） */
+  /** 硬约束提示（违反 = 启动失败/门禁拦截，Docs/Agent/14 §7） */
   constraint?: string;
   /** 锁定原因；存在即只读（如 Phase 0–2 禁 Redis、L0 安全项、fail-closed 项） */
   locked?: string;
+  /** 热重载策略：变更何时生效（默认 afterReply） */
+  reloadStrategy?: ReloadStrategy;
   section: string;
 }
 

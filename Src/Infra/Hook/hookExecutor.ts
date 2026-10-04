@@ -1,7 +1,7 @@
 /**
  * @module Hook/hookExecutor
  * @description
- * Hook 执行引擎（Infra 层）——Docs/02 §11.2。
+ * Hook 执行引擎（Infra 层）——Docs/Agent/02 §11.2。
  * 统一派发 + 超时 + 重试，面向底层执行。
  */
 

@@ -14,6 +14,16 @@
     "lawyerLetterDedupWindowSec": 300,
     "approvalTimeoutSec": 60,
     "approvalDefaultOnTimeout": "reject",
-    "criticalApprovalRoles": 2
+    "criticalApprovalRoles": 2,
+    "rateLimit": {
+      "maxRequestsPerMinute": 30,
+      "maxTokensPerMinute": 100000,
+      "maxToolCallsPerMinute": 60,
+      "burstAllowance": 2
+    },
+    "apiRateLimit": {
+      "maxRequestsPerMinute": 600,
+      "burstAllowance": 2
+    }
   }
 }

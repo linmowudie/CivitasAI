@@ -1,7 +1,7 @@
 /**
  * @module AgentRuntime/agentRuntime
  * @description
- * Agent 运行时——Docs/02 §6 + Docs/14 §S9。
+ * Agent 运行时——Docs/Agent/02 §6 + Docs/Agent/13 §S9。
  * 核心规则：Worker 不可自行宣告完成，必须走 submitForReview。
  * Director 侧只有在收到 review 通过后才能标记任务成功。
  */
@@ -18,6 +18,8 @@ import { getAgent, updateAgent, updateAgentStatus } from './agentRegistry.js';
 // ── 任务提交队列 ────────────────────────────────────────────────────
 
 interface PendingReview {
+  /** 评审记录 ID（FE-050：贯穿提交/审核/工具返回值） */
+  reviewId: string;
   taskId: string;
   workerAgentId: string;
   submittedAt: number;
@@ -28,10 +30,19 @@ interface PendingReview {
 
 const pendingReviews: Map<string, PendingReview> = new Map(); // taskId → review
 
+/**
+ * 可提交评审的执行级角色（FE-050）。
+ *
+ * 修复前硬编码仅 `'worker'` —— CONSORTIUM 的 partner、流水线的 assembly_node
+ * 执行完子任务后无评审通道，核心规则"不得自行宣告完成"对其名存实亡。
+ * 治理三权与 Director 不在此列：它们的"完成"不走 Maker-Checker 评审。
+ */
+const SUBMITTABLE_ROLES: readonly string[] = ['worker', 'partner', 'assembly_node'];
+
 // ── Worker 提交审核 ─────────────────────────────────────────────────
 
 /**
- * Worker 调用 submitForReview——Worker 不可自行宣告完成。
+ * 执行级 Agent 调用 submitForReview——不得自行宣告完成。
  * 提交后进入 awaiting_approval（Loop 级），Agent 态不变。
  */
 export function submitForReview(params: {
@@ -41,11 +52,14 @@ export function submitForReview(params: {
 }): Result<SubmitResult> {
   const agent = getAgent(params.workerAgentId);
   if (!agent) return err(`Agent ${params.workerAgentId} 不存在`);
-  if (agent.role !== 'worker') return err(`Agent ${params.workerAgentId} 不是 Worker`);
+  if (!SUBMITTABLE_ROLES.includes(agent.role)) {
+    return err(`Agent ${params.workerAgentId} 角色 ${agent.role} 不可提交评审（仅执行级角色 worker/partner/assembly_node）`);
+  }
   if (agent.status !== 'running') return err(`Agent ${params.workerAgentId} 状态 ${agent.status}，不可提交`);
 
   // 创建待审记录
   const review: PendingReview = {
+    reviewId: `review-${params.taskId}-${Date.now().toString(36)}`,
     taskId: params.taskId,
     workerAgentId: params.workerAgentId,
     submittedAt: Date.now(),
@@ -62,13 +76,14 @@ export function submitForReview(params: {
     eventType: EventType.APPROVAL_REQUESTED,
     source: 'AgentRuntime/submitForReview',
     traceId: agent.traceId,
-    payload: { taskId: params.taskId, workerAgentId: params.workerAgentId },
+    payload: { taskId: params.taskId, workerAgentId: params.workerAgentId, reviewId: review.reviewId },
   }));
 
   return ok({
     taskId: params.taskId,
     agentId: params.workerAgentId,
     status: 'submitted',
+    reviewId: review.reviewId,
   });
 }
 
@@ -108,11 +123,13 @@ export function reviewSubmission(params: {
         updateAgentStatus(review.workerAgentId, transResult.value);
       }
 
+      // FE-050：payload 携带 assignmentId（= 提交时的 taskId，统一 ID 空间），
+      // 使进度追踪器与编排聚合能以同一键消费完成事件。
       publish(createEvent({
         eventType: EventType.TASK_COMPLETED,
         source: 'AgentRuntime/reviewSubmission',
         traceId: worker.traceId,
-        payload: { taskId: params.taskId, workerAgentId: review.workerAgentId },
+        payload: { taskId: params.taskId, assignmentId: review.taskId, workerAgentId: review.workerAgentId, reviewId: review.reviewId },
       }));
     } else {
       // 审核拒绝 → Worker 需继续工作
@@ -136,6 +153,7 @@ export function reviewSubmission(params: {
     taskId: params.taskId,
     agentId: review.workerAgentId,
     status: params.accepted ? 'accepted' : 'rejected',
+    reviewId: review.reviewId,
     reviewerComment: params.comment,
     reviewedAt: now,
   });

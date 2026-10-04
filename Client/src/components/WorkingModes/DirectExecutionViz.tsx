@@ -47,8 +47,8 @@ function ElapsedRing({ ttfb, total, running }: ElapsedRingProps) {
           style={{ transition: running ? 'none' : 'stroke-dashoffset 300ms ease' }} />
         <defs>
           <linearGradient id="elapsedGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#0891b2" />
+            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="100%" stopColor="#7c3aed" />
           </linearGradient>
         </defs>
       </svg>

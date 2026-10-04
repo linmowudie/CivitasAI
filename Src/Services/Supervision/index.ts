@@ -1,4 +1,5 @@
-export { type PreSupervisionInput, type PreSupervisionResult, type RateLimitConfig, runPreSupervision } from './preSupervision.js';
+export { type PreSupervisionInput, type PreSupervisionResult, runPreSupervision } from './preSupervision.js';
+export type { RateLimitConfig } from '../../Infra/Contracts/rateLimitTypes.js';
 export { type CompressSupervisionResult, runCompressSupervision } from './compressSupervision.js';
 export { type SummarySupervisionResult, runSummarySupervision } from './summarySupervision.js';
 export { type ReasoningSupervisionResult, runReasoningSupervision } from './reasoningSupervision.js';

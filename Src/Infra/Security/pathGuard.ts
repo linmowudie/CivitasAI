@@ -1,5 +1,5 @@
 /**
- * 路径安全守卫（Docs/11 §3.5 / Gate G1）
+ * 路径安全守卫（Docs/Agent/10 §3.5 / Gate G1）
  *
  * 职责：
  * - 硬禁路径检测：阻止访问 Data/Auth/、~/.ssh/ 等敏感目录
@@ -13,7 +13,7 @@
  * - 路径规范化后比对，防止编码绕过
  */
 
-import { resolve, isAbsolute, relative } from 'node:path';
+import { resolve } from 'node:path';
 
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
@@ -28,6 +28,11 @@ export interface PathGuardConfig {
   forbiddenPaths: string[];
   /** 允许写入的目录白名单（空 = 全部允许，除 forbidden） */
   writablePaths?: string[];
+  /**
+   * 项目根之外的额外允许根（安装模式下 Data/Logs/Configs 等位于 %APPDATA%）。
+   * 绝对路径必须落在 projectRoot 或任一 allowedRoots 之内，否则拒绝。
+   */
+  allowedRoots?: string[];
 }
 
 /** 路径检查结果 */
@@ -56,6 +61,8 @@ export interface PathAccessEvent {
 let projectRoot = '';
 let forbiddenPrefixes: string[] = [];
 let writablePrefixes: string[] = [];
+/** 绝对路径允许的根集合（projectRoot + 额外根） */
+let allowedRoots: string[] = [];
 let initialized = false;
 
 /** 路径访问事件回调（供审计系统使用） */
@@ -72,6 +79,8 @@ export function initPathGuard(config: PathGuardConfig): void {
   projectRoot = resolve(config.projectRoot);
   forbiddenPrefixes = config.forbiddenPaths.map(p => resolve(projectRoot, p));
   writablePrefixes = (config.writablePaths ?? []).map(p => resolve(projectRoot, p));
+  // 绝对路径的允许根：项目根 + 显式额外根（安装模式下数据目录可能不在项目根内）
+  allowedRoots = [projectRoot, ...(config.allowedRoots ?? []).map(p => resolve(p))];
   initialized = true;
 }
 
@@ -95,18 +104,20 @@ export function checkPath(path: string, action: 'read' | 'write' | 'delete' | 'l
   // 1. 规范化路径
   const resolved = resolve(projectRoot, path);
 
-  // 2. 检查目录遍历（确保路径在项目根目录内，对于相对路径输入）
-  if (!isAbsolute(path)) {
-    const rel = relative(projectRoot, resolved);
-    if (rel.startsWith('..') || isAbsolute(rel)) {
-      const result: PathCheckResult = {
-        resolvedPath: resolved,
-        allowed: false,
-        reason: `目录遍历攻击检测：路径 '${path}' 逃逸出项目根目录`,
-      };
-      reportAccess(path, resolved, action, result);
-      return result;
-    }
+  // 2. 越界检查：解析后的路径必须落在允许的根之内
+  //    原实现仅对**相对路径**做 `../` 检测（`if (!isAbsolute(path))`），
+  //    绝对路径会直接跳过该检查，只受 forbiddenPaths 约束 —— 属越界漏洞。
+  const withinAllowedRoot = allowedRoots.some(
+    r => resolved === r || resolved.startsWith(r + '/') || resolved.startsWith(r + '\\'),
+  );
+  if (!withinAllowedRoot) {
+    const result: PathCheckResult = {
+      resolvedPath: resolved,
+      allowed: false,
+      reason: `路径越界：'${path}' 不在允许的根目录内`,
+    };
+    reportAccess(path, resolved, action, result);
+    return result;
   }
 
   // 3. 检查禁止路径
@@ -200,6 +211,7 @@ export function resetPathGuard(): void {
   projectRoot = '';
   forbiddenPrefixes = [];
   writablePrefixes = [];
+  allowedRoots = [];
   initialized = false;
   accessCallback = null;
 }

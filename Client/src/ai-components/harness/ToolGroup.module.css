@@ -1,0 +1,172 @@
+/* Harness.ToolGroup 样式——工具调用展示 */
+
+.wrapper {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-800, #1e1e2e) 60%, transparent);
+  border: 1px solid var(--color-surface-700, #313244);
+  overflow: hidden;
+}
+
+.header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--color-text-muted, #888);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.header:hover {
+  background: color-mix(in srgb, var(--color-surface-700, #313244) 40%, transparent);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge {
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.badgeRead {
+  color: var(--color-info, #74c7ec);
+  background: color-mix(in srgb, var(--color-info, #74c7ec) 10%, transparent);
+}
+
+.badgeWrite {
+  color: var(--color-warning, #f5a623);
+  background: color-mix(in srgb, var(--color-warning, #f5a623) 10%, transparent);
+}
+
+.badgeExec {
+  color: var(--color-danger, #f38ba8);
+  background: color-mix(in srgb, var(--color-danger, #f38ba8) 10%, transparent);
+}
+
+.badgeSystem {
+  color: var(--color-text-muted, #888);
+  background: var(--color-surface-700, #313244);
+}
+
+.body {
+  border-top: 1px solid color-mix(in srgb, var(--color-surface-700, #313244) 60%, transparent);
+}
+
+/* ── 单条工具调用 ──────────────────────────────────── */
+
+.item {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-surface-700, #313244) 40%, transparent);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.itemToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.itemToggle:hover {
+  background: color-mix(in srgb, var(--color-surface-700, #313244) 30%, transparent);
+}
+
+.toolName {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--color-text-primary, #cdd6f4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.argsHint {
+  font-size: 9px;
+  color: var(--color-text-muted, #888);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.itemDetail {
+  padding: 0 12px 8px;
+}
+
+.detailLabel {
+  font-size: 10px;
+  color: var(--color-text-muted, #888);
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+
+.codeBlock {
+  font-size: 10px;
+  color: var(--color-text-secondary, #a6adc8);
+  font-family: monospace;
+  background: var(--color-surface-900, #11111b);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  max-height: 128px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.errorText {
+  font-size: 10px;
+  color: var(--color-danger, #f38ba8);
+  font-family: monospace;
+}
+
+/* ── 内嵌审批（L0 审查 / 人工确认 / 自动通过） ────────────── */
+
+.approvalCard {
+  margin-top: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f5a623) 35%, transparent);
+  background: color-mix(in srgb, var(--color-warning, #f5a623) 8%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.approvalHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.approvalActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.approvalRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 0;
+}

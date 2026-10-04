@@ -114,7 +114,7 @@ describe('E2E: REGULATION 模式 — 行政协调', () => {
     c.status = 'deadlocked';
 
     // 监管局升级
-    const result = escalateDeadlock(c, 'deadlock');
+    const result = escalateDeadlock(c, 'deadlock', 'regulatory_authority');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -139,6 +139,7 @@ describe('E2E: REGULATION 模式 — 行政协调', () => {
       priority: 'high',
       targetAgentIds: ['agent-1', 'agent-2', 'agent-3'],
       requiresAck: true,
+      actorRole: 'regulatory_authority',
     });
     expect(bc.ok).toBe(true);
     if (!bc.ok) return;
@@ -177,7 +178,8 @@ describe('E2E: REGULATION 模式 — 行政协调', () => {
       type: 'pause_all',
       reason: '系统检测到全局异常，暂停所有 Agent',
       targetAgentIds: ['agent-1', 'agent-2'],
-    });
+      actorRole: 'regulatory_authority',
+      });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -209,7 +211,7 @@ describe('E2E: REGULATION 模式 — 行政协调', () => {
       action: 'forbid',
       severity: 'critical',
       enforceable: true,
-    });
+    }, 'regulatory_authority');
     expect(addResult.ok).toBe(true);
 
     // 验证行为准则已更新
@@ -231,14 +233,14 @@ describe('E2E: REGULATION 模式 — 行政协调', () => {
       ruleId: 'dup-rule', category: 'safety',
       description: '规则 1', condition: 'c', action: 'warn',
       severity: 'low', enforceable: false,
-    });
+    }, 'regulatory_authority');
     expect(r1.ok).toBe(true);
 
     const r2 = addBehaviorRule({
       ruleId: 'dup-rule', category: 'safety',
       description: '规则 2', condition: 'c', action: 'warn',
       severity: 'low', enforceable: false,
-    });
+    }, 'regulatory_authority');
     expect(r2.ok).toBe(false);
   });
 });
@@ -291,7 +293,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
     expect(isFrozen('audit-fp')).toBe(true);
 
     // 稽查
-    const report = investigate('audit-fp');
+    const report = investigate('audit-fp', 'auditor');
     expect(report.ok).toBe(true);
     if (!report.ok) return;
 
@@ -309,7 +311,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
     monitorAgent('audit-confirmed', 700);
     monitorAgent('audit-confirmed', 800);
 
-    const report = investigate('audit-confirmed');
+    const report = investigate('audit-confirmed', 'auditor');
     expect(report.ok).toBe(true);
     if (!report.ok) return;
 
@@ -341,7 +343,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
 
     if (loopAlerts.length >= 3) {
       // 多次循环 → 攻击嫌疑
-      const report = investigate('audit-loop');
+      const report = investigate('audit-loop', 'auditor');
       expect(report.ok).toBe(true);
       if (report.ok) {
         expect(report.value.finding).toBe('attack');
@@ -355,18 +357,18 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
   // ─────────────────────────────────────────────────
 
   it('手动冻结/解冻：freeze → isFrozen → unfreeze', () => {
-    const freezeResult = freeze('agent-manual', '手动冻结测试');
+    const freezeResult = freeze('agent-manual', '手动冻结测试', 'auditor');
     expect(freezeResult.ok).toBe(true);
     expect(isFrozen('agent-manual')).toBe(true);
 
-    const unfreezeResult = unfreeze('agent-manual', 'test');
+    const unfreezeResult = unfreeze('agent-manual', 'auditor', 'test');
     expect(unfreezeResult.ok).toBe(true);
     expect(isFrozen('agent-manual')).toBe(false);
   });
 
   it('重复冻结拒绝', () => {
-    freeze('agent-dup', '第一次');
-    const r2 = freeze('agent-dup', '第二次');
+    freeze('agent-dup', '第一次', 'auditor');
+    const r2 = freeze('agent-dup', '第二次', 'auditor');
     expect(r2.ok).toBe(false);
   });
 
@@ -392,7 +394,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
     });
 
     // 执行巡检
-    const patrol = runPatrol();
+    const patrol = runPatrol('auditor');
     expect(patrol.ok).toBe(true);
     if (patrol.ok) {
       expect(patrol.value.reportId).toBeDefined();
@@ -406,7 +408,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
 
   it('稽查报告：investigate → getAuditReports', () => {
     monitorAgent('audit-report-1', 600);
-    investigate('audit-report-1');
+    investigate('audit-report-1', 'auditor');
 
     const reports = getAuditReports();
     expect(reports.length).toBe(1);
@@ -420,7 +422,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
 
   it('事件链：异常检测 → 冻结 → 稽查 → AUDIT_COMPLETED', () => {
     monitorAgent('audit-events', 600);
-    investigate('audit-events');
+    investigate('audit-events', 'auditor');
 
     const events = getEventLog();
     const types = events.map(e => e.eventType);
@@ -433,7 +435,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
 
   it('联动：被冻结 Agent 状态验证', () => {
     // 冻结 Agent
-    freeze('audit-frozen-agent', '测试冻结');
+    freeze('audit-frozen-agent', '测试冻结', 'auditor');
     expect(isFrozen('audit-frozen-agent')).toBe(true);
 
     // 冻结列表
@@ -441,7 +443,7 @@ describe('E2E: AUDIT 模式 — 资源稽查', () => {
     expect(frozen).toContain('audit-frozen-agent');
 
     // 解冻后移除
-    unfreeze('audit-frozen-agent', 'test');
+    unfreeze('audit-frozen-agent', 'auditor', 'test');
     const frozenAfter = getFrozenAgents();
     expect(frozenAfter).not.toContain('audit-frozen-agent');
   });

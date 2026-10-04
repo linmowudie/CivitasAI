@@ -1,7 +1,7 @@
 /**
  * @module Supervision/compressSupervision
  * @description
- * Compress supervision - Docs/02 3-5.
+ * Compress supervision - Docs/Agent/02 3-5.
  * Monitor context compression, ensure critical info not lost.
  */
 

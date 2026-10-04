@@ -8,3 +8,4 @@
  */
 
 export * from './middlewareTypes.js';
+export * from './rateLimitTypes.js';
