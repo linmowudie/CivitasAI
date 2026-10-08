@@ -62,6 +62,7 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(`
     TRUNCATE TABLE
       audit_log, verification_codes, user_devices, usage_events, memories,
+        a2a_messages, a2a_agent_cards, user_tasks,
       user_settings, refresh_tokens, users
     RESTART IDENTITY CASCADE
   `);

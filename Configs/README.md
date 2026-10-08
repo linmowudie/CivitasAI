@@ -27,8 +27,14 @@
 
 ## 热加载（现状：未生效）
 
-`main.ts` 第 ⑨ 步调用 `initConfigWatcher({ watchDir: 'Configs/', pollIntervalMs: 5000 })` **仅登记参数**；`Infra/Watcher/configWatcher.ts` 的扫描逻辑为注释桩，`startWatching` / `onConfigChange` 无任何调用者——**当前不存在真正的运行期热重载**，所有配置改动均需重启生效（2026-09-22 与 Docs/Agent/10 同步校准）。L0/L2 分级与 `mutationLevels.ts` 判定函数亦未接线（见 Docs/Agent/10 §1.3 校准注记）。
+`main.ts` 第 ⑨ 步调用 `initConfigWatcher({ watchDir: getConfigDir(), watchDirs: [内置 Configs, Prompts, Skills] })` **仅登记参数**；`Infra/Watcher/configWatcher.ts` 的扫描逻辑为注释桩，`startWatching` / `onConfigChange` 无任何调用者——**当前不存在真正的运行期热重载**，所有配置改动均需重启生效（2026-09-22 与 Docs/Agent/10 同步校准）。L0/L2 分级与 `mutationLevels.ts` 判定函数亦未接线（见 Docs/Agent/10 §1.3 校准注记）。
 
-另一已知问题：`configLoader` 在三层合并后会把 11 个功能 JSON 无条件覆盖到 merged，`local.json` 对同名键的覆盖实际会被吃掉；且多数功能键（约 51%）在 `Src/` 中无消费者，属"登记未接线"参数。
+## 目录契约与覆盖层（2026-10-06 校准）
 
-详细语义见 [Docs/Agent/10-配置体系与安全](../Docs/Agent/10-配置体系与安全/配置体系与安全设计.md) 与 [Docs/Server/02-使用指南/configuration.md](../Docs/Server/02-使用指南/configuration.md)。
+- **内置种子**：`<APP_ROOT>/Configs`（随安装包分发，只读）。
+- **用户覆盖层**：`<DATA_ROOT>/Configs`（安装态 = `%APPDATA%\CivitasAI\Configs`，可写）。
+- 加载顺序（低 → 高）：`内置 default → 内置 {env} → 内置功能文件 → 内置 local → 用户 {env} → 用户功能文件 → 用户 local`。
+- ✅ **已修复**：原实现把 11 个功能 JSON **无条件覆盖到最后**，`local.json` 覆盖不了 `modelRouter.routing` 等键（本文件上一版自认的已知问题）。现在 `local.json` 为最高层——首次运行引导只需写用户层 `local.json` 即可选中供应商与默认模型。
+- ⚠️ **仍然存在**：多数功能键（约 51%）在 `Src/` 中无消费者，属"登记未接线"参数（各自在设计与差别清单中登记）。
+
+详细语义见 [Docs/Agent/10-配置体系与安全](../Docs/Agent/10-配置体系与安全/配置体系与安全设计.md)、[Docs/Server/02-使用指南/configuration.md](../Docs/Server/02-使用指南/configuration.md)（环境变量与目录契约）与 [ELECTRON.md](../ELECTRON.md)（安装包）。

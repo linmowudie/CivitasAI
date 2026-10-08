@@ -5,6 +5,19 @@
  * 职责：展示单条/多条工具调用的参数、结果、错误。
  * 支持四种子样式：read / write / exec / system。
  *
+ * 展示规格（工具展示动画改造）：每行 = `+工具 + 描述`
+ * ```
+ * [状态] [动画/图标] 工具名   人读描述             [子分组] [耗时] [参数]
+ *         ↑            ↑
+ *    ToolGlyph      describeToolCall()
+ * ```
+ * - **使用工具中**（generating / pending）播放语义动画：
+ *   读→小眼睛扫视、写→细宽细光流、删除→方块阵列沉浮、执行→终端扫描、系统→轨道环；
+ *   出结果后回落为同义静态图标（见 `ToolGlyph`）。
+ * - **探索态**：组内只要还有未完成的探索型（读/查/列/搜）调用，组头**持续**显示小眼睛
+ *   与"探索中…"，直到该组不再有未完成的探索型调用（见 `summarizeToolGroup`）。
+ * - 组头另有语义计数（`读取 2 · 写入 1`）与运行状态词，折叠行为与轮次徽章保持原样。
+ *
  * 可按事件类型注册到组件注册表：
  * registry.register<ToolCallPayload>({
  *   family: 'harness',
@@ -14,15 +27,35 @@
  * });
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Wrench, ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2,
-  Eye, Pencil, Play, Settings, ShieldCheck, ShieldAlert, Check, X,
+  ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2,
+  ShieldCheck, ShieldAlert, Check, X,
 } from 'lucide-react';
 import type { ComponentSubgroup } from '../types';
 import type { ToolCallEntry } from '@/stores/chatStore';
 import { useApprovalStore } from '@/stores/approvalStore';
+import { ToolGlyph } from './ToolGlyph';
+import {
+  classifyToolVisual,
+  describeToolCall,
+  formatCounts,
+  inferSubgroup,
+  summarizeToolGroup,
+} from './toolVisuals';
 import styles from './ToolGroup.module.css';
+
+// 纯函数层对外导出（`Tests/AIComponents/subscribeAndToolGroup.spec.ts` 直接引用 inferSubgroup）
+export {
+  classifyToolVisual,
+  describeToolCall,
+  formatCounts,
+  inferSubgroup,
+  isExploratoryTool,
+  subgroupOfVisual,
+  summarizeToolGroup,
+} from './toolVisuals';
+export type { ToolDescription, ToolGroupSummary, ToolVisualKind } from './toolVisuals';
 
 // ── Props ───────────────────────────────────────────────────────────
 
@@ -40,22 +73,48 @@ interface ToolGroupProps {
 export function ToolGroup({ toolCalls, totalIterations, iteration }: ToolGroupProps) {
   const [open, setOpen] = useState(true);
 
+  // 组头汇总：状态词 / 语义计数 / 动画形态（探索中恒为小眼睛）
+  const summary = useMemo(() => summarizeToolGroup(toolCalls), [toolCalls]);
+
   if (!toolCalls.length) return null;
 
+  const busy = summary.running > 0;
+
   return (
-    <div className={styles.wrapper}>
+    <div
+      className={styles.wrapper}
+      data-testid="tool-group"
+      data-state={summary.state}
+      data-exploring={summary.exploring ? 'true' : undefined}
+    >
       <button
         className={styles.header}
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
       >
         <div className={styles.headerLeft}>
-          <Wrench size={12} className="text-brand-400" />
+          {/* 组头动画：探索中持续小眼睛，其余取运行中/最后一个工具的语义 */}
+          <ToolGlyph
+            toolName={toolCalls[0]?.name ?? ''}
+            visual={summary.visual}
+            status={busy ? 'pending' : 'success'}
+          />
           <span>工具调用</span>
           {iteration != null && <span className={styles.badge}>第 {iteration} 轮</span>}
           {iteration == null && totalIterations != null && totalIterations > 1 && (
             <span className={styles.badge}>{totalIterations} 轮</span>
           )}
           <span className="text-[9px] text-text-muted">{toolCalls.length} 次</span>
+          {(busy || summary.failed > 0) && (
+            <span className={styles.statusChip} data-state={summary.state}>
+              {summary.label}
+            </span>
+          )}
+          {toolCalls.length > 1 && (
+            <span className={styles.counts} title="按语义统计本组工具调用">
+              {formatCounts(summary.counts)}
+            </span>
+          )}
         </div>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </button>
@@ -74,18 +133,44 @@ export function ToolGroup({ toolCalls, totalIterations, iteration }: ToolGroupPr
 
 function ToolCallItem({ tc }: { tc: ToolCallEntry }) {
   const [expanded, setExpanded] = useState(false);
+  /** 刚出结果：播放一次"落定"扫光（仅表示状态跃迁，不代表成功/失败） */
+  const [justSettled, setJustSettled] = useState(false);
+  const prevStatus = useRef<ToolCallEntry['status']>(tc.status);
+
+  useEffect(() => {
+    const prev = prevStatus.current;
+    prevStatus.current = tc.status;
+    const wasRunning = prev === 'generating' || prev === 'pending';
+    if (wasRunning && (tc.status === 'success' || tc.status === 'error')) {
+      setJustSettled(true);
+      const timer = setTimeout(() => setJustSettled(false), 700);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [tc.status]);
+
   const argsStr = Object.keys(tc.arguments).length > 0
     ? JSON.stringify(tc.arguments, null, 2)
     : '';
 
   const subgroup = inferSubgroup(tc.name);
-  const SubgroupIcon = getSubgroupIcon(subgroup);
+  const visual = classifyToolVisual(tc.name);
+  const desc = useMemo(
+    () => describeToolCall(tc.name, tc.arguments),
+    [tc.name, tc.arguments],
+  );
 
   return (
-    <div className={styles.item}>
+    <div
+      className={styles.item}
+      data-status={tc.status}
+      data-visual={visual}
+      data-just-settled={justSettled ? 'true' : undefined}
+    >
       <button
         className={styles.itemToggle}
         onClick={() => setExpanded(o => !o)}
+        aria-expanded={expanded}
       >
         {tc.status === 'success' ? (
           <CheckCircle2 size={12} className="text-success flex-shrink-0" />
@@ -94,8 +179,11 @@ function ToolCallItem({ tc }: { tc: ToolCallEntry }) {
         ) : (
           <Loader2 size={12} className="text-warning flex-shrink-0 animate-spin" />
         )}
-        <SubgroupIcon size={11} className="text-text-muted flex-shrink-0" />
+        {/* 工具位：使用中播放语义动画，出结果后为静态同义图标 */}
+        <ToolGlyph toolName={tc.name} status={tc.status} />
         <span className={styles.toolName}>{tc.name || '（生成工具调用…）'}</span>
+        {/* 描述位：动作 + 作用对象（+ 量词），如「读取文件 · Client/src/index.css」 */}
+        <span className={styles.description} title={desc.text}>{desc.text}</span>
         {/* 模型正在生成参数阶段（尚未执行）：明确文案，避免长参数生成期间界面"看起来卡住" */}
         {tc.status === 'generating' && (
           <span className="text-[10px] text-warning/80 flex-shrink-0">
@@ -253,22 +341,6 @@ function InlineApproval({ approvalId, approvalStatus }: InlineApprovalProps) {
 }
 
 // ── 工具函数 ────────────────────────────────────────────────────────
-
-export function inferSubgroup(toolName: string): ComponentSubgroup {
-  if (toolName.startsWith('read_') || toolName.startsWith('search_') || toolName.startsWith('list_')) return 'read';
-  if (toolName.startsWith('write_') || toolName.startsWith('create_') || toolName.startsWith('update_')) return 'write';
-  if (toolName.startsWith('exec_') || toolName.startsWith('run_') || toolName.startsWith('execute_')) return 'exec';
-  return 'system';
-}
-
-function getSubgroupIcon(subgroup: ComponentSubgroup) {
-  switch (subgroup) {
-    case 'read': return Eye;
-    case 'write': return Pencil;
-    case 'exec': return Play;
-    case 'system': return Settings;
-  }
-}
 
 function getSubgroupBadgeClass(subgroup: ComponentSubgroup): string {
   switch (subgroup) {

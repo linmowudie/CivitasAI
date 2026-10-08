@@ -22,6 +22,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 选择任务工作目录（原生对话框；取消返回 null）
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('pick-directory'),
 
+  /** 在资源管理器中打开目录/文件（首次运行引导用） */
+  openPath: (target: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-path', target),
+
+  // ── 首次运行引导（onboarding）──
+  onboarding: {
+    /** 目录透明化：程序根/数据根/工作空间/可写性/告警 */
+    getPaths: (): Promise<any> => ipcRenderer.invoke('ipc-get-app-paths'),
+    /** 引导现状：状态 + 已有供应商/模型/路由 + 用户配置 */
+    getState: (): Promise<any> => ipcRenderer.invoke('ipc-get-onboarding'),
+    /** 连通性校验：GET /models + 最小 chat 探测（返回可归因的错误类型） */
+    testProvider: (config: any): Promise<any> => ipcRenderer.invoke('ipc-test-provider', config),
+    /**
+     * 逐模型可用性校验（模型导入重设计）：渲染层按小批次调用以便展示进度；
+     * 只校验不导入，导入哪些由用户在列表里勾选。
+     */
+    verifyModels: (config: any): Promise<any> => ipcRenderer.invoke('ipc-verify-models', config),
+    /** 白名单写用户配置（写 <数据根>/Configs/local.json，并同步内存路由） */
+    writeUserConfig: (patch: Record<string, unknown>): Promise<any> => ipcRenderer.invoke('ipc-write-user-config', patch),
+    /** 仅更新引导状态（个性化项随步写入） */
+    patchState: (patch: Record<string, unknown>): Promise<any> => ipcRenderer.invoke('ipc-patch-onboarding', patch),
+    /** 完成引导（写配置 + 路由 + 状态标记） */
+    complete: (payload: any): Promise<any> => ipcRenderer.invoke('ipc-complete-onboarding', payload),
+    /** 跳过引导（稍后可从设置重跑） */
+    skip: (): Promise<any> => ipcRenderer.invoke('ipc-skip-onboarding'),
+    /** 重置引导（重新运行初始化引导） */
+    reset: (): Promise<any> => ipcRenderer.invoke('ipc-reset-onboarding'),
+  },
+
   // ── 服务端请求转发（主进程执行，规避渲染进程 CORS；打包后 file:// 亦可用）──
   serverFetch: (req: { method: string; url: string; headers?: Record<string, string>; body?: string }) =>
     ipcRenderer.invoke('server-fetch', req),
@@ -42,6 +70,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fetchModels: (config: any): Promise<any> => ipcRenderer.invoke('ipc-fetch-models', config),
     getRouting: (): Promise<any> => ipcRenderer.invoke('ipc-get-routing'),
     updateRouting: (config: any): Promise<any> => ipcRenderer.invoke('ipc-update-routing', config),
+    // ── A2A 同步（P0c）：本地待上行 / 标记已上行 / 应用拉回（本机优先）──
+    a2aSync: {
+      listUnsynced: (limit?: number) => ipcRenderer.invoke('a2a:sync-list', limit ?? 200),
+      markSynced: (messageIds: string[]) => ipcRenderer.invoke('a2a:sync-mark', messageIds),
+      applyPulled: (items: unknown[]) => ipcRenderer.invoke('a2a:sync-apply', items),
+      stats: () => ipcRenderer.invoke('a2a:sync-stats'),
+    },
     getModels: (): Promise<string[]> => ipcRenderer.invoke('ipc-get-models'),
   },
 
@@ -114,6 +149,21 @@ declare global {
       removeBackendEventListeners: () => void;
       /** 选择任务工作目录（取消返回 null） */
       pickDirectory: () => Promise<string | null>;
+      /** 在资源管理器中打开目录/文件（首次运行引导用） */
+      openPath: (target: string) => Promise<{ ok: boolean; error?: string }>;
+      /** 首次运行引导（onboarding） */
+      onboarding: {
+        getPaths: () => Promise<any>;
+        getState: () => Promise<any>;
+        testProvider: (config: any) => Promise<any>;
+        /** 逐模型可用性校验（按小批次调用） */
+        verifyModels: (config: any) => Promise<any>;
+        writeUserConfig: (patch: Record<string, unknown>) => Promise<any>;
+        patchState: (patch: Record<string, unknown>) => Promise<any>;
+        complete: (payload: any) => Promise<any>;
+        skip: () => Promise<any>;
+        reset: () => Promise<any>;
+      };
       /** 服务端请求转发（主进程 fetch；避免渲染进程 CORS 限制） */
       serverFetch: (req: { method: string; url: string; headers?: Record<string, string>; body?: string }) => Promise<
         { ok: true; status: number; body: string } | { ok: false; status: 0; error: string }
@@ -126,7 +176,14 @@ declare global {
         remove: (key: string) => Promise<void>;
       };
       /** 模型供应商管理（invoke/handle 请求-响应） */
-      modelProviders: {
+    /** A2A 同步（P0c）：本地待上行 / 标记已上行 / 应用拉回 */
+    a2aSync: {
+      listUnsynced: (limit?: number) => Promise<unknown[]>;
+      markSynced: (messageIds: string[]) => Promise<{ marked: number }>;
+      applyPulled: (items: unknown[]) => Promise<{ applied: number; skipped: number }>;
+      stats: () => Promise<{ unsynced: number }>;
+    };
+    modelProviders: {
         getProviders: () => Promise<any[]>;
         addProvider: (config: any) => Promise<any>;
         removeProvider: (name: string) => Promise<any>;

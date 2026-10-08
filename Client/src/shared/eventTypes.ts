@@ -51,6 +51,18 @@ export const EventType = {
   PATROL_REPORT: 'audit:patrol_report' as const,
   MEMORY_WRITTEN: 'memory:written' as const,
   GOVERNANCE_ACTION_RECORDED: 'governance:action_recorded' as const,
+
+  // A2A（治理型智能体间通信）· P0a
+  A2A_CARD_ISSUED: 'a2a:card_issued' as const,
+  A2A_MESSAGE_RECORDED: 'a2a:message_recorded' as const,
+  A2A_MESSAGE_BLOCKED: 'a2a:message_blocked' as const,
+  A2A_HANDOFF_CREATED: 'a2a:handoff_created' as const,
+  A2A_HANDOFF_VERIFIED: 'a2a:handoff_verified' as const,
+  A2A_HANDOFF_CONFLICT: 'a2a:handoff_conflict' as const,
+  A2A_SELFREPORT_MISMATCH: 'a2a:selfreport_mismatch' as const,
+  A2A_COLLUSION_SUSPECTED: 'a2a:collusion_suspected' as const,
+  A2A_CHANNEL_MISUSE: 'a2a:channel_misuse' as const,
+  A2A_ALERT_DISPOSED: 'a2a:alert_disposed' as const,
   MEMORY_SUPERSEDED: 'memory:superseded' as const,
   MEMORY_VERSION_CONFLICT: 'memory:version_conflict' as const,
   MEMORY_SELF_REINFORCING: 'memory:self_reinforcing' as const,

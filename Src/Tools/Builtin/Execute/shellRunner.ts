@@ -6,6 +6,7 @@
  */
 
 import { execSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 
 import type { ToolDefinition } from '../../Traits/toolSpec.js';
 import { toolSuccess, toolError } from '../../Traits/toolSpec.js';
@@ -15,6 +16,7 @@ import {
   resolveWithinWorkspace,
   findEscapingPathInCommand,
 } from '../../../Infra/Security/workspaceGuard.js';
+import { getSessionWorkspaceDir, getWorkspaceRoot } from '../../../Infra/Fs/pathResolver.js';
 
 export const shellRunner: ToolDefinition = {
   spec: {
@@ -79,11 +81,37 @@ export const shellRunner: ToolDefinition = {
           false,
         );
       }
+    } else if (!requestedCwd) {
+      /*
+       * 无 workDir 时的兜底（2026-10-06 打包态修复）。
+       *
+       * 历史实现是 `cwd ?? process.cwd()`：开发态看着没问题，**打包态则是错的** ——
+       * 安装版进程的 cwd 由快捷方式"起始位置"或启动方式决定（常见是 `C:\Windows\System32`、
+       * 用户主目录、甚至临时目录），命令会在一个与任务无关、且可能权限敏感的位置执行，
+       * 同时越界检查因 `context.workDir` 为空而完全失效。
+       *
+       * 现在一律收敛到该会话的工作目录（拿不到 sessionId 就退到工作空间根），
+       * 并且**绝不**回落到 `process.cwd()`。
+       */
+      const fallback = context.sessionId
+        ? getSessionWorkspaceDir(context.sessionId)
+        : getWorkspaceRoot();
+      try {
+        mkdirSync(fallback, { recursive: true });
+      } catch {
+        return toolError(
+          context.operationId,
+          'PATH_DENIED',
+          `无法准备工作目录: ${fallback}（拒绝在进程当前目录执行命令）`,
+          false,
+        );
+      }
+      cwd = fallback;
     }
 
     try {
       const stdout = execSync(command, {
-        cwd: cwd ?? process.cwd(),
+        cwd,
         timeout: timeoutMs,
         encoding: 'utf-8',
         maxBuffer: 1024 * 1024, // 1MB

@@ -77,6 +77,18 @@ export enum EventType {
   // 全局唯一 ID / 时间戳 / 来源 Agent / 任务标识 四类元数据强制携带）
   GOVERNANCE_ACTION_RECORDED = 'governance:action_recorded',
 
+  // ── A2A（治理型智能体间通信）· P0a（设计 §8 事件族）──────────────
+  A2A_CARD_ISSUED = 'a2a:card_issued',
+  A2A_MESSAGE_RECORDED = 'a2a:message_recorded',
+  A2A_MESSAGE_BLOCKED = 'a2a:message_blocked',
+  A2A_HANDOFF_CREATED = 'a2a:handoff_created',
+  A2A_HANDOFF_VERIFIED = 'a2a:handoff_verified',
+  A2A_HANDOFF_CONFLICT = 'a2a:handoff_conflict',
+  A2A_SELFREPORT_MISMATCH = 'a2a:selfreport_mismatch',
+  A2A_COLLUSION_SUSPECTED = 'a2a:collusion_suspected',
+  A2A_CHANNEL_MISUSE = 'a2a:channel_misuse',
+  A2A_ALERT_DISPOSED = 'a2a:alert_disposed',
+
   // 中间件/Hook 事件（Docs/Client/03 §4）
   MIDDLEWARE_BEFORE_MODEL = 'middleware:before_model',
   HOOK_TRIGGERED = 'hook:triggered',

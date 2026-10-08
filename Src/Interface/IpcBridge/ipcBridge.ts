@@ -12,6 +12,7 @@
  */
 
 import { subscribeMany } from '../../Services/EventBus/eventBus.js';
+import { registerA2ASyncIpc } from './a2aIpc.js';
 import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
 import { EventType } from '../../Services/EventBus/eventTypes.js';
 import type { Subscription, DomainEvent } from '../../Services/EventBus/eventTypes.js';
@@ -46,22 +47,117 @@ import {
   hasUsableSecret,
   type ProvidersSecrets,
 } from '../../Infra/Security/secretsStore.js';
+import { getSkillsDir } from '../../Infra/Fs/pathResolver.js';
+import { registerOnboardingIpc, ONBOARDING_IPC_CHANNELS } from './onboardingIpc.js';
 
 // ── Electron 动态导入（非 Electron 环境下优雅降级）────────────────
 
 type ElectronModule = typeof import('electron');
 let electronModule: ElectronModule | null = null;
+/** 由 Electron 主进程注入的 ipcMain（CJS 侧）——ESM 后端拿不到真实 electron API */
+let injectedIpcMain: unknown = null;
+
+/**
+ * 由 Electron 主进程注入的"向所有窗口广播"能力（2026-10-07 修复）。
+ *
+ * 背景：`setIpcMainProvider` 只注入 `ipcMain`，于是 `electronModule` 是个**不完整的假模块**，
+ * `BrowserWindow` 恒为 `undefined`。事件广播处 `BrowserWindow.getAllWindows()` 每次必抛
+ * `TypeError: Cannot read properties of undefined (reading 'getAllWindows')` ——
+ * 实测（开发态启动日志）表现为 UnhandledPromiseRejection，**后端 → 渲染进程的 `backend-event`
+ * 推送整条失效**（界面拿不到实时事件）。
+ *
+ * 这里改为注入"能力函数"而不是整个 electron 模块：CJS 侧提供实现，ESM 侧只调用，
+ * 既修好了广播，也避免继续拼装残缺的 electron 模块对象。
+ */
+let injectedWindowBroadcaster: ((channel: string, payload: unknown) => number) | null = null;
+let broadcastFailureLogged = false;
+
+/** 注入窗口广播能力（channel → 所有窗口 webContents.send）；传 null 可清除（测试用） */
+export function setWindowBroadcaster(fn: ((channel: string, payload: unknown) => number) | null): void {
+  injectedWindowBroadcaster = fn;
+}
+
+/**
+ * 向所有渲染进程窗口广播一条消息；返回成功发送的窗口数。
+ *
+ * 优先级：注入的实现（Electron 主进程）→ electron 模块自带的 BrowserWindow（旧路径）→ 跳过。
+ * 任何异常都在这里吞掉：广播失败绝不能让调用方（EventBus publish）变成未处理拒绝。
+ *
+ * 导出仅为可测试性（回归测试覆盖"广播不得抛异常"）。
+ */
+export function broadcastToRendererWindows(channel: string, payload: unknown): number {
+  try {
+    if (injectedWindowBroadcaster) return injectedWindowBroadcaster(channel, payload);
+
+    const windows = (electronModule as unknown as {
+      BrowserWindow?: { getAllWindows?: () => Array<{ webContents?: { send?: (c: string, p: unknown) => void } }> };
+    } | null)?.BrowserWindow?.getAllWindows?.();
+
+    if (!windows) {
+      if (!broadcastFailureLogged) {
+        broadcastFailureLogged = true;
+        logger.warn('无可用的窗口广播能力：backend-event 推送已跳过（仅 Electron 主进程会注入）', {
+          source: 'ipcBridge',
+        });
+      }
+      return 0;
+    }
+
+    let sent = 0;
+    for (const win of windows) {
+      try {
+        win.webContents?.send?.(channel, payload);
+        sent++;
+      } catch {
+        // 窗口可能已关闭，静默忽略
+      }
+    }
+    return sent;
+  } catch (e) {
+    if (!broadcastFailureLogged) {
+      broadcastFailureLogged = true;
+      logger.warn('窗口广播失败（已忽略，不影响调用方）', {
+        source: 'ipcBridge',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    return 0;
+  }
+}
+
+/**
+ * 注入 Electron 主进程的 `ipcMain`。
+ *
+ * 背景（Electron 44 + Node 24）：后端是 ESM，`await import('electron')` 得到的命名空间
+ * 里没有真实的 `ipcMain`（实测为 undefined），导致整套渲染进程 ↔ 后端 IPC 静默失效
+ * （前端所有 `ipc-*` 调用永远 pending）。改由 CJS 的 Electron 主进程注入。
+ */
+export function setIpcMainProvider(ipcMain: unknown): void {
+  injectedIpcMain = ipcMain;
+  if (ipcMain) {
+    // 注意：这里只保证 ipcMain 可用；BrowserWindow 等能力必须走 setWindowBroadcaster，
+    // 否则会得到"看起来有 electron 模块、实际字段全 undefined"的假象（历史 bug）。
+    electronModule = { ipcMain } as unknown as ElectronModule;
+  }
+}
 
 async function loadElectron(): Promise<ElectronModule | null> {
   if (electronModule) return electronModule;
+  if (injectedIpcMain) {
+    electronModule = { ipcMain: injectedIpcMain } as unknown as ElectronModule;
+    return electronModule;
+  }
   try {
-    const mod = await import('electron');
+    const mod = await import('electron') as unknown as ElectronModule & {
+      default?: { ipcMain?: unknown };
+    };
+    const ipcMain = mod.ipcMain ?? mod.default?.ipcMain;
     // 在非 Electron 主进程中，ipcMain 为 undefined
-    if (!mod.ipcMain) {
+    if (!ipcMain) {
       logger.warn('Electron ipcMain 不可用（非 Electron 主进程），IPC 桥接降级为空操作', { source: 'ipcBridge' });
       return null;
     }
-    electronModule = mod;
+    electronModule = { ipcMain } as unknown as ElectronModule;
     return electronModule;
   } catch {
     logger.warn('Electron 模块不可用，IPC 桥接将以空操作模式运行', { source: 'ipcBridge' });
@@ -111,12 +207,25 @@ export function abortAllActiveStreams(): number {
 
 let entryAgentId: string | null = null;
 
+/**
+ * 取会话入口 Agent（Prime Director）。
+ *
+ * ⚠️ **2026-10-07 回退记录（勿重蹈）**：
+ * 曾改为"优先复用注册表里未销毁、同模型的既有 Director"，想解决"每次启动多留一个
+ * `agent-prime_director-N`"的累积问题。**实测后果是后端没有可用 Agent**：注册表里的实例是
+ * 从库里 hydrate 出来的**历史行**，进程内并没有与之匹配的运行时状态，复用它之后
+ * 主循环跑不出任何东西（用户侧表现为"只能创建对象、什么都干不了"、空气泡回复）。
+ *
+ * 结论：入口 Agent **必须由当前进程创建**（单例即可，进程内不重复）。
+ * "Agent 列表累积"应从**不再启动即建治理 Agent**（arbitratorPool 懒绑定）这一侧解决，
+ * 而不是复用跨进程的历史实例。
+ */
 function getOrCreateEntryAgent(model: string, traceId: string): string {
   if (entryAgentId) return entryAgentId;
   const result = createAgent({ role: 'prime_director', model }, traceId);
   if (result.ok) {
     entryAgentId = result.value.agentId;
-    logger.info('入口 Agent 已创建', { source: 'ipcBridge', agentId: entryAgentId });
+    logger.info('入口 Agent 已创建', { source: 'ipcBridge', agentId: entryAgentId, model });
   } else {
     entryAgentId = 'agent-prime_director-fallback';
     logger.error('入口 Agent 创建失败，降级运行', { source: 'ipcBridge', error: result.error });
@@ -136,7 +245,7 @@ export async function startIpcBridge(): Promise<void> {
     return;
   }
 
-  const { ipcMain, BrowserWindow } = electron;
+  const { ipcMain } = electron;
 
   // ① 订阅 EventBus 全部事件 → 转发到渲染进程（替代 wsServer.connectClient）
   eventSubscription = subscribeMany(Object.values(EventType), (event: DomainEvent) => {
@@ -145,14 +254,8 @@ export async function startIpcBridge(): Promise<void> {
       data: event.payload,
       timestamp: event.timestamp,
     };
-    // 广播到所有渲染进程窗口
-    for (const win of BrowserWindow.getAllWindows()) {
-      try {
-        win.webContents.send('backend-event', msg);
-      } catch {
-        // 窗口可能已关闭，静默忽略
-      }
-    }
+    // 广播到所有渲染进程窗口（能力由 Electron 主进程注入；失败只记一次日志，绝不抛出）
+    broadcastToRendererWindows('backend-event', msg);
   });
 
   // ② 监听渲染进程命令（替代 wsGateway 的 socket.on('message')）
@@ -167,6 +270,7 @@ export async function startIpcBridge(): Promise<void> {
 
   // ③ 注册 invoke/handle 请求-响应通道（模型管理、会话数据等）
   registerIpcHandlers(ipcMain);
+  registerA2ASyncIpc(ipcMain);   // A2A 同步（P0c）：本地待上行/标记/拉回
 
   logger.info('IPC 桥接已启动', { source: 'ipcBridge' });
 }
@@ -209,6 +313,10 @@ export function stopIpcBridge(): void {
     ipcMain?.removeHandler('ipc-get-device-fingerprint');
     ipcMain?.removeHandler('ipc-save-secrets');
     ipcMain?.removeHandler('ipc-load-secrets');
+    // 首次运行引导
+    for (const channel of ONBOARDING_IPC_CHANNELS) {
+      ipcMain?.removeHandler(channel);
+    }
   } catch {
     // 非 Electron 环境，静默忽略
   }
@@ -324,6 +432,9 @@ function registerIpcHandlers(ipcMain: any): void {
 
   // 启动即恢复（fire-and-forget；失败只告警，不影响应用可用）
   void restoreProvidersFromSecrets();
+
+  // ── 首次运行引导（路径透明化 / 连通性探测 / 白名单写用户配置 / 完成标记）──
+  registerOnboardingIpc(ipcMain);
 
   // 用 API_KEY 调用 /models 端点拉取模型列表
   ipcMain.handle('ipc-fetch-models', async (_event: any, config: any) => {
@@ -1103,7 +1214,10 @@ function parseLongTermMemoryEntry(raw: unknown): { ok: true; entry: LongTermMemo
   return { ok: true, entry };
 }
 
-const SKILLS_DIR = join(process.cwd(), 'Skills');
+/** 技能目录（惰性解析：安装态由 `<APP_ROOT>/Skills` 决定，不能用 cwd） */
+function skillsDir(): string {
+  return getSkillsDir();
+}
 
 interface SkillEntry {
   id: string;
@@ -1119,7 +1233,7 @@ function listSkills(): SkillEntry[] {
   const categories = ['playbooks', 'rubrics', 'rules', 'strategies'] as const;
 
   for (const cat of categories) {
-    const catDir = join(SKILLS_DIR, cat);
+    const catDir = join(skillsDir(), cat);
     if (!existsSync(catDir)) continue;
 
     try {

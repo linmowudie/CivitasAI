@@ -11,8 +11,12 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 
 import { json, apiError, registerRoute } from './router.js';
+import { getSkillsDir } from '../../Infra/Fs/pathResolver.js';
 
-const SKILLS_DIR = join(process.cwd(), 'Skills');
+/** 技能目录（**惰性**解析；历史实现基于 `process.cwd()`，安装态取不到） */
+function skillsDir(): string {
+  return getSkillsDir();
+}
 
 /** 技能条目类型 */
 export interface SkillEntry {
@@ -30,7 +34,7 @@ function listSkills(): SkillEntry[] {
   const categories = ['playbooks', 'rubrics', 'rules', 'strategies'] as const;
 
   for (const cat of categories) {
-    const catDir = join(SKILLS_DIR, cat);
+    const catDir = join(skillsDir(), cat);
     if (!existsSync(catDir)) continue;
 
     try {
@@ -74,7 +78,7 @@ export function registerSkillsRoutes(): void {
     const [category, name] = id.split('/');
     if (!category || !name) return apiError('Invalid skill id format (expected category/name)', 400);
 
-    const filePath = join(SKILLS_DIR, category, `${name}.md`);
+    const filePath = join(skillsDir(), category, `${name}.md`);
     if (!existsSync(filePath)) return apiError('Skill not found', 404);
 
     try {

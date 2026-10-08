@@ -16,9 +16,10 @@
  *  - 生产环境必须使用 Electron safeStorage
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../Logging/logger.js';
+import { getSecretsDir, ensureDirSafe } from '../Fs/pathResolver.js';
 
 // ── Electron safeStorage 动态导入 ──────────────────────────────────
 
@@ -30,16 +31,41 @@ type SafeStorage = {
 
 let safeStorage: SafeStorage | null = null;
 let safeStorageChecked = false;
+/** 由 Electron 主进程注入（见 `setSafeStorageProvider`）——ESM 后端无法直接 require('electron') */
+let injectedSafeStorage: SafeStorage | null = null;
+
+/**
+ * 注入系统级加密实现（safeStorage）。
+ *
+ * 背景（Electron 44 + Node 24）：后端被打包为 **ESM**，而 `electron` 是 CJS 模块——
+ * `import { safeStorage } from 'electron'` 直接 SyntaxError，`await import('electron')`
+ * 拿到的命名空间里也没有真实 API（实测 `m.safeStorage === undefined`）。
+ * 因此由 **CJS 的 Electron 主进程**通过本函数注入，避免 API Key 退化成 Base64 明文存储。
+ */
+export function setSafeStorageProvider(provider: SafeStorage): void {
+  injectedSafeStorage = provider;
+  safeStorage = provider;
+  safeStorageChecked = true;
+}
 
 async function getSafeStorage(): Promise<SafeStorage | null> {
   if (safeStorageChecked) return safeStorage;
   safeStorageChecked = true;
-  
+
+  // 优先级 1：主进程注入（生产路径）
+  if (injectedSafeStorage) {
+    safeStorage = injectedSafeStorage;
+    return safeStorage;
+  }
+
+  // 优先级 2：动态导入（仅在某些工具链/旧 Electron 下可用；失败即降级）
   try {
-    const electron = await import('electron');
-    if (electron.safeStorage) {
-      safeStorage = electron.safeStorage;
-    }
+    const mod = await import('electron') as unknown as {
+      safeStorage?: SafeStorage;
+      default?: { safeStorage?: SafeStorage };
+    };
+    const candidate = mod.safeStorage ?? mod.default?.safeStorage;
+    if (candidate) safeStorage = candidate;
   } catch {
     // 非 Electron 环境
   }
@@ -48,18 +74,19 @@ async function getSafeStorage(): Promise<SafeStorage | null> {
 
 // ── 存储路径 ────────────────────────────────────────────────────────
 
-function getSecretsDir(): string {
-  // Data/.secrets/ 目录（相对于项目根目录）
-  const dataDir = join(process.cwd(), 'Data');
-  const secretsDir = join(dataDir, '.secrets');
+function getSecretsDirPath(): string {
+  // 统一目录契约：安装态 = %APPDATA%\CivitasAI\.secrets，便携态 = <程序目录>/Data/.secrets
+  // 历史实现是 `join(process.cwd(), 'Data')`：安装态 cwd 不是程序目录 →
+  // 密钥会落到随机位置，且 Program Files 下 mkdir 直接失败（API_KEY 存不下）。
+  const secretsDir = getSecretsDir();
   if (!existsSync(secretsDir)) {
-    mkdirSync(secretsDir, { recursive: true });
+    ensureDirSafe(secretsDir);
   }
   return secretsDir;
 }
 
 function getProvidersFilePath(): string {
-  return join(getSecretsDir(), 'providers.json.enc');
+  return join(getSecretsDirPath(), 'providers.json.enc');
 }
 
 // ── 数据结构 ────────────────────────────────────────────────────────

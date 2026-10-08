@@ -203,27 +203,65 @@ default.json  <  {env}.json  <  local.json        （三层 deepMerge，override
 
 ## 4. 环境变量
 
-⚠️ **2026-10-03 校准**：原示例列出的 `CIVITAS_LOG_LEVEL` / `CIVITAS_HTTP_PORT` / `CIVITAS_WS_PORT` 在 `Src/` 与 `electron/` **无任何消费者**（零引用），设置它们不会有任何效果。仓库真正消费的变量只有以下这些：
+> **2026-10-06 重写（安装包改造）**：环境变量现在有明确的**三根契约**。原表中"环境变量只被 `pathResolver` 读取、DB/日志/密钥全走 `process.cwd()`"的割裂状态已修复——所有落盘路径统一由 `Src/Infra/Fs/pathResolver.ts` 解析。
+> 仍无效的变量：`CIVITAS_LOG_LEVEL` / `CIVITAS_HTTP_PORT` / `CIVITAS_WS_PORT`（零消费者，改它们没有任何效果，请改 `Configs/`）。
 
-| 变量 | 作用 | 消费点 |
-|------|------|--------|
-| `CIVITAS_ENV` | 选择 `Configs/{env}.json` 覆盖层（缺省 `dev`） | `Src/Infra/Config/configLoader.ts` |
-| `CIVITAS_DATA_DIR` | 数据根目录重定向 | `Src/Infra/Fs/pathResolver.ts` |
-| `CIVITAS_LOG_DIR` | 日志目录重定向 | `Src/Infra/Fs/pathResolver.ts` |
-| `CIVITAS_CONFIG_DIR` | 配置目录重定向 | `Src/Infra/Fs/pathResolver.ts` |
-| `CIVITAS_PROMPTS_DIR` | 提示词目录重定向 | `Src/Infra/Fs/pathResolver.ts` |
-| `CIVITAS_SKILLS_DIR` | 技能目录重定向 | `Src/Infra/Fs/pathResolver.ts` |
-| `CIVITAS_PORTABLE` | 值为 `1` 或 `true` 时按便携模式定位目录；由 `electron/main.ts` 在打包态或 `--portable` 启动时注入 | `Src/Infra/Fs/pathResolver.ts` |
+### 4.1 根目录契约（推荐使用）
 
-即：**环境变量只用于目录重定向与 `env:` 取值，不用于覆盖端口、日志级别等参数**。
+| 变量 | 含义 | 缺省 | 消费点 |
+|------|------|------|--------|
+| `CIVITAS_APP_ROOT` | **程序/资源根**（只读）：`Configs/`（内置种子）、`Prompts/`、`Skills/`、`assets/` | 自动向上查找含 `Configs/default.json`（或 `package.json`）的目录 | `pathResolver.getAppRoot()` |
+| `CIVITAS_DATA_ROOT` | **全局数据根**（可写）：数据库、日志、密钥、用户配置 | 开发/便携 = `<APP_ROOT>/Data`；安装态由 Electron 注入 `%APPDATA%\CivitasAI` | `pathResolver.getDataRoot()` |
+| `CIVITAS_WORKSPACE_ROOT` | **工作空间根**（可写，体积大户）：会话工作目录、沙箱、`.civitas/` 文件备份 | 开发 = 数据根；便携/安装 = `<APP_ROOT>/Workspace`（只读则回落 `<DATA_ROOT>/Workspace`） | `pathResolver.getWorkspaceRoot()` |
 
-API Key 类变量写在 `.env` 里，由 `Src/main.ts` `startServer()` 第 ⓪ 步 `process.loadEnvFile(resolve('.env'))` 按当前工作目录加载（已在 `process.env` 中的变量优先，不被覆盖）：
-
-```bash
-# LLM API Key（.env 当前唯一的变量）
-HUAWEI_MAAS_API_KEY=your_key_here
+落盘分布（安装态）：
+```
+%APPDATA%\CivitasAI\            ← CIVITAS_DATA_ROOT
+├── db\civitas_{main,events,memory}.db
+├── Logs\
+├── .secrets\providers.json.enc   ← API Key（safeStorage 加密，不进日志）
+└── Configs\local.json            ← 用户覆盖层（首次运行引导写入，优先级最高）
+<安装目录>\Workspace\             ← CIVITAS_WORKSPACE_ROOT
+├── workspaces\<sessionId>\       ← 每个任务的工作目录
+│   └── .civitas\                 ← 文件备份/改写基线（可回滚）
+├── Sessions\<sessionKey>\
+└── Loops\<sessionKey>\
 ```
 
-⚠️ 现状：根目录 `.env.example` 全文只有 `HUAWEI_MAAS_API_KEY` 一项，原"详见 `.env.example`"的指向不成立（`Server/.env.example` 属另一套自托管服务端，与本文无关）。待办：把上表 `CIVITAS_*` 变量补进 `.env.example`；本轮只改文档。
+### 4.2 细粒度覆盖与兼容变量
 
-> 【需人工裁定】`env:` 引用的解析覆盖面（现状记录，不裁决）：`configLoader.ts` 的 `resolveEnvReferences()` 在第 5 步执行，此时 merged 里只有 `default`/`{env}`/`local` 三层内容，11 个功能 JSON 在第 6 步才被合并进来，因此**功能文件里的 `env:` 从未经由它解析**（原"`modelRouter.json` 中的 `env:XXX` 引用会自动从 `.env` 读取"结论可用，但机制是 Provider 层 `resolveApiKey()` 自行解析，且仅限 `api_key_ref` 一类引用；`embeddingClient.ts`、`keyStore.ts` 各自另有 `env:` 解析）。待办：把 `resolveEnvReferences` 调用移到 extra 合并之后，使任意 `env:` 键一致生效。
+| 变量 | 作用 | 备注 |
+|------|------|------|
+| `CIVITAS_ENV` | 选择 `Configs/{env}.json` 覆盖层（缺省 `dev`） | 内置目录与用户目录都会读该层 |
+| `CIVITAS_LOG_DIR` | 日志目录重定向 | 覆盖数据根派生值 |
+| `CIVITAS_CONFIG_DIR` | **用户可写配置层**目录 | 安装态缺省 `<DATA_ROOT>/Configs` |
+| `CIVITAS_CONFIG_DIR_BUILTIN` | 内置只读配置目录 | 缺省 `<APP_ROOT>/Configs` |
+| `CIVITAS_PROMPTS_DIR` / `CIVITAS_SKILLS_DIR` | 提示词/技能目录重定向 | 缺省 `<APP_ROOT>/...` |
+| `CIVITAS_BACKUP_DIR` | 文件备份根 | 缺省 `<WORKSPACE_ROOT>/.civitas` |
+| `CIVITAS_DATA_DIR` | `CIVITAS_DATA_ROOT` 的旧名（兼容 Docker/旧脚本） | 两者都设时以 `CIVITAS_DATA_ROOT` 为准 |
+| `CIVITAS_PORTABLE` | `1`/`true` 时启用便携模式（数据/工作空间全落程序目录） | 也可用 `--portable` 参数或 exe 同级 `.portable` 标记文件 |
+| `CIVITAS_INSTALLED` | `1`/`true` 时按安装态解析（配置层落数据根） | 由 `electron/main.ts` 在打包非便携时注入 |
+
+**打包 ≠ 便携**：历史实现把 `app.isPackaged` 直接当便携，导致装到 `C:\Program Files` 后数据写进只读安装目录、应用启动即失败；现在只有显式信号才算便携。
+
+### 4.3 配置覆盖层顺序（首次运行引导的写入路径）
+
+```
+内置(<APP_ROOT>/Configs)/default.json
+内置/{env}.json
+内置/{feature}.json      ← modelRouter / security / loopConfig / …（11 个）
+内置/local.json
+用户(<DATA_ROOT>/Configs)/{env}.json      ← 安装态配置写入点
+用户/{feature}.json
+用户/local.json          ← 最高优先级：个性化设置 / 供应商与路由选择
+```
+
+> 2026-10-06 修复：历史实现把 11 个功能文件**无条件覆盖到最后**，导致 `local.json` 覆盖不了 `modelRouter.routing`（`Configs/README.md` 自认的已知问题）。现在 `local.json` 为最高层，首次运行引导写一个文件即可生效。
+> 注意：`env:` 引用**只在 `default`+`{env}` 层解析**，功能文件里的 `api_key_ref: "env:XXX"` 必须保持引用形态，由 Provider 层在请求期解析（提前展开会被判为非法引用格式）。
+
+API Key 类变量可写在 `.env` 里，`Src/main.ts` 第 ⓪ 步按 `<DATA_ROOT>/.env` → `<APP_ROOT>/.env` 顺序加载（已在 `process.env` 中的变量优先，不被覆盖）：
+
+```bash
+# LLM API Key 示例（首次运行引导会改为写入加密凭据存储，无需手填）
+HUAWEI_MAAS_API_KEY=your_key_here
+```

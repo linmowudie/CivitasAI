@@ -6,6 +6,21 @@
   background: color-mix(in srgb, var(--color-surface-800, #1e1e2e) 60%, transparent);
   border: 1px solid var(--color-surface-700, #313244);
   overflow: hidden;
+  transition: border-color 0.25s;
+}
+
+/* 运行中：边框随语义轻微着色，让"正在干活"的组更容易被扫到 */
+.wrapper[data-state='exploring'] {
+  border-color: color-mix(in srgb, var(--color-info, #3b82f6) 35%, var(--color-surface-700, #313244));
+}
+
+.wrapper[data-state='executing'],
+.wrapper[data-state='generating'] {
+  border-color: color-mix(in srgb, var(--color-warning, #f5a623) 30%, var(--color-surface-700, #313244));
+}
+
+.wrapper[data-state='failed'] {
+  border-color: color-mix(in srgb, var(--color-danger, #f38ba8) 35%, var(--color-surface-700, #313244));
 }
 
 .header {
@@ -30,6 +45,44 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+/* 运行状态词（准备中… / 执行中… / 探索中… / N 项失败） */
+.statusChip {
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  color: var(--color-warning, #f5a623);
+  background: color-mix(in srgb, var(--color-warning, #f5a623) 14%, transparent);
+  white-space: nowrap;
+  animation: chipBreath 1.6s ease-in-out infinite;
+}
+
+.statusChip[data-state='exploring'] {
+  color: var(--color-info, #74c7ec);
+  background: color-mix(in srgb, var(--color-info, #74c7ec) 14%, transparent);
+}
+
+.statusChip[data-state='failed'] {
+  color: var(--color-danger, #f38ba8);
+  background: color-mix(in srgb, var(--color-danger, #f38ba8) 14%, transparent);
+  animation: none;
+}
+
+@keyframes chipBreath {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* 语义计数：读取 2 · 写入 1 */
+.counts {
+  font-size: 9px;
+  color: var(--color-text-muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .badge {
@@ -68,6 +121,16 @@
   border-bottom: 1px solid color-mix(in srgb, var(--color-surface-700, #313244) 40%, transparent);
 }
 
+/* 刚出结果：一次"落定"扫光（状态跃迁反馈，非成功/失败语义） */
+.item[data-just-settled='true'] {
+  animation: itemSettle 0.7s ease-out;
+}
+
+@keyframes itemSettle {
+  0%   { background: color-mix(in srgb, var(--color-text-secondary, #a6adc8) 16%, transparent); }
+  100% { background: transparent; }
+}
+
 .item:last-child {
   border-bottom: none;
 }
@@ -96,6 +159,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 46%;
+}
+
+/* 人读描述：动作 · 作用对象（+ 量词），窄屏截断、悬停可看全文 */
+.description {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--color-text-muted, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 运行中：描述稍亮，配合动画形成"当前步骤"焦点 */
+.item[data-status='pending'] .description,
+.item[data-status='generating'] .description {
+  color: var(--color-text-secondary, #a6adc8);
 }
 
 .argsHint {
@@ -169,4 +251,12 @@
   gap: 6px;
   font-size: 11px;
   padding: 4px 0;
+}
+
+/* prefers-reduced-motion：停用组级动画（ToolGlyph 内的动画由其自身模块处理） */
+@media (prefers-reduced-motion: reduce) {
+  .statusChip,
+  .item[data-just-settled='true'] {
+    animation: none;
+  }
 }

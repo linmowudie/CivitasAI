@@ -323,3 +323,245 @@ export async function ipcLoadProviderSecrets(): Promise<{ ok: boolean; data?: Pr
   if (!api) return { ok: false, error: 'Electron API 不可用' };
   return api.loadProviders();
 }
+
+// ── A2A 同步（P0c）──────────────────────────────────────────────────
+// 说明：主进程只做本地读写；**网络与脱敏在 `services/a2aSync`**（渲染进程）。
+
+function getA2ASyncAPI(): any {
+  return getElectronAPI()?.a2aSync ?? null;
+}
+
+export interface IpcSyncRow {
+  messageId: string; taskId: string; traceId: string; kind: string;
+  sourceAgentId: string; targetAgentId: string;
+  parentMessageId: string | null; correlationId: string | null;
+  visibility: string; contentHash: string; prevHash: string | null;
+  payload: unknown; summary: string | null; verdict: string;
+  priority: string; memoryRefs: { key: string; version: number }[]; createdAt: number;
+}
+
+/** 待上行消息（本地 `synced_at IS NULL`） */
+export async function ipcA2AListUnsynced(limit = 200): Promise<{ ok: boolean; data?: IpcSyncRow[]; error?: string }> {
+  const api = getA2ASyncAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return { ok: true, data: (await api.listUnsynced(limit)) as IpcSyncRow[] };
+}
+
+/** 标记已上行（幂等重试安全） */
+export async function ipcA2AMarkSynced(messageIds: string[]): Promise<{ ok: boolean; data?: { marked: number }; error?: string }> {
+  const api = getA2ASyncAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return { ok: true, data: (await api.markSynced(messageIds)) as { marked: number } };
+}
+
+/** 应用拉回消息（**本机优先**：已有则跳过） */
+export async function ipcA2AApplyPulled(items: unknown[]): Promise<{ ok: boolean; data?: { applied: number; skipped: number }; error?: string }> {
+  const api = getA2ASyncAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return { ok: true, data: (await api.applyPulled(items)) as { applied: number; skipped: number } };
+}
+
+/** 未上行计数（诊断） */
+export async function ipcA2ASyncStats(): Promise<{ ok: boolean; data?: { unsynced: number }; error?: string }> {
+  const api = getA2ASyncAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return { ok: true, data: (await api.stats()) as { unsynced: number } };
+}
+
+// ── 首次运行引导（onboarding）───────────────────────────────────────
+
+function getOnboardingAPI(): any {
+  return getElectronAPI()?.onboarding ?? null;
+}
+
+/** 目录契约快照（程序根/数据根/工作空间/可写性/告警） */
+export interface AppPathsDto {
+  mode: 'development' | 'portable' | 'installed';
+  appRoot: string;
+  dataRoot: string;
+  workspaceRoot: string;
+  configDir: string;
+  bundledConfigDir: string;
+  logDir: string;
+  databaseDir: string;
+  secretsDir: string;
+  backupDir: string;
+  stateDir: string;
+  promptsDir: string;
+  skillsDir: string;
+  writable: Record<string, boolean>;
+  warnings: string[];
+  userConfigPath: string;
+  onboardingStatePath: string;
+}
+
+export interface OnboardingProviderOption {
+  name: string;
+  displayName: string;
+  baseUrl: string;
+  apiKey: string;
+  models: Array<{ id: string; context_window: number; max_output: number }>;
+  defaultModel?: string;
+}
+
+export interface DiscoveredModelDto {
+  id: string;
+  context_window: number;
+  max_output: number;
+  supports_vision: boolean;
+  supports_tools: boolean;
+  cost_per_1k_input: number;
+  cost_per_1k_output: number;
+}
+
+export interface ProbeResultDto {
+  ok: boolean;
+  baseUrl: string;
+  listOk: boolean;
+  chatOk: boolean;
+  models: DiscoveredModelDto[];
+  suggestedModel?: string;
+  latencyMs?: number;
+  error?: string;
+  errorKind?: 'auth' | 'http' | 'network' | 'timeout' | 'invalid_input' | 'unknown';
+  hint?: string;
+  /** `/models` 的 HTTP 状态（未请求/网络失败时为空） */
+  listStatus?: number;
+  listAttempted?: boolean;
+  /** 是否真的发起了对话探测（鉴权失败会提前返回 → false） */
+  chatAttempted?: boolean;
+  /** 端点明确不提供 /models（404/405），与"鉴权失败"区分开 */
+  listNotProvided?: boolean;
+  /** 供应商返回的原始错误信息（invalid_api_key / 余额不足 等） */
+  providerMessage?: string;
+  /** Key 被自动清理的内容说明 */
+  keySanitized?: string[];
+  /** 实际用于对话探测的模型（多候选重试后命中的那个） */
+  chatModelUsed?: string;
+  /** 本轮对话探测的候选模型顺序 */
+  chatCandidates?: string[];
+  /** 对话探测实际发起次数（>1 = 自动换过模型重试） */
+  chatAttempts?: number;
+}
+
+export interface OnboardingStateDto {
+  completed: boolean;
+  skipped?: boolean;
+  completedAt?: number;
+  version?: string;
+  personalization?: Record<string, unknown>;
+  provider?: { name: string; displayName: string; baseUrl: string; defaultModel?: string };
+}
+
+export interface OnboardingSnapshotDto {
+  state: OnboardingStateDto;
+  needsOnboarding: boolean;
+  version: string;
+  paths: AppPathsDto;
+  userConfigPath: string;
+  userConfig: Record<string, unknown>;
+  providers: Array<{ name: string; displayName: string; modelIds: string[] }>;
+  models: string[];
+  routing: RoutingConfig | null;
+}
+
+/** 引导 API 是否可用（浏览器/开发态为 false → 不拦截应用） */
+export function hasOnboardingApi(): boolean {
+  return !!getOnboardingAPI();
+}
+
+export async function ipcGetAppPaths(): Promise<{ ok: boolean; data?: AppPathsDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.getPaths();
+}
+
+export async function ipcGetOnboarding(): Promise<{ ok: boolean; data?: OnboardingSnapshotDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.getState();
+}
+
+export async function ipcTestProvider(config: {
+  base_url: string; api_key: string; model?: string; chatProbe?: boolean;
+}): Promise<{ ok: boolean; data?: ProbeResultDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.testProvider(config);
+}
+
+// ── 逐模型可用性校验（模型导入重设计）──────────────────────────────
+
+export type ModelAvailabilityDto = 'available' | 'unavailable' | 'unknown';
+
+export interface ModelVerificationDto {
+  id: string;
+  status: ModelAvailabilityDto;
+  latencyMs?: number;
+  errorKind?: string;
+  /** 供应商原话（不可用时给用户看原因） */
+  providerMessage?: string;
+}
+
+export interface VerifyModelsResultDto {
+  results: ModelVerificationDto[];
+  summary: { total: number; available: number; unavailable: number; unknown: number };
+}
+
+/**
+ * 校验一批模型的可用性（每个模型发一次最小对话请求）。
+ *
+ * 渲染层按小批次调用（≈8 个/批）以便展示进度并可中途取消；
+ * **只校验不导入** —— 导入哪些模型由用户在列表里勾选后走 `ipcAddProvider`。
+ */
+export async function ipcVerifyModels(config: {
+  base_url: string; api_key: string; models: string[]; concurrency?: number; timeoutMs?: number;
+}): Promise<{ ok: boolean; data?: VerifyModelsResultDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api?.verifyModels) return { ok: false, error: 'Electron API 不可用' };
+  return api.verifyModels(config);
+}
+export async function ipcWriteUserConfig(patch: Record<string, unknown>): Promise<{
+  ok: boolean;
+  data?: { path: string; applied: string[]; rejected: string[]; invalid: Array<{ path: string; reason: string }> };
+  error?: string;
+}> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.writeUserConfig(patch);
+}
+
+export async function ipcPatchOnboarding(patch: Record<string, unknown>): Promise<{ ok: boolean; data?: OnboardingStateDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.patchState(patch);
+}
+
+export async function ipcCompleteOnboarding(payload: {
+  personalization?: Record<string, unknown>;
+  provider?: { name: string; displayName: string; baseUrl: string; defaultModel?: string };
+  configPatch?: Record<string, unknown>;
+}): Promise<{ ok: boolean; data?: { state: OnboardingStateDto; config: { path: string; applied: string[]; rejected: string[] } }; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.complete(payload);
+}
+
+export async function ipcSkipOnboarding(): Promise<{ ok: boolean; data?: OnboardingStateDto; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.skip();
+}
+
+export async function ipcResetOnboarding(): Promise<{ ok: boolean; data?: { reset: boolean }; error?: string }> {
+  const api = getOnboardingAPI();
+  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  return api.reset();
+}
+
+/** 在资源管理器中打开目录（引导"我的数据在哪"用） */
+export async function ipcOpenPath(target: string): Promise<{ ok: boolean; error?: string }> {
+  const api = getElectronAPI();
+  if (!api?.openPath) return { ok: false, error: 'Electron API 不可用' };
+  return api.openPath(target);
+}

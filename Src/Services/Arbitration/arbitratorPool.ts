@@ -35,48 +35,86 @@ let arbitratorCounter = 0;
 
 /**
  * 初始化仲裁者池，默认 1 核心 + 2 辅助。
+ *
+ * **2026-10-07 行为变更：Agent 改为"按需绑定"**。
+ *
+ * 此前 `initArbitratorPool` 会为每个池位**立即创建真实注册 Agent**（G-20 的接线），
+ * 而 `Src/main.ts` 在每次启动都无条件调用它 —— 实测后果：用户只发了一句"你好"，
+ * 右侧 L1 Agent 列表里就凭空多出 3 个 `arbitrator` Agent（且每重启一次再累积一批），
+ * 与 `ensureAgentForRole` 文档写的"按需创建 / 按需扩容"语义相矛盾。
+ *
+ * 现在：初始化只建**池位**（内存槽），真实 Agent 在**首次真正需要仲裁**时绑定
+ * （见 `ensurePoolAgents`，由 `assignArbitrators` / `resizeAuxiliaryPool` 触发）。
+ * 需要旧行为的调用方可传 `provisionAgents: true`。
  */
 export function initArbitratorPool(config: {
   coreCount?: number;
   auxiliaryCount?: number;
+  /** 兼容/测试用：立刻为池位绑定真实 Agent（默认 false = 懒绑定） */
+  provisionAgents?: boolean;
 } = {}): void {
   const coreCount = config.coreCount ?? 1;
   const auxCount = config.auxiliaryCount ?? 2;
+  const provisionNow = config.provisionAgents === true;
 
   // 创建核心层
   for (let i = 0; i < coreCount; i++) {
-    addArbitrator('core');
+    addArbitrator('core', { provisionAgent: provisionNow });
   }
   // 创建辅助层
   for (let i = 0; i < auxCount; i++) {
-    addArbitrator('auxiliary');
+    addArbitrator('auxiliary', { provisionAgent: provisionNow });
   }
 }
 
-function addArbitrator(layer: 'core' | 'auxiliary'): Arbitrator {
-  const id = `arb-${++arbitratorCounter}`;
+/**
+ * 为尚未绑定 Agent 的池位按需绑定真实注册 Agent（幂等）。
+ *
+ * 触发点：真正要用仲裁者时（分配案件 / 扩容）。返回本次新绑定的数量。
+ */
+export function ensurePoolAgents(): number {
+  let bound = 0;
+  for (const arb of arbitrators.values()) {
+    if (arb.agentId) continue;
+    const ensured = bindAgentToArbitrator(arb);
+    if (ensured) bound++;
+  }
+  return bound;
+}
 
-  // ★ 池位 → **真实 Agent**（2026-10-04，接 G-19 提供链）：
-  //   此前池位只是内存模拟（模块注释亦写"Phase 0-2 内存模拟"），"按需扩容"扩的是空位。
-  //   现在每个池位绑定一个真实注册 Agent（治理角色经受控播种通道创建）；
-  //   扩容前先把 `arbitrator` 角色上限提到目标规模，使**池位扩容真正驱动 Agent 扩容**。
-  let agentId: string | undefined;
+/** 为单个池位绑定一个**独立**的真实 Agent；失败返回 false（降级为纯内存池位） */
+function bindAgentToArbitrator(arb: Arbitrator): boolean {
   try {
     // 池位需要**独立** Agent（各自裁决/负载均衡）→ 用 ensureDistinctAgentsForRole 扩容到当前池规模，
-    // 并取"第 index 个"作为本池位的 Agent（index = 已存在的池位数）。
-    const index = arbitrators.size;
-    const desired = index + 1;
+    // 并取"本池位在池中的序号"作为自己的 Agent。
+    const index = [...arbitrators.keys()].indexOf(arb.arbitratorId);
+    const desired = Math.max(index + 1, countBoundAgents() + 1);
     const ensured = ensureDistinctAgentsForRole('arbitrator', desired, {
-      reason: `仲裁者池${layer === 'core' ? '核心' : '辅助'}层扩容至 ${desired}`,
+      reason: `仲裁者池${arb.layer === 'core' ? '核心' : '辅助'}层按需绑定（池位 ${arb.arbitratorId}）`,
     });
-    if (ensured.ok) agentId = ensured.value[index] ?? ensured.value[ensured.value.length - 1];
+    if (!ensured.ok) return false;
+    const agentId = ensured.value[index] ?? ensured.value[ensured.value.length - 1];
+    if (!agentId) return false;
+    arb.agentId = agentId;
+    return true;
   } catch {
-    // 提供失败不阻断池位创建（降级为纯内存模拟位）；原因由提供层留痕
+    // 提供失败不阻断池位使用（降级为纯内存模拟位）；原因由提供层留痕
+    return false;
   }
+}
+
+/** 当前已绑定真实 Agent 的池位数 */
+function countBoundAgents(): number {
+  let n = 0;
+  for (const arb of arbitrators.values()) if (arb.agentId) n++;
+  return n;
+}
+
+function addArbitrator(layer: 'core' | 'auxiliary', options: { provisionAgent: boolean } = { provisionAgent: false }): Arbitrator {
+  const id = `arb-${++arbitratorCounter}`;
 
   const arb: Arbitrator = {
     arbitratorId: id,
-    ...(agentId !== undefined ? { agentId } : {}),
     layer,
     status: 'idle',
     assignedCaseId: null,
@@ -84,6 +122,10 @@ function addArbitrator(layer: 'core' | 'auxiliary'): Arbitrator {
     createdAt: Date.now(),
   };
   arbitrators.set(id, arb);
+
+  // ★ 池位 → **真实 Agent**（2026-10-04 接 G-19/G-20；2026-10-07 改为按需）
+  if (options.provisionAgent) bindAgentToArbitrator(arb);
+
   return arb;
 }
 
@@ -93,6 +135,9 @@ function addArbitrator(layer: 'core' | 'auxiliary'): Arbitrator {
  * 为案件分配 N 个仲裁者（优先核心层，再辅助层）。
  */
 export function assignArbitrators(caseId: string, count: number): Result<Arbitrator[]> {
+  // 按需绑定：真正要用仲裁者时才创建真实 Agent（启动不再凭空产出治理 Agent）
+  ensurePoolAgents();
+
   const idle = [...arbitrators.values()]
     .filter(a => a.status === 'idle')
     .sort((a, b) => {
@@ -180,6 +225,9 @@ export function resizeAuxiliaryPool(targetCount: number): Result<{ added: number
       addArbitrator('auxiliary');
       added++;
     }
+    // 扩容通常由"仲裁负载升高"触发 → 顺手把新池位绑定到真实 Agent
+    // （2026-10-07：池位默认懒绑定，这里显式补上，避免扩了空位却不具备裁决身份）
+    ensurePoolAgents();
   } else if (targetCount < currentCount) {
     // 缩容（优先移除空闲的）
     const idleAux = auxList.filter(a => a.status === 'idle');

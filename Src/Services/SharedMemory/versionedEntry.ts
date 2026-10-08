@@ -31,6 +31,8 @@ export interface WorkspaceEntry {
     sourceAgentId: string;
     taskAuthority: number;              // 0.0–1.0
     evidenceChain?: string[];
+    /** A2A 驱动的写入：来源消息 ID（RM7 双向可追溯，message.memoryRefs ↔ entry.metadata.sourceMessageId） */
+    sourceMessageId?: string;
   };
 
   // 版本控制（Docs/Agent/07 §8.2）

@@ -1,0 +1,229 @@
+/* Harness.ToolGlyph 样式——工具执行的视觉语义动画。
+ *
+ * 约定：
+ * - 尺寸统一由 `--glyph-size`（内联，默认 12px）按比例推导，便于在不同密度下复用。
+ * - 动画时长统一由 `--glyph-speed` 控制；`preparing`（模型仍在生成参数）放慢并降低不透明度，
+ *   与 `running`（真正执行中）区分。
+ * - `prefers-reduced-motion` 下停用动画、保留图形。
+ */
+
+.glyph {
+  --g: var(--glyph-size, 12px);
+  --glyph-speed: 1.6s;
+  /* 相位旋钮：负值即从周期中段开始（多图标排队时可用于错峰） */
+  --glyph-phase: 0s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--g) * 1.35);
+  height: calc(var(--g) * 1);
+  flex-shrink: 0;
+  color: var(--color-text-muted, #888);
+}
+
+.settled {
+  flex-shrink: 0;
+}
+
+/* 使用中按语义着色 */
+.glyph[data-mode='running'] {
+  color: var(--color-info, #3b82f6);
+}
+
+.glyph[data-visual='flow'][data-mode='running'] {
+  color: var(--color-warning, #f5a623);
+}
+
+.glyph[data-visual='erase'][data-mode='running'],
+.glyph[data-visual='pulse'][data-mode='running'] {
+  color: var(--color-danger, #f38ba8);
+}
+
+.glyph[data-visual='gear'][data-mode='running'] {
+  color: var(--color-brand-400, #a78bfa);
+}
+
+/* 参数生成中：更慢、更淡 */
+.glyph[data-mode='preparing'] {
+  --glyph-speed: 3.2s;
+  opacity: 0.55;
+}
+
+/* ── gaze：小眼睛 ──────────────────────────────────────────── */
+
+.eyeOuter {
+  width: calc(var(--g) * 1.15);
+  height: calc(var(--g) * 0.72);
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: gazeBlink calc(var(--glyph-speed) * 2.6) ease-in-out infinite;
+}
+
+.eyePupil {
+  width: calc(var(--g) * 0.28);
+  height: calc(var(--g) * 0.28);
+  border-radius: 50%;
+  background: currentColor;
+  will-change: transform;
+  animation: gazeScan var(--glyph-speed) ease-in-out infinite;
+}
+
+@keyframes gazeScan {
+  0%, 100% { transform: translateX(calc(var(--g) * -0.22)); }
+  50%      { transform: translateX(calc(var(--g) * 0.22)); }
+}
+
+@keyframes gazeBlink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  94%           { transform: scaleY(0.12); }
+}
+
+/* ── flow：细→宽→细 的光流 ────────────────────────────────── */
+
+.track {
+  position: relative;
+  width: calc(var(--g) * 1.3);
+  height: calc(var(--g) * 1);
+  overflow: hidden;
+}
+
+.beam,
+.beamAlt {
+  position: absolute;
+  left: 0;
+  top: calc(var(--g) * 0.4);
+  width: calc(var(--g) * 0.6);
+  height: calc(var(--g) * 0.2);
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  /* 纵向收软边，避免"宽相"时像一个硬边方块 */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 32%, #000 68%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 32%, #000 68%, transparent 100%);
+  box-shadow: 0 0 calc(var(--g) * 0.4) currentColor;
+  will-change: transform, height;
+  animation:
+    flowTravel var(--glyph-speed) ease-in-out infinite,
+    flowThicken var(--glyph-speed) ease-in-out infinite;
+  animation-delay: var(--glyph-phase);
+}
+
+/* 第二道错相半程：保证"光流"全程无空窗 */
+.beamAlt {
+  animation-delay: calc(var(--glyph-phase) - var(--glyph-speed) * 0.5);
+}
+
+@keyframes flowTravel {
+  0%   { transform: translateX(calc(var(--g) * -0.62)); }
+  100% { transform: translateX(calc(var(--g) * 1.42)); }
+}
+
+@keyframes flowThicken {
+  0%, 100% { top: calc(var(--g) * 0.42); height: calc(var(--g) * 0.16); }
+  50%      { top: calc(var(--g) * 0.08); height: calc(var(--g) * 0.84); }
+}
+
+/* ── erase：方块阵列沉浮 ───────────────────────────────────── */
+
+.blocks {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--g) * 0.12);
+  height: calc(var(--g) * 1);
+}
+
+.block {
+  width: calc(var(--g) * 0.2);
+  height: calc(var(--g) * 0.2);
+  border-radius: calc(var(--g) * 0.05);
+  background: currentColor;
+  will-change: transform;
+  animation: blockBob var(--glyph-speed) ease-in-out infinite;
+  /* 错峰：--i 由组件按序号注入 */
+  animation-delay: calc(var(--glyph-speed) * 0.13 * var(--i, 0));
+}
+
+@keyframes blockBob {
+  0%, 100% { transform: translateY(calc(var(--g) * 0.24)); opacity: 0.3; }
+  50%      { transform: translateY(calc(var(--g) * -0.24)); opacity: 1; }
+}
+
+/* ── pulse：终端扫描线 ─────────────────────────────────────── */
+
+.term {
+  position: relative;
+  width: calc(var(--g) * 1.2);
+  height: calc(var(--g) * 0.9);
+  border: 1px solid currentColor;
+  border-radius: calc(var(--g) * 0.16);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--g) * 0.16);
+  padding: 0 calc(var(--g) * 0.16);
+}
+
+.termLine {
+  height: 1px;
+  width: 60%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.term .termLine:last-of-type {
+  width: 38%;
+}
+
+.termScan {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--g) * 0.16);
+  background: currentColor;
+  box-shadow: 0 0 calc(var(--g) * 0.35) currentColor;
+  will-change: transform;
+  animation: termScan var(--glyph-speed) linear infinite;
+}
+
+@keyframes termScan {
+  0%   { transform: translateX(calc(var(--g) * -0.3)); }
+  100% { transform: translateX(calc(var(--g) * 1.35)); }
+}
+
+/* ── gear：轨道环 ──────────────────────────────────────────── */
+
+.orbit {
+  position: relative;
+  width: calc(var(--g) * 0.9);
+  height: calc(var(--g) * 0.9);
+  border: 1px dashed currentColor;
+  border-radius: 50%;
+  animation: orbitSpin calc(var(--glyph-speed) * 1.5) linear infinite;
+}
+
+.orbitDot {
+  position: absolute;
+  top: calc(var(--g) * -0.1);
+  left: 50%;
+  margin-left: calc(var(--g) * -0.1);
+  width: calc(var(--g) * 0.2);
+  height: calc(var(--g) * 0.2);
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes orbitSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* prefers-reduced-motion：停用动画，保留图形（状态仍可读） */
+@media (prefers-reduced-motion: reduce) {
+  .glyph,
+  .glyph * {
+    animation: none !important;
+  }
+}

@@ -20,10 +20,9 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
-import { getDataDir } from '../Fs/pathResolver.js';
-import { getProjectRoot } from './pathGuard.js';
+import { getWorkspaceRoot, ensureDirSafe } from '../Fs/pathResolver.js';
 
-/** 工作目录根名（位于 Data 下，与 workspaceIsolator 的 `Data/Workspace/` 区分） */
+/** 工作目录根名（位于工作空间根下，与 workspaceIsolator 的 `Workspace/` 区分） */
 const WORKSPACES_DIR_NAME = 'workspaces';
 
 function errorMessage(e: unknown): string {
@@ -33,26 +32,17 @@ function errorMessage(e: unknown): string {
 /**
  * 工作目录基址。
  *
- * 决策（2026-10-01，用户明确要求）：默认放在**项目根的 `Data/workspaces/`** 下，
- * 与应用的数据库 `Data/` 同处一棵树，便于人直接查看/清理。
- *
- * 注意 `pathResolver.getDataDir()` 在非便携模式下返回 `%APPDATA%/CivitasAI/Data`，
- * 与应用实际使用的数据根（`main.ts` 里的 `resolve('Data')`）并不一致，
- * 因此这里显式以项目根为基准；仅当项目根不可写（如安装模式装在 Program Files）时
- * 才回退到应用数据目录。
+ * 决策（2026-10-06 用户明确要求）：**工作空间数据放安装目录**（体积大户，便于用户就近查看/清理），
+ * 由 `pathResolver.getWorkspaceRoot()` 统一决定：
+ * - 开发态：`<仓库>/Data/workspaces/`（保持历史布局）
+ * - 便携态：`<程序目录>/Workspace/workspaces/`
+ * - 安装态：`<安装目录>/Workspace/workspaces/`；安装目录只读（如 Program Files）时自动回落
+ *   `<数据根>/Workspace/workspaces/`，并已在 `pathResolver` 侧登记告警。
  */
 export function workspaceBaseDir(): string {
-  const projectBase = join(getProjectRoot() || resolve('.'), 'Data', WORKSPACES_DIR_NAME);
-  try {
-    mkdirSync(projectBase, { recursive: true });
-    return projectBase;
-  } catch {
-    const fallback = join(getDataDir() ?? join(resolve('.'), 'Data'), WORKSPACES_DIR_NAME);
-    try {
-      mkdirSync(fallback, { recursive: true });
-    } catch { /* 交由后续 ensureWorkspaceDir 报错 */ }
-    return fallback;
-  }
+  const base = join(getWorkspaceRoot(), WORKSPACES_DIR_NAME);
+  ensureDirSafe(base);
+  return base;
 }
 
 /**

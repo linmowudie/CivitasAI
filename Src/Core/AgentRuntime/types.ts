@@ -64,6 +64,13 @@ export interface AgentInstance {
 
   // 审批状态（Loop 级，非 Agent 态）
   awaitingApproval: boolean;
+
+  /**
+   * 父 agent（招募者）—— **正式字段**（A2A §18 #3）。
+   * 修复前父关系只存旁挂 Map + DB 列，卡片/越级判定无法从实例直接取得，
+   * 导致"重签卡片丢父 → 无父 L2 无法向上通信"。旁挂 Map 保留一个版本做只读兼容。
+   */
+  father?: { agentId: string; role: AgentRole } | null;
 }
 
 // ── Agent 创建参数 ──────────────────────────────────────────────────

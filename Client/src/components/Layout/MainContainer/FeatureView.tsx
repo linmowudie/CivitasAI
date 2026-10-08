@@ -5,11 +5,11 @@
  * Phase 6 更新：memory/skills/custom-tools 接入真实 API 数据。
  */
 import { useUIStore } from '@/stores/uiStore';
-import { useConfigStore } from '@/stores/configStore';
 import { apiGet, type ApiResult } from '@/services/api';
 import { ipcGetMemoryEntries, ipcGetSkills, ipcGetCustomTools } from '@/services/ipcApi';
 import ApprovalQueue from '@/views/ApprovalQueue';
 import AccountPanel from '@/views/AccountPanel';
+import SystemConfig from '@/views/SystemConfig';
 import { useEffect, useState } from 'react';
 
 /* 各功能视图的数据配置 */
@@ -121,11 +121,8 @@ function useApiData<T>(endpoint: string) {
 
 export default function FeatureView() {
   const mainView = useUIStore((s) => s.mainView);
-  const { loaded, hydrate } = useConfigStore();
 
-  useEffect(() => { hydrate(); }, []);
-
-  if (mainView.type !== 'feature') return null;
+if (mainView.type !== 'feature') return null;
 
   const id = mainView.id;
   const data = featureData[id];
@@ -136,27 +133,14 @@ export default function FeatureView() {
   /* profile 视图：账号与同步（服务端接入；原先为静态占位） */
   if (id === 'profile') return <AccountPanel />;
 
-  /* settings 视图：显示真实配置数据 */
-  if (id === 'settings' && Object.keys(loaded).length > 0) {
-    return (
-      <div className="flex flex-col gap-3 p-4">
-        <div className="p-4 rounded-lg border border-surface-700 bg-surface-800">
-          <div className="text-sm font-semibold text-text-primary mb-1">系统设置</div>
-          <div className="text-[11px] text-text-secondary mb-3">当前系统配置项</div>
-          <div className="flex flex-col gap-1.5">
-            {Object.entries(loaded).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between py-1 px-2 rounded bg-surface-900 text-[11px]">
-                <span className="text-text-secondary font-mono">{key}</span>
-                <span className="text-text-muted truncate max-w-[200px]">
-                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  /* settings 视图：接到真正可编辑的设置面板（2026-10-07 修复）
+   *
+   * 历史实现这里是"把 configStore.loaded 直接列成只读键值对"的占位视图；
+   * `views/SystemConfig.tsx` 早在注释里写明"替换原 JSON 片段只读视图"，但这处接线一直没换，
+   * 于是用户从「功能 → 设置」进来只能看到只读列表：**改不了配置、也找不到模型供应商入口**
+   * （模型管理面板 `ModelProviderPanel` 挂在 SystemConfig 内部）。
+   */
+  if (id === 'settings') return <SystemConfig />;
 
   /* memory 视图：接入真实 API */
   if (id === 'memory') return <MemoryFeatureView />;

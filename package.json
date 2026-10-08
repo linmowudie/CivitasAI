@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Civitas-AI — 社会驱动型自治智能体系统",
   "type": "module",
-  "main": "dist/main/electron/main.js",
+  "main": "dist/main/electron/main.cjs",
   "engines": {
     "node": ">=20.0.0"
   },
@@ -35,8 +35,17 @@
     "electron:dev": "npm run dev:electron",
     "electron:build": "npm run build:all && electron-builder --win portable",
     "electron:build:dir": "npm run build:all && electron-builder --win dir",
+    "package": "node Scripts/package.cjs",
+    "package:nsis": "node Scripts/package.cjs --nsis",
+    "package:portable": "node Scripts/package.cjs --portable",
+    "package:dir": "node Scripts/package.cjs --dir",
+    "package:check": "node Scripts/package.cjs --check",
+    "package:signed": "node Scripts/packageSigned.cjs",
+    "sign:setup": "pwsh -NoProfile -ExecutionPolicy Bypass -File Scripts/setupSelfSignedCert.ps1",
+    "sign:verify": "pwsh -NoProfile -ExecutionPolicy Bypass -File Scripts/verifySign.ps1",
     "prepare": "husky",
-    "commitlint": "commitlint --edit"
+    "commitlint": "commitlint --edit",
+    "package:probe": "node Scripts/probePackagedBackend.cjs"
   },
   "build": {
     "appId": "com.civitasai.app",
@@ -52,7 +61,9 @@
       "Skills/**/*",
       "assets/**/*",
       "node_modules/**/*",
-      "!node_modules/.cache/**/*"
+      "!node_modules/.cache/**/*",
+      "!node_modules/*/{test,tests,example,examples,docs,doc}/**",
+      "!**/*.map"
     ],
     "extraResources": [
       {
@@ -80,6 +91,12 @@
     "win": {
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -87,6 +104,25 @@
         }
       ],
       "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "menuCategory": "CivitasAI",
+      "shortcutName": "Civitas AI",
+      "uninstallDisplayName": "CivitasAI（智体城邦）",
+      "artifactName": "CivitasAI-Setup-${version}.exe",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "warningsAsErrors": false,
+      "differentialPackage": false
     },
     "portable": {
       "artifactName": "CivitasAI-Portable.exe"

@@ -644,6 +644,81 @@ registerMigration({ version: 30, name: 'add_long_term_memory_embedding', databas
   up: `ALTER TABLE long_term_memory ADD COLUMN embedding_json TEXT;`,
   down: `ALTER TABLE long_term_memory DROP COLUMN embedding_json;`,
 });
+// ── A2A（治理型智能体间通信）· P0a（2026-10-05）────────────────────────
+// 设计：Docs/Dev/A2A-治理型智能体间通信协议设计.md §8/§15
+// 本机为**权威**（含 signature / verdict / hash 链）；服务端仅镜像（Server 006）。
+registerMigration({ version: 31, name: 'create_a2a_tables', database: 'main',
+  up: `
+    CREATE TABLE IF NOT EXISTS agent_cards (
+      card_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, card_version INTEGER NOT NULL,
+      role TEXT NOT NULL, create_time INTEGER NOT NULL, update_time INTEGER NOT NULL,
+      father_agent_id TEXT, father_role TEXT, lineage_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
+      health_json TEXT NOT NULL DEFAULT '{}', ability_json TEXT NOT NULL DEFAULT '{}',
+      permission_json TEXT NOT NULL DEFAULT '{}', fingerprint TEXT NOT NULL,
+      issued_by TEXT NOT NULL, expires_at INTEGER NOT NULL, owner_user_id TEXT NOT NULL DEFAULT 'local'
+    );
+    CREATE INDEX IF NOT EXISTS idx_cards_agent ON agent_cards(agent_id, card_version DESC);
+    CREATE INDEX IF NOT EXISTS idx_cards_owner ON agent_cards(owner_user_id, status);
+
+    CREATE TABLE IF NOT EXISTS a2a_messages (
+      message_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL DEFAULT 2, kind TEXT NOT NULL,
+      trace_id TEXT NOT NULL, task_id TEXT NOT NULL, source_agent_id TEXT NOT NULL,
+      target_agent_id TEXT NOT NULL, parent_message_id TEXT, correlation_id TEXT,
+      message_type TEXT NOT NULL DEFAULT 'BROADCAST', requires_ack INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL, visibility TEXT NOT NULL, content_hash TEXT NOT NULL, prev_hash TEXT,
+      chain_scope TEXT NOT NULL DEFAULT 'local_device', payload_json TEXT NOT NULL, summary TEXT,
+      memory_refs_json TEXT NOT NULL DEFAULT '[]', verdict TEXT NOT NULL, step INTEGER,
+      reasons_json TEXT NOT NULL DEFAULT '[]', rules_json TEXT NOT NULL DEFAULT '[]',
+      signature TEXT NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER, acked_at INTEGER,
+      owner_user_id TEXT NOT NULL DEFAULT 'local'
+    );
+    CREATE INDEX IF NOT EXISTS idx_a2a_pair ON a2a_messages(source_agent_id, target_agent_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_a2a_task ON a2a_messages(task_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_a2a_owner_time ON a2a_messages(owner_user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS a2a_handoffs (
+      handoff_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, from_agent_id TEXT NOT NULL,
+      to_agent_id TEXT NOT NULL, bundle_json TEXT NOT NULL, bundle_hash TEXT NOT NULL,
+      artifacts_json TEXT NOT NULL, verification_status TEXT NOT NULL DEFAULT 'pending',
+      review_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL, verified_at INTEGER, owner_user_id TEXT NOT NULL DEFAULT 'local'
+    );
+    CREATE INDEX IF NOT EXISTS idx_a2a_handoff_task ON a2a_handoffs(task_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS a2a_collusion_alerts (
+      alert_id TEXT PRIMARY KEY, rule_id TEXT NOT NULL, severity TEXT NOT NULL,
+      participants_json TEXT NOT NULL, task_id TEXT, evidence_json TEXT NOT NULL,
+      disposition TEXT NOT NULL DEFAULT 'pending', raised_at INTEGER NOT NULL, resolved_at INTEGER,
+      owner_user_id TEXT NOT NULL DEFAULT 'local'
+    );
+    CREATE INDEX IF NOT EXISTS idx_a2a_alert_rule ON a2a_collusion_alerts(rule_id, raised_at DESC);
+
+    -- 配对冷却（处置「cooled」的执行效力：Broker 据此拒绝该对后续消息）
+    CREATE TABLE IF NOT EXISTS a2a_cooldowns (
+      owner_user_id TEXT NOT NULL,
+      from_agent_id TEXT NOT NULL,
+      to_agent_id TEXT NOT NULL,
+      until_at INTEGER NOT NULL,
+      reason TEXT,
+      alert_id TEXT,
+      PRIMARY KEY (owner_user_id, from_agent_id, to_agent_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_a2a_cooldown_until ON a2a_cooldowns(owner_user_id, until_at);
+  `,
+  down: `
+    DROP TABLE IF EXISTS a2a_cooldowns;
+    DROP TABLE IF EXISTS a2a_collusion_alerts;
+    DROP TABLE IF EXISTS a2a_handoffs;
+    DROP TABLE IF EXISTS a2a_messages;
+    DROP TABLE IF EXISTS agent_cards;
+  `,
+});
+// ── A2A 同步标记（P0c 客户端编排）────────────────────────────────────
+// 说明：`synced_at IS NULL` = 尚未上行；上行成功后写入时间戳（幂等重试）
+registerMigration({ version: 32, name: 'add_a2a_synced_at', database: 'main',
+  up: `ALTER TABLE a2a_messages ADD COLUMN synced_at INTEGER;`,
+  down: `ALTER TABLE a2a_messages DROP COLUMN synced_at;`,
+});
 registerMigration({ version: 3, name: 'create_domain_events', database: 'events',
     up: `CREATE TABLE IF NOT EXISTS domain_events (
       event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,

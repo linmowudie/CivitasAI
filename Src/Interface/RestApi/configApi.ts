@@ -9,17 +9,27 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 import { json, apiError, registerRoute } from './router.js';
+import { getBundledConfigDir } from '../../Infra/Fs/pathResolver.js';
 
-const CONFIGS_DIR = join(process.cwd(), 'Configs');
+/**
+ * 配置目录（**惰性**解析）。
+ *
+ * 历史实现是 `join(process.cwd(), 'Configs')`：安装态 `cwd` 不是程序目录，
+ * 该接口会读到不存在的位置。现在统一取内置配置目录（`<APP_ROOT>/Configs`）。
+ */
+function configsDir(): string {
+  return getBundledConfigDir();
+}
 
 /**
  * GET /api/configs — 配置列表
  */
 export function listConfigs(): { name: string; size: number }[] {
   try {
-    const files = readdirSync(CONFIGS_DIR).filter(f => f.endsWith('.json'));
+    const dir = configsDir();
+    const files = readdirSync(dir).filter(f => f.endsWith('.json'));
     return files.map(name => {
-      const stat = readFileSync(join(CONFIGS_DIR, name));
+      const stat = readFileSync(join(dir, name));
       return { name, size: stat.length };
     });
   } catch {
@@ -33,7 +43,7 @@ export function listConfigs(): { name: string; size: number }[] {
 export function getConfig(name: string): unknown | undefined {
   try {
     const safeName = name.replace(/[^a-zA-Z0-9_.-]/g, '');
-    const content = readFileSync(join(CONFIGS_DIR, safeName), 'utf-8');
+    const content = readFileSync(join(configsDir(), safeName), 'utf-8');
     return JSON.parse(content);
   } catch {
     return undefined;

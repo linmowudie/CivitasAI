@@ -463,8 +463,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     const active = await load(false);
-    if (active === null) return;
-    const archivedList = (await load(true)) ?? [];
+    // 后端不可用 / IPC 不可用 / 返回非数组：保持现状直接退出，不抛错
+    // （此前只判 `=== null`，非数组响应会在 `[...active]` 处抛 TypeError）
+    if (!Array.isArray(active)) return;
+    const archivedRaw = await load(true);
+    const archivedList: ChatSession[] = Array.isArray(archivedRaw) ? archivedRaw : [];
 
     const sessions: ChatSession[] = [...active].sort((a, b) => b.updated_at - a.updated_at);
     const archivedSessions: ChatSession[] = [...archivedList].sort((a, b) => b.updated_at - a.updated_at);

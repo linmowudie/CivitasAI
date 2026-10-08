@@ -6,7 +6,8 @@
  * 后续阶段将继续添加 ③~⑭ 步。
  */
 
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { loadConfig, getConfigValueOr } from './Infra/Config/configLoader.js';
 import { initLogger, logger, shutdownLogger } from './Infra/Logging/logger.js';
@@ -20,11 +21,22 @@ import { systemAuditHook, systemMetricsHook } from './Infra/Hook/System/auditHoo
 import { configureToolSafetyGate } from './Services/LoopControl/middleware/toolSafetyGate.js';
 import {
   initDirectories,
+  getAppRoot,
   getDataDir,
   getLogDir,
   getConfigDir,
+  getBundledConfigDir,
   getPromptsDir,
   getSkillsDir,
+  getWorkspaceRoot,
+  getSecretsDir,
+  getEnvFilePaths,
+  getInstallMode,
+  describePathsBrief,
+  describePaths,
+  resolveDataPath,
+  probeWrite,
+  resetPathCache,
 } from './Infra/Fs/pathResolver.js';
 import { initDatabase, initMigrations, migrateUp, getMainDb, getCurrentVersion } from './Infra/Db/index.js';
 import { initWorkspace } from './Infra/Workspace/index.js';
@@ -77,6 +89,7 @@ import { markSubtaskReviewed } from './Core/Decision/orchestrator/subtaskDispatc
 import { callModel } from './Core/Model/modelCaller.js';
 import { initRegulatoryAuthority } from './Services/Regulation/regulatoryAuthority.js';
 import { initArbitrationWiring, stopArbitrationWiring } from './Services/Arbitration/arbitrationWiring.js';
+import { attachA2AGovernance, detachA2AGovernance } from './Services/A2A/attach.js';
 import {
   startAuditCycle, stopAuditCycle,
 } from './Services/Audit/auditScheduler.js';
@@ -87,18 +100,57 @@ import { initArbitratorPool, getPoolStats, startIdleRecycling, stopIdleRecycling
 import { initDynamicScaling, startAutoScaling, stopAutoScaling } from './Services/Arbitration/dynamicScaling.js';
 import { hydrateAgents, getStatusSummary } from './Core/AgentRuntime/agentRegistry.js';
 import { startHttpServer, stopHttpServer } from './Interface/WebServer/httpServer.js';
-import { startIpcBridge, stopIpcBridge, abortAllActiveStreams } from './Interface/IpcBridge/ipcBridge.js';
+import { startIpcBridge, stopIpcBridge, abortAllActiveStreams, setIpcMainProvider, setWindowBroadcaster } from './Interface/IpcBridge/ipcBridge.js';
+import { setSafeStorageProvider } from './Infra/Security/secretsStore.js';
 import { closeDatabase } from './Infra/Db/database.js';
 import { cleanAgentWorkspace, getAllWorkspaces, initWorkspaceIsolator } from './Infra/Sandbox/workspaceIsolator.js';
+
+// ===== Electron 主进程运行时注入 =====
+
+/** Electron 主进程侧可注入的运行时能力（结构类型，避免 Src 侧引用 electron 类型） */
+export interface ElectronRuntime {
+  ipcMain?: unknown;
+  safeStorage?: {
+    isEncryptionAvailable(): boolean;
+    encryptString(plain: string): Buffer;
+    decryptString(encrypted: Buffer): string;
+  };
+  /**
+   * 向所有渲染进程窗口广播一条消息（返回成功发送的窗口数）。
+   *
+   * 必须由主进程注入：后端 ESM 侧拿不到可用的 `BrowserWindow`（见 ipcBridge 的
+   * `setWindowBroadcaster` 注释，那里记录了"广播整条失效"的历史 bug）。
+   */
+  broadcastToWindows?: (channel: string, payload: unknown) => number;
+}
+
+/**
+ * 由 `electron/main.ts`（CommonJS）注入 Electron 主进程真身。
+ *
+ * 为什么必须注入：后端被打包为 **ESM**，而 `electron` 是 **CJS** 模块。
+ * 在 Electron 44 / Node 24 上实测：
+ * - `import { ipcMain } from 'electron'` → `SyntaxError: does not provide an export named ...`；
+ * - `await import('electron')` → 命名空间里 `ipcMain`/`safeStorage` 均为 `undefined`。
+ * 后果是**打包后 IPC 全部失效、API Key 退化为 Base64 明文存储**。
+ * CJS 主进程 `require('electron')` 能拿到真身，因此在 `startServer()` 之前注入。
+ */
+export function setElectronRuntime(runtime: ElectronRuntime): void {
+  if (runtime.ipcMain) setIpcMainProvider(runtime.ipcMain);
+  if (runtime.safeStorage) setSafeStorageProvider(runtime.safeStorage);
+  if (runtime.broadcastToWindows) setWindowBroadcaster(runtime.broadcastToWindows);
+}
 
 // ===== 服务器启动（可被 Electron 或独立模式调用）=====
 export async function startServer(): Promise<{ httpPort: number }> {
   // ⓪ .env 加载（FE-011）：.env.example 承诺「复制为 .env 并填入实际值」即可生效。
   // Node ≥20.12 提供 process.loadEnvFile；文件不存在/不可读时忽略（环境变量可由外部注入）。
+  // 查找顺序：<数据根>/.env（安装态用户可写位置）→ <程序根>/.env（开发态仓库根）。
   // 注：已在 process.env 中的变量优先（与 --env-file 语义一致），不覆盖 Electron 注入的 CIVITAS_* 目录。
-  try {
-    process.loadEnvFile?.(resolve('.env'));
-  } catch { /* .env 不存在或不可读：忽略 */ }
+  for (const envFile of getEnvFilePaths()) {
+    try {
+      process.loadEnvFile?.(envFile);
+    } catch { /* 该 .env 不存在或不可读：继续尝试下一个 */ }
+  }
 
   // ① 配置加载
   const configResult = loadConfig();
@@ -112,13 +164,44 @@ export async function startServer(): Promise<{ httpPort: number }> {
   const logLevel = getConfigValueOr<string>(config, 'system.logLevel', 'info');
   const logDir = getConfigValueOr<string>(config, 'system.logDir', 'Logs/');
 
+  // ①.0 用户配置层可指定工作空间根（首启引导里选过目录 → **本次启动即生效**）。
+  //      必须在任何路径解析/建目录之前写入环境变量并清缓存。
+  const workspaceRootFromConfig = getConfigValueOr<string>(config, 'workspace.root', '');
+  if (workspaceRootFromConfig && !process.env['CIVITAS_WORKSPACE_ROOT']) {
+    process.env['CIVITAS_WORKSPACE_ROOT'] = workspaceRootFromConfig;
+    resetPathCache();
+    console.log(`[INFO] 工作空间根（来自用户配置 workspace.root）：${workspaceRootFromConfig}`);
+  }
+
   console.log(`[INFO] System: ${systemName} v${version}`);
   console.log(`[INFO] Config loaded: env=${config.env}, dir=${config.configDir}`);
+  console.log(`[INFO] Paths: ${describePathsBrief()}`);
+
+  // ①.1 目录契约自检（安装态排障的关键一行：数据/工作空间/日志实际落在哪、是否可写）
+  const pathDiag = describePaths();
+  for (const w of pathDiag.warnings) console.warn(`[WARN] ${w}`);
 
   // ② 日志系统初始化
-  const resolvedLogDir = resolve(logDir);
+  // 开发态保持历史行为（`system.logDir` 相对仓库根），安装/便携态改用统一契约的日志目录，
+  // 避免日志落到 cwd（安装态 cwd 不是程序目录 → 日志"消失"）。
+  const resolvedLogDir = getInstallMode() === 'development'
+    ? resolve(logDir)
+    : (logDir && logDir !== 'Logs/' && logDir !== 'Logs' ? resolveDataPath(logDir, 'Logs') : getLogDir());
   const logWritable = initLogger({ logDir: resolvedLogDir, level: logLevel as 'debug' | 'info' | 'warn' | 'error' | 'fatal' });
   logger.info('日志系统初始化完成', { source: 'main', logDir: resolvedLogDir, writable: logWritable });
+  logger.info('目录契约就绪', {
+    source: 'main',
+    mode: pathDiag.mode,
+    appRoot: pathDiag.appRoot,
+    dataRoot: pathDiag.dataRoot,
+    workspaceRoot: pathDiag.workspaceRoot,
+    configDir: pathDiag.configDir,
+    writable: pathDiag.writable,
+    warnings: pathDiag.warnings,
+  });
+  if (!logWritable) {
+    console.warn(`[WARN] 日志目录不可写：${resolvedLogDir}（请检查目录权限，或设置 CIVITAS_LOG_DIR 指向可写位置）`);
+  }
 
   // ③ 时间服务
   Time.onDrift((event) => {
@@ -140,10 +223,24 @@ export async function startServer(): Promise<{ httpPort: number }> {
     networkWhitelist: (securityConfig['networkWhitelist'] ?? []) as string[],
   });
   initPathGuard({
-    projectRoot: resolve('.'),
-    forbiddenPaths: (securityConfig['forbiddenPaths'] ?? ['Data/Auth/']) as string[],
-    // 安装模式下 Data/Logs/Configs/Prompts/Skills 位于 %APPDATA%，不在项目根内，需显式放行
-    allowedRoots: [getDataDir(), getLogDir(), getConfigDir(), getPromptsDir(), getSkillsDir()],
+    // 程序根（只读资源）——安装态即安装目录；写入能力由 allowedRoots 中的可写目录提供
+    projectRoot: getAppRoot(),
+    forbiddenPaths: [
+      ...((securityConfig['forbiddenPaths'] ?? ['Data/Auth/']) as string[]),
+      // 密钥目录：无论安装态/便携态都不允许业务代码直接读写（只经 secretsStore + safeStorage）
+      getSecretsDir(),
+    ],
+    // 安装态数据/工作空间/配置位于 %APPDATA% 与安装目录两处，均不在"项目根"内，需显式放行
+    allowedRoots: [
+      getDataDir(),
+      getLogDir(),
+      getConfigDir(),
+      getBundledConfigDir(),
+      getWorkspaceRoot(),
+      getPromptsDir(),
+      getSkillsDir(),
+      getSecretsDir(),
+    ],
   });
 
   // 工具安全门：自动审批白名单与"L0 审查"动画时长（security.autoApprove）
@@ -157,7 +254,15 @@ export async function startServer(): Promise<{ httpPort: number }> {
 
   // ⑤ 文件系统
   initDirectories();
-  logger.info('文件系统初始化完成', { source: 'main' });
+  const dirProbe = probeWrite(getDataDir());
+  if (!dirProbe.ok) {
+    throw new Error(
+      `数据目录不可写：${getDataDir()}（${dirProbe.error ?? '未知原因'}）。`
+      + '请改用可写的数据根：设置环境变量 CIVITAS_DATA_ROOT 指向用户目录，'
+      + '或把程序安装到用户可写位置（默认安装路径 %LOCALAPPDATA%\\Programs\\CivitasAI 即无需管理员）。',
+    );
+  }
+  logger.info('文件系统初始化完成', { source: 'main', dataRoot: getDataDir(), workspaceRoot: getWorkspaceRoot() });
 
   // ⑥ 数据库初始化
   const dbConfig = getConfigValueOr<Record<string, unknown>>(config, 'database', {});
@@ -165,9 +270,10 @@ export async function startServer(): Promise<{ httpPort: number }> {
   const durableEffectRaw = getConfigValueOr<Record<string, unknown>>(config, 'durable.effect', {});
   const writeSynchronous = (durableEffectRaw['writeSynchronous'] as string) ?? 'FULL';
   const dbResult = initDatabase({
-    mainPath: resolve((dbConfig['mainPath'] as string) ?? 'Data/db/civitas_main.db'),
-    eventsPath: resolve((dbConfig['eventsPath'] as string) ?? 'Data/db/civitas_events.db'),
-    memoryPath: resolve((dbConfig['memoryPath'] as string) ?? 'Data/db/civitas_memory.db'),
+    // 相对路径一律以数据根为基准（安装态 = %APPDATA%\CivitasAI），不再依赖 cwd
+    mainPath: resolveDataPath(dbConfig['mainPath'] as string, 'Data/db/civitas_main.db'),
+    eventsPath: resolveDataPath(dbConfig['eventsPath'] as string, 'Data/db/civitas_events.db'),
+    memoryPath: resolveDataPath(dbConfig['memoryPath'] as string, 'Data/db/civitas_memory.db'),
     walMode: (dbConfig['walMode'] as boolean) ?? true,
     busyTimeoutMs: (dbConfig['busyTimeoutMs'] as number) ?? 5000,
     writeSynchronous,
@@ -185,8 +291,8 @@ export async function startServer(): Promise<{ httpPort: number }> {
   // 一律落 TIMEOUT（默认拒绝，禁止默认通过），保留在历史中供「已决」栏回溯（FE-005）。
   expireStaleApprovals();
 
-  // ⑦ 工作区管理器
-  const dataRoot = resolve('Data');
+  // ⑦ 工作区管理器（工作空间数据：安装态落安装目录，见 pathResolver 契约）
+  const dataRoot = getWorkspaceRoot();
   const wsResult = initWorkspace({ dataRoot });
   if (!wsResult.ok) throw new Error(`工作区初始化失败: ${wsResult.error}`);
 
@@ -274,12 +380,16 @@ export async function startServer(): Promise<{ httpPort: number }> {
   });
   scanAndProposeRecovery();
 
-  // ⑧ 沙箱系统
-  initWorkspaceIsolator({ dataRoot: resolve('Data') });
-  logger.info('沙箱系统初始化完成', { source: 'main' });
+  // ⑧ 沙箱系统（沙箱工作区同样属于"工作空间数据"）
+  initWorkspaceIsolator({ dataRoot: getWorkspaceRoot() });
+  logger.info('沙箱系统初始化完成', { source: 'main', workspaceRoot: getWorkspaceRoot() });
 
-  // ⑨ 配置热加载注册
-  initConfigWatcher({ watchDir: 'Configs/', watchDirs: ['Prompts/', 'Skills/'], pollIntervalMs: 5000 });
+  // ⑨ 配置热加载注册（监听目录统一为解析后的绝对路径；此前用相对 cwd 的 'Configs/' 等）
+  initConfigWatcher({
+    watchDir: getConfigDir(),
+    watchDirs: [getBundledConfigDir(), getPromptsDir(), getSkillsDir()],
+    pollIntervalMs: 5000,
+  });
   logger.info('配置热加载注册完成', { source: 'main' });
 
   // ⑩ 提示词加载（FE-052：roles/*.md 装配；FE-069：system/tasks 资产 + manifest 校验齐接入）
@@ -702,6 +812,8 @@ export async function startServer(): Promise<{ httpPort: number }> {
     startAuditCycle(((auditRaw['patrolIntervalSec'] as number) ?? 86400) * 1000);
   }
   initArbitrationWiring();
+// A2A 治理面（2026-10-05）：注册表↔卡片同步 + 记忆侧通道守卫（设计 §18 #2 / §16）
+attachA2AGovernance();
   logger.info('治理执法域接线完成', {
     source: 'main',
     auditIntervalSec: (auditRaw['patrolIntervalSec'] as number) ?? 86400,
@@ -723,13 +835,36 @@ export async function startServer(): Promise<{ httpPort: number }> {
   const host = (serverConfig['host'] as string) ?? '0.0.0.0';
   const corsOrigins = (serverConfig['corsOrigins'] as string[]) ?? ['http://localhost:5173'];
 
-  await startHttpServer({ host, port: httpPort, corsOrigins });
+  await startHttpServer({
+    host,
+    port: httpPort,
+    corsOrigins,
+    // 静态托管目录：开发态 = 仓库 `Client/dist`；打包态 = asar 内 `dist/renderer`。
+    // 桌面端走 `loadFile`，此处主要服务"浏览器模式/局域网访问"。
+    staticDir: [join(getAppRoot(), 'Client', 'dist'), join(getAppRoot(), 'dist', 'renderer')]
+      .find(dir => existsSync(dir)),
+  });
   logger.info('HTTP 服务器启动', { source: 'main', port: httpPort });
 
   await startIpcBridge();
   logger.info('IPC 桥接启动', { source: 'main' });
 
   return { httpPort };
+}
+
+// ===== 服务器停止（与 startServer 同实例，供 Electron 主进程调用）=====
+
+/**
+ * 关闭后端接口层（HTTP + IPC 桥接）。
+ *
+ * 由 `electron/main.ts` 在 `window-all-closed` 时调用。
+ * 关键：必须走本模块导出的函数，保证停的是**同一个**后端实例——
+ * 历史写法在 Electron 侧各自 `import` 一次，拿到的是另一份模块副本，
+ * `stopHttpServer()` 实际作用于空对象（服务没停、只是随进程退出）。
+ */
+export async function stopServer(): Promise<void> {
+  await stopHttpServer();
+  stopIpcBridge();
 }
 
 // ===== 主入口（独立运行模式）=====
@@ -767,6 +902,7 @@ async function main(): Promise<void> {
       // FE-060/061/062：停止治理执法域周期任务与事件接线
       stopAuditCycle();
       stopArbitrationWiring();
+    detachA2AGovernance();
 
       // ② 中断当前模型调用（FE-069：全局中断收口——abort 在途流；中断回复由流 finally 兵底落库）
       console.log('[shutdown ②] 中断活跃模型调用...');

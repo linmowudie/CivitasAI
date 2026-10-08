@@ -18,7 +18,7 @@
  *       └── config.json       # 日志元数据（当前轮转索引等）
  */
 
-import { appendFileSync, mkdirSync, existsSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, existsSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { LogLevel } from '../types.js';
@@ -131,10 +131,22 @@ export class LogWriter {
       }
 
       // 验证可写：尝试写入测试文件
+      //
+      // 注意（打包态实测修复）：早期实现只把探针文件 `rename` 成 `.write_test.tmp` 就当"清理"了，
+      // 于是 **每次启动都会在用户数据目录留下一个垃圾文件**（实测 `<DATA_ROOT>\Logs\.write_test.tmp`）。
+      // 现在：真删除；删除失败才退回 rename（避免 Windows 上偶发占用导致探针残留在原文件名）。
       const testFile = join(this.logDir, '.write_test');
       writeFileSync(testFile, 'test');
-      // 清理测试文件（失败也不影响）
-      try { renameSync(testFile, testFile + '.tmp'); } catch { /* ignore */ }
+      try {
+        rmSync(testFile, { force: true });
+      } catch {
+        try { renameSync(testFile, testFile + '.tmp'); } catch { /* ignore */ }
+      }
+      // 清掉历史版本遗留的探针文件（升级后自动收敛，避免垃圾文件长期堆积）
+      try {
+        const legacy = join(this.logDir, '.write_test.tmp');
+        if (existsSync(legacy)) rmSync(legacy, { force: true });
+      } catch { /* ignore */ }
 
       this.dirWritable = true;
     } catch {

@@ -3,6 +3,8 @@ node_modules/
 
 # ===== 构建产物 =====
 dist/
+# electron-builder 打包产物（NSIS 安装包 / 便携版 / win-unpacked）
+release/
 
 # ===== Vite 缓存 =====
 .vite/
@@ -21,6 +23,14 @@ Logs/
 
 # ===== 加密密钥存储（绝不提交） =====
 Data/.secrets/
+
+# ===== 代码签名材料（自签证书/私钥；绝不提交） =====
+*.pfx
+*.p12
+*.snk
+signing.env.json
+# 自签根证书（公开材料，但只在本机流转，不纳入版本库）
+*selfsigned.cer
 
 # ===== 本地配置与密钥（不提交；仅保留模板） =====
 Configs/local.json

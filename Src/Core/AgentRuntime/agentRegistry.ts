@@ -26,8 +26,40 @@ const agents: Map<string, AgentInstance> = new Map();
 const parentAgentIds: Map<string, string> = new Map();
 
 /** 记录父子关系（招募时由 recruiter 调用） */
+// ── 生命周期钩子（A2A 卡片同步用）────────────────────────────────────
+//
+// 设计取舍：注册表**不静态依赖** Services 层（避免 Core→Services 环）。
+// A2A 启动时经本钩子注册同步逻辑（`Services/A2A/cardSync.attachAgentCardSync`）。
+// 钩子内部异常一律吞掉：注册表是运行时唯一入口，绝不能被同步逻辑拖垮。
+
+export interface AgentLifecycleHooks {
+  onRegistered?(agent: AgentInstance): void;
+  onStatusChanged?(agent: AgentInstance): void;
+  onUnregistered?(agentId: string): void;
+  onParentChanged?(agent: AgentInstance): void;
+}
+
+let lifecycleHooks: AgentLifecycleHooks | null = null;
+
+/** 装配/卸载生命周期钩子（传 null 卸载） */
+export function setAgentLifecycleHooks(hooks: AgentLifecycleHooks | null): void {
+  lifecycleHooks = hooks;
+}
+
+function notifyLifecycle(kind: keyof AgentLifecycleHooks, arg: AgentInstance | string): void {
+  try {
+    const fn = lifecycleHooks?.[kind] as ((a: never) => void) | undefined;
+    fn?.(arg as never);
+  } catch { /* fail-safe：同步逻辑不得影响注册表 */ }
+}
+
 export function setAgentParent(agentId: string, parentAgentId: string): void {
+  // §18 #3：同时写入正式字段（父角色可从注册表取得）
+  const parent = agents.get(parentAgentId);
+  const child = agents.get(agentId);
+  if (child) child.father = { agentId: parentAgentId, role: parent?.role ?? child.father?.role ?? 'prime_director' };
   parentAgentIds.set(agentId, parentAgentId);
+  if (child) notifyLifecycle('onParentChanged', child);
 }
 
 /** 读取父 Agent ID */
@@ -119,6 +151,7 @@ export function registerAgent(
     status: agent.status,
     createdAt: agent.createdAt,
   });
+  notifyLifecycle('onRegistered', agent);
   return ok(undefined);
 }
 
@@ -158,6 +191,7 @@ export function updateAgentStatus(
   agent.updatedAt = Date.now();
   // 写透状态变更（审计与重启恢复都依赖库里的状态）
   agentRepository.updateAgentRow(agentId, { status });
+  notifyLifecycle('onStatusChanged', agent);
   return ok({ ...agent });
 }
 
@@ -180,6 +214,7 @@ export function unregisterAgent(agentId: string): Result<void> {
   agents.delete(agentId);
   // 软销毁：保留审计痕迹（设计上 Agent 销毁需可追溯，不做物理删除）
   agentRepository.updateAgentRow(agentId, { destroyedAt: Date.now() });
+  notifyLifecycle('onUnregistered', agentId);
   return ok(undefined);
 }
 

@@ -135,6 +135,15 @@ export default function AppLayout() {
             <Route path="/trace" element={<StandaloneView><TraceReplay /></StandaloneView>} />
             <Route path="/token-ledger" element={<StandaloneView><TokenLedger /></StandaloneView>} />
             <Route path="/system-config" element={<StandaloneView><SystemConfig /></StandaloneView>} />
+
+            {/*
+              兜底路由（2026-10-07 修复"跳过引导后全黑"）。
+              打包态由 Electron 以 `file:///…/dist/renderer/index.html` 加载，初始 pathname 是
+              `/…/index.html`（不是 `/`）；内层 Routes 若没有通配兜底，则一个路由都匹配不上 →
+              主界面渲染为空白（外层 App 的 `/*` 仍匹配，所以标题栏在、下面全黑）。
+              开发态 pathname 是 `/`，会重定向到 `/chat`，因此这个 bug 只在打包态暴露。
+            */}
+            <Route path="*" element={<WorkspaceLayout />} />
           </Routes>
         </div>
       </div>

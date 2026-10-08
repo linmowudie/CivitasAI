@@ -204,7 +204,34 @@ export class OpenAIProvider extends LlmProvider {
           if (!trimmed.startsWith('data: ')) continue;
 
           try {
-            const json = JSON.parse(trimmed.slice(6)) as OpenAIResponse;
+            const json = JSON.parse(trimmed.slice(6)) as OpenAIResponse & {
+              error?: { message?: string; code?: string; type?: string };
+              code?: string;
+              message?: string;
+            };
+
+            /*
+             * 供应商错误帧（2026-10-07 修复）。
+             *
+             * 实测现象：会话里出现"空回复"——事件链是
+             * `agent:iteration_complete { outputText: "" }` + `agent:stream_end { tokensUsed: 0 }`，
+             * 既没有错误事件也没有正文，用户只看到一个空气泡。
+             *
+             * 根因：部分供应商（DashScope 兼容模式等）在 **HTTP 200 的流内**返回错误帧，例如
+             * `data: {"error":{"message":"Incorrect API key provided.","code":"invalid_api_key"}}`。
+             * 旧实现直接取 `json.choices[0]`，于是抛 TypeError 被下面 `catch {}` **静默吞掉**，
+             * 循环结束返回 `ok({content:''})` → 空回复被当成成功。
+             *
+             * 现在显式识别并抛出，交由上层归类（鉴权/服务端）并把原话带给用户。
+             */
+            const errCode = json.error?.code ?? json.error?.type ?? json.code;
+            const errMessage = json.error?.message ?? json.message;
+            if (errCode || (errMessage && !json.choices)) {
+              const detail = `${errMessage ?? ''}${errCode ? `（${errCode}）` : ''}` || JSON.stringify(json).slice(0, 300);
+              const looksAuth = /api[_-]?key|unauthor|forbidden|401|403|auth/i.test(`${errCode ?? ''} ${errMessage ?? ''}`);
+              throw this.classifyHttpError(looksAuth ? 401 : 502, detail);
+            }
+
             const choice = json.choices[0];
 
             if (choice?.delta) {

@@ -263,3 +263,65 @@ export const restoreSchema = z.object({
   bundle: backupBundleSchema,
   mode: z.enum(['replace', 'merge']).default('merge'),
 });
+
+// ── A2A 镜像（P0c）─────────────────────────────────────────────────
+
+const a2aMemoryRefSchema = z.object({
+  key: z.string().min(1).max(300),
+  version: z.number().int().nonnegative(),
+});
+
+export const a2aMessageUpsertSchema = z.object({
+  messageId: z.string().min(1).max(200),
+  taskId: z.string().min(1).max(200),
+  traceId: z.string().min(1).max(200),
+  kind: z.string().min(1).max(40),
+  sourceAgentId: z.string().min(1).max(200),
+  targetAgentId: z.string().min(1).max(200),
+  parentMessageId: z.string().max(200).optional(),
+  correlationId: z.string().max(200).optional(),
+  visibility: z.enum(['public', 'domain', 'private']),
+  contentHash: z.string().min(1).max(128),
+  prevHash: z.string().max(128).nullable().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  summary: z.string().max(4000).optional(),
+  verdict: z.enum(['allow', 'block', 'quarantine', 'redirect']),
+  blockReason: z.string().max(2000).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
+  memoryRefs: z.array(a2aMemoryRefSchema).max(50).optional(),
+  redactedFields: z.array(z.string().max(300)).max(200).optional(),
+  createdAt: z.number().int().nonnegative(),
+});
+
+export const a2aMessageBulkSchema = z.object({
+  items: z.array(a2aMessageUpsertSchema).min(1, 'items 不能为空').max(500, '单批最多 500 条'),
+});
+
+export const a2aMessageListQuerySchema = z.object({
+  taskId: z.string().max(200).optional(),
+  agentId: z.string().max(200).optional(),
+  since: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  cursor: z.string().max(600).optional(),
+});
+
+const a2aCardUpsertSchema = z.object({
+  cardId: z.string().min(1).max(200),
+  agentId: z.string().min(1).max(200),
+  cardVersion: z.number().int().positive(),
+  role: z.string().min(1).max(60),
+  createTime: z.number().int().nonnegative(),
+  fatherAgentId: z.string().max(200).nullable().optional(),
+  fatherRole: z.string().max(60).nullable().optional(),
+  lineage: z.array(z.string().max(200)).max(50).optional(),
+  status: z.string().min(1).max(40),
+  health: z.record(z.string(), z.unknown()).optional(),
+  ability: z.record(z.string(), z.unknown()).optional(),
+  permission: z.record(z.string(), z.unknown()).optional(),
+  fingerprint: z.string().min(1).max(128),
+  expiresAt: z.number().int().nonnegative(),
+});
+
+export const a2aCardBulkSchema = z.object({
+  items: z.array(a2aCardUpsertSchema).min(1, 'items 不能为空').max(500, '单批最多 500 条'),
+});

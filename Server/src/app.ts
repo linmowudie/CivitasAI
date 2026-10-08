@@ -17,6 +17,7 @@ import { createSettingsService, type SettingsService } from './services/settings
 import { createStatsService, type StatsService } from './services/statsService.js';
 import { createMemoryService, type MemoryService } from './services/memoryService.js';
 import { createTaskService, type TaskService } from './services/taskService.js';
+import { createA2AService, type A2AService } from './services/a2aService.js';
 import { createBackupService, type BackupService } from './services/backupService.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
@@ -25,6 +26,7 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerMemoryRoutes } from './routes/memories.js';
 import { registerBackupRoutes } from './routes/backup.js';
 import { registerTaskRoutes } from './routes/tasks.js';
+import { registerA2ARoutes } from './routes/a2a.js';
 
 export interface AppServices {
   auth: AuthService;
@@ -33,6 +35,7 @@ export interface AppServices {
   memories: MemoryService;
   /** 任务（会话）元数据：标题 + 归档状态 */
   tasks: TaskService;
+  a2a: A2AService;
   backup: BackupService;
 }
 
@@ -99,6 +102,7 @@ export function buildApp(options: BuildAppOptions): { app: FastifyInstance; ctx:
     stats: createStatsService({ db, cfg }),
     memories: createMemoryService({ db, cfg }),
     tasks: createTaskService({ db }),
+  a2a: createA2AService({ db }),
     backup: createBackupService({ db, cfg }),
   };
   const ctx: AppContext = { cfg, db, services, rateLimiter };
@@ -159,6 +163,7 @@ export function buildApp(options: BuildAppOptions): { app: FastifyInstance; ctx:
   registerMemoryRoutes(app, ctx);
   registerBackupRoutes(app, ctx);
   registerTaskRoutes(app, ctx);
+  registerA2ARoutes(app, ctx);
 
   // ── 写限流（按用户；在鉴权之后执行）──
   app.addHook('preHandler', async (request) => {

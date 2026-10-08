@@ -130,9 +130,11 @@ export function archiveSession(sessionId: string, archived: boolean): Result<Cha
 /**
  * 创建会话。
  *
- * 工作目录规则（2026-10-01 决策）：
- * - 未指定 `workDir` → 使用 `<项目根>/Data/workspaces/<sessionId>/`，并**立即创建空目录**；
- * - 指定 `workDir` → 相对路径按项目根解析，目录不存在则创建；
+ * 工作目录规则（2026-10-01 决策；2026-10-06 目录契约校准）：
+ * - 未指定 `workDir` → 使用 `<工作空间根>/workspaces/<sessionId>/`，并**立即创建空目录**；
+ *   工作空间根由 `pathResolver.getWorkspaceRoot()` 决定：开发态 = `<仓库>/Data`，
+ *   便携/安装态 = 程序目录（安装目录只读时自动回落数据根）。
+ * - 指定 `workDir` → 目录不存在则创建；
  * - 无工作目录的任务因此始终有一个空文件夹作为工作根，工具不会越出。
  */
 export function createSession(title?: string, workDir?: string): ChatSessionRow {

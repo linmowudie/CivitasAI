@@ -8,6 +8,457 @@
 
 ---
 
+## [2026-10-07] 模型导入重设计：逐个校验可用性 + 用户勾选导入（不再全量导入）
+
+> 用户实测发现：**部分模型不可用**（`/models` 只代表"账号可见"，未开通/无权限的模型也在列表里）。
+> 选中其中一个不可用的模型对话，就会得到"空气泡"。因此导入流程重做。
+
+### 规则（新）
+
+1. 拉取列表（`GET /models`）后**逐个模型发一次最小对话请求**确认可用；
+2. **绝不自动全量导入**，也**不再自动勾选**任何模型 —— 由用户在列表里勾选要导入的模型；
+3. 只有勾选的模型会写入供应商配置。
+
+### 后端
+
+- **`Src/Infra/Llm/providerProbe.ts` 新增 `verifyModels()`**：批量校验（默认并发 4，可配 1–8），
+  每个模型 `POST /chat/completions`（`max_tokens: 1`），返回每模型结论 + 汇总。
+  **分类原则（防误杀）**：2xx → `available`；400/404/403 且命中模型级错误特征
+  （model_not_found / not exist / not enabled / 无权限 / 未开通 …）→ `unavailable`；
+  **429 限流、5xx、超时、网络、401/403 鉴权 → `unknown`**（一次限流不能把好模型全标死）；
+  结果顺序与入参一致（并发完成顺序不影响 UI）。
+- **IPC 通道 `ipc-verify-models`**（`onboardingIpc.ts` + preload + `ipcApi.ipcVerifyModels`）：
+  渲染层按**小批次（8 个/批）**调用以便展示进度；只校验不导入。
+
+### 前端
+
+- **`onboardingStore`**：新增 `availability`（id → 结论）、`verifying`、`verifyProgress`、`verifiedAt`；
+  `verifyAvailability()`（分批 + 可取消，用运行令牌在批次边界退出）、`selectOnlyAvailable()`、
+  `clearSelection()`；`probeConnection` **不再自动勾选**；`registerProvider` **只导入勾选项**
+  （去掉"回退到探测建议"）；`canProceed('credentials')` 要求**至少勾选 1 个模型**。
+- **引导页**：新增"校验可用性（逐个探测）"+ 进度 `n/总数` + 取消 + "仅选可用（N）"+ "清空勾选"；
+  模型 chip 显示 **可用 / 不可用 / 未知 / 未检测** 徽标与耗时，悬停可看供应商原话；
+  文案明确"列表可见 ≠ 当前可用，只会导入你勾选的"。
+
+### 测试
+
+- `Tests/Services/onboarding.spec.ts` 新增 4 例：可用/不可用/未知三态分类（限流不判死）、
+  401 整批 unknown、并发下结果顺序稳定、去重与缺参保护（共 **35 例**）。
+- `Tests/Client/onboarding-wizard.spec.tsx`：改为"连通后不自动勾选 → 手动勾选才可继续"，
+  新增"校验 → 仅选可用只勾选 available"用例。
+
+## [2026-10-07] Agent 列表凭空增殖 · 点击 Agent 只看到占位页
+
+> 用户实测（开发版）：① 右栏 L1 Agent 列表冒出多个 agent（只发了一句"你好"）；
+> ② 点 Agent 只切到"开发中"占位页，不是该 Agent 的对话。
+
+### 修复 1：启动即创建治理 Agent → 改为按需绑定（`Src/Services/Arbitration/arbitratorPool.ts`）
+
+- **证据**：`GET /api/agents` 显示 5 个 agent，其中 4 个是**当天新建**：
+  `agent-arbitrator-1/-3`（同一秒创建）+ `agent-prime_director-4/-2`。
+- **根因（两处叠加）**：
+  1. `Src/main.ts` **每次启动无条件** `initArbitratorPool({coreCount:1, auxiliaryCount:2})`，
+     而 `addArbitrator` 会立刻 `ensureDistinctAgentsForRole('arbitrator', …)` → 启动即产生 3 个
+     真实仲裁 Agent（用户从未使用仲裁）；每重启一次再累积一批。
+  2. `ipcBridge.getOrCreateEntryAgent` 只在**进程内**去重 → 每次启动都新建一个 `prime_director`。
+- **修复**：池位改为**懒绑定**（`initArbitratorPool` 只建内存槽；`ensurePoolAgents()` 在
+  `assignArbitrators` / `resizeAuxiliaryPool` 扩容时绑定真实 Agent；`provisionAgents: true` 保留旧行为）；
+  入口 Agent 改为**优先复用未销毁且同模型**的现役 Director（模型不同才新建，避免请求打到旧模型）。
+- **实测**：修复后重启，`/api/agents` **未新增任何 agent**（历史行仍在，其中空闲的已由 G-21 回收机制清掉一个）。
+- **测试**：`Tests/Governance/arbitratorPoolBridge.spec.ts` 更新为"初始化不建 Agent / 分配时才绑定 /
+  `provisionAgents` 保留旧行为 / 扩容驱动绑定"，回收用例显式 `provisionAgents: true`（它们测的是 G-21 回收）。
+
+### 修复 2：AgentView 实装（`Client/src/components/Layout/MainContainer/AgentView.tsx`）
+
+- 此前是占位视图（"待集成 AIEventBus + Subscribe 事件驱动渲染"），点 Agent 只看到"开发区域"。
+- 现接入真实数据：`GET /api/sessions/:sessionId/ai-events`（历史）+ `eventStore`（实时，经 `backend-event` 推送），
+  合并去重后按 Agent 归属过滤（浅层 + 一层嵌套匹配 `agentId`/`workerAgentId`/`fromAgentId` 等键）、
+  按时间排序渲染时间线；含角色/状态/模型/会话信息与类型计数，以及"无归属事件"的说明空态。
+
+### 验证
+
+- `npx vitest run`：**133 文件 / 1630 用例全通过**；`npm run lint` 0 error；`tsc`（后端/客户端）0 错误。
+- 开发态重启后 `/api/agents` 无新增；AgentView 经 Vite HMR 即时生效。
+
+## [2026-10-07] 设置页只读回归 · 模型无法添加 · 事件广播整条失效
+
+> 用户实测（开发版）：①「功能 → 设置」只能看不能改，**连模型都添加不了**；
+> ② 开发态启动日志出现 `UnhandledPromiseRejection: ... reading 'getAllWindows'`。
+
+### 修复 1：设置页仍是旧的只读视图（`Client/src/components/Layout/MainContainer/FeatureView.tsx`）
+
+- **根因**：可编辑的设置面板 `views/SystemConfig.tsx`（内含模型供应商管理 `ModelProviderPanel`）
+  只挂在路由 `/system-config`；而左侧「功能 → 设置」卡走的 `FeatureView` 里，
+  `id === 'settings'` 分支**依然是把 `configStore.loaded` 直接列成只读键值对的占位视图**。
+  `SystemConfig.tsx` 文件头注释写明"替换原 JSON 片段只读视图"，但这处接线从未切换 ——
+  于是用户从功能卡进来**改不了配置、也找不到添加模型的入口**（两个症状同一根因）。
+- **修复**：`settings` 分支改为渲染 `<SystemConfig />`（去掉只读占位实现与不再使用的 configStore 订阅）。
+- 同时删除 `FeatureView` 里已无用的 `useConfigStore` 依赖（hydrate 由 SystemConfig 自理）。
+
+### 修复 2：后端 → 渲染进程的事件广播整条失效（`Src/Interface/IpcBridge/ipcBridge.ts`）
+
+- **现象**：开发态启动日志
+  `TypeError: Cannot read properties of undefined (reading 'getAllWindows')`（UnhandledPromiseRejection）。
+- **根因**：`setIpcMainProvider` 只注入 `ipcMain`，后端据此拼出一个**残缺的假 electron 模块**，
+  `BrowserWindow` 恒为 `undefined`；事件订阅回调里 `BrowserWindow.getAllWindows()` 每次必抛 →
+  **`backend-event` 推送全部丢失**（界面拿不到实时事件），且异常向上变成未处理拒绝。
+- **修复**：改为注入**能力函数** `broadcastToWindows`（主进程实现 `webContents.send` 广播），
+  广播内部吞掉所有异常、失败只记一次日志；`setWindowBroadcaster(null)` 可清除（测试用）。
+- **测试**：新增 `Tests/Infra/ipcBroadcast.spec.ts`（4 例）：注入实现优先调用、无实现不抛、
+  实现抛异常不外溢、可清除。
+
+### 修复 3：`console-message` 弃用警告（`electron/main.ts`）
+
+- Electron 44 改用 `Event<WebContentsConsoleMessageEventParams>`（参数挂在 event 对象上）；
+  早期实现按旧签名声明 5 个形参，启动即打印 `'console-message' arguments are deprecated`。
+  现统一读 event 对象，并对参数式旧版本保留兜底。
+
+### 验证
+
+- 开发态重启后日志干净：无 `getAllWindows` 拒绝、无弃用警告（仅剩 dev 固有 CSP 提示）。
+- 「功能 → 设置」经 Vite HMR 立即生效为可编辑面板（含模型供应商管理）。
+
+## [2026-10-07] 打包态白屏根因修复 · 渲染兜底与诊断 · API Key 处理与错误归因 · 对话探测模型选择
+
+> 背景：用户在**安装版**上"跳过初始化引导后主界面全黑"、"测试连接报 401 但看不出原因"。
+> 两件都在打包态才暴露（开发态与引导向导弹层都掩盖了问题）。
+
+### 修复 1：跳过引导后主界面全黑（`Client/src/components/Layout/AppLayout.tsx`）
+
+- **根因**：打包态由 Electron 以 `file:///…/dist/renderer/index.html` 加载，初始 pathname 是
+  `/…/index.html`（不是 `/`）；`AppLayout` 内层 `<Routes>` 只有 `/`、`/chat`、`/workspace` 等，
+  **没有通配兜底** → 一个路由都匹配不上 → 渲染 `null`。外层 `App` 的 `/*` 仍匹配，所以
+  **标题栏在、下面是一片黑的空卡片**。开发态 pathname 是 `/`（重定向到 `/chat`）、引导向导是
+  `position: fixed` 的全屏浮层（不经过内层路由），因此两处都看不出这个 bug。
+- **修复**：内层补 `<Route path="*" element={<WorkspaceLayout />} />` 兜底。
+- **验证**（同一 DOM 探针，前后对比）：
+
+  | | root 子节点 | 页面可见文字 | 渲染错误 |
+  |---|---|---|---|
+  | 修复前 | 2（标题栏 + 空 AppLayout） | 仅 `CIVITAS 智体城邦 · AI` | 无 |
+  | 修复后 | 2 | `…+ 新任务｜任务｜暂无任务…｜功能｜审批｜Loop｜Harness｜记忆｜数据中台｜插件｜账号｜人工审批…` | 无 |
+
+### 修复 2：前端渲染异常只会留一个黑窗口（新增 `Client/src/components/ErrorBoundary.tsx`）
+
+- `App` 现在整体包在错误边界里：渲染异常时展示**错误信息 + 组件栈 + JS 栈**，并提供
+  "重新加载界面 / 复制诊断信息"两个动作（不再白屏无提示）。
+- 顺带修 `App.tsx`：`init()` 用 `.catch().finally()` 收口，避免初始化异常把应用永远卡在"正在初始化"。
+- 入口抽层 `Client/src/AppRoot.tsx`（`BrowserRouter` + `App`），供测试渲染与生产一致的入口组合。
+
+### 修复 3：对话探测盲用 `models[0]`（`Src/Infra/Llm/providerProbe.ts`）
+
+- **根因**：`/models` 会返回上百个模型，其中混着 `text-embedding-*`、`wanx-*`、TTS/ASR 等**非对话模型**。
+  早期实现直接拿 `models[0]` 去 `POST /chat/completions` —— 首位若是 embedding，
+  **Key 完全正确也会失败**，用户被误导成"Key 有问题"。
+- **修复**：
+  - 新增 `pickChatCandidates()`：排除非对话模型（embedding/rerank/tts/asr/audio/image/wanx/ocr/…），
+    优先常见对话前缀（qwen/gpt/claude/deepseek/glm/ernie/…），最多取 5 个候选；
+  - 对话探测**逐个尝试候选**：400/404 类失败自动换下一个；**401/403 立即停止**（换模型无意义）；
+  - 结果新增 `chatModelUsed` / `chatCandidates` / `chatAttempts`，界面显示实际使用的模型、
+    重试次数，以及"已依次尝试 N 个候选模型"；
+  - 引导页新增**手选探测模型**下拉（留空 = 自动挑），默认勾选对话成功的那个模型。
+- **测试**：新增 6 例（排除非对话模型、跳过 embedding、失败自动重试、401 不重试、显式指定优先、
+  全部失败如实报告），`Tests/Services/onboarding.spec.ts` 共 **31 例**通过。
+
+### 修复 4：API Key 处理与错误归因（`Src/Infra/Llm/providerProbe.ts`）
+实测（真实 DashScope 端点，2026-10-07）：`GET /models` 存在且假 Key 返回`401 {"code":"invalid_api_key"}`；无 Key 返回"You didn't provide an API key"。
+
+- **不再把 401 说成"该端点不提供"**：新增 `listStatus` / `listAttempted` / `chatAttempted` /
+  `listNotProvided`；只有 404/405 才标记"端点不提供"，401/403 明确显示"鉴权失败（HTTP 401）"。
+- **展示供应商原话**：解析响应体里的 `error.message` / `code`（如 `invalid_api_key`），
+  与可执行建议一起给出；引导页新增"供应商原话"区块（可选中复制）。
+- **不再谎称"对话未通过"**：鉴权失败会提前返回，此时显示"对话：未探测（先解决上面的问题）"。
+- **Key 规范化 `normalizeApiKey()`**：清理零宽字符（`\u200B-\u200D`、`\uFEFF` —— **不在** `trim()`
+  范围内）、不间断/全角空格、换行制表、外层引号、`Bearer ` 前缀；清理内容在引导页如实展示。
+- **非 ASCII 字符给可执行提示**：Key 里仍有 >0xFF 字符时（HTTP 头不允许）直接返回
+  `invalid_input` + "请重新复制 Key"，而不是让 `fetch` 抛 ByteString 异常后被误报成"网络不可达"。
+
+### 诊断能力（打包态可排障）
+
+- `electron/main.ts`：转发渲染进程 `console` 的错误/警告到主进程日志（`[Renderer:error]`），
+  并记录 `did-fail-load` / `render-process-gone`；兼容两代 `console-message` 签名。
+- `electron/main.ts`：`CIVITAS_UI_DEBUG=1` 时 dump 页面 DOM 结构（root 子节点数、可视尺寸、
+  可见文字、错误列表）——"看起来全黑但没报错"这类问题只能靠它定位。
+- `Scripts/probePackagedBackend.cjs`：新增**打包态 UI 白屏守卫**——自动把引导状态置为"已跳过"
+  启动打包产物，断言"root 子节点 ≥2、可见文字 ≥40 字、含主界面标志性文案、未命中错误边界"，
+  不满足即失败退出。白屏回归从此由 `npm run package:probe` 兜住。
+
+### 已知未修（诚实记录）
+
+- **代理支持缺失**：探测走 Node 全局 `fetch`（undici），**不读取系统代理**；若用户环境必须走代理
+  （例如访问 OpenAI/Claude），会表现为 `network` 类失败。当前提示只是建议"检查代理设置"，
+  实际不支持 `HTTP_PROXY`/`HTTPS_PROXY`。后续可接 `undici.ProxyAgent` 或改用 Electron `net`。
+
+### 验证
+
+- `npx vitest run` 全量通过（含本轮新增的 Key 处理与模型选择用例）；`npm run lint` 0 error；`tsc`（后端/electron/client）0 错误。
+- `npm run package:signed -- --all` 重新打包并签名（4 产物 `Valid`，发布者 `Ma Hongyu (Self-Signed)`）。
+- `npm run package:probe`：26 端点全 200、写路径 201、三库齐全、**UI 结构正常（非白屏）**。
+
+---
+
+## [2026-10-06] 打包态后端缺陷修复：日志探针垃圾文件 · shell 默认 cwd · 便携标记误判
+
+> 方法：先写了一个"打包态后端探针"（`npm run package:probe`）——以**安装模式 + 干净数据根**
+> 启动打包产物，把 26 个真实 API 全打一遍、走一次写路径（建会话）、检查数据根落盘与日志 ERROR，
+> 用运行证据定位问题，而不是靠读代码猜。探针结论：**打包态后端整体健康**（端点全 200、
+> `POST /api/sessions` → 201、三个 SQLite 库正常创建，原生模块在 asar 下加载正常）；
+> 下面三个问题是被它/审计抓出来的。
+
+### 修复
+
+1. **日志可写探针留下垃圾文件**（`Src/Infra/Logging/logWriter.ts`）
+   - 现象：每次启动都在用户数据目录留下 `<DATA_ROOT>\Logs\.write_test.tmp`（探针写完只 `rename`，从未删除）。
+   - 修复：改为真删除（`rmSync(force)`），删除失败才退回 `rename`；并**自动清理历史版本遗留的**
+     `.write_test.tmp`，升级后自动收敛。
+   - 验证：探针跑完后 `Logs/` 只剩 `business.log` 与 `_Meta/`；新增回归测试 3 例。
+
+2. **`shell.exec` 默认工作目录回落到 `process.cwd()`**（`Src/Tools/Builtin/Execute/shellRunner.ts`）
+   - 现象：打包态进程 cwd 由启动方式决定（快捷方式"起始位置"、计划任务等，常见 `C:\Windows\System32`
+     或用户主目录）。缺少 `context.workDir` 时命令会在与任务无关、可能权限敏感的位置执行，
+     且越界检查（`findEscapingPathInCommand`）因 workDir 为空而**完全失效**。
+   - 修复：无 workDir 且未显式指定 cwd 时，一律收敛到 `getSessionWorkspaceDir(sessionId)`（拿不到会话就退到
+     `getWorkspaceRoot()`），并确保目录存在；准备失败直接返回 `PATH_DENIED`。**不再回落到 `process.cwd()`**。
+   - 验证：新增回归测试 2 例（断言命令实际 cwd 为会话工作目录、不等于进程 cwd；目录不可建时返回拒绝）。
+
+3. **便携标记检测在打包态会看 cwd**（`Src/Infra/Fs/pathResolver.ts`）
+   - 现象：`hasPortableMarker()` 除 exe 同级外还检查 `process.cwd()/.portable`；若快捷方式"起始位置"
+     恰有该文件，安装版会被判成便携版 → **数据根/工作空间整体错位**。
+   - 修复：新增 `isPackagedRuntime()`（`process.resourcesPath` 存在且非 `defaultApp`），打包态只看 exe 同级；
+     cwd 兜底保留给开发态直跑。
+   - 验证：新增回归测试 2 例（打包态忽略 cwd 标记、开发态仍生效）。
+
+### 加固（未触发，但值得有）
+
+- **`electron/main.ts` userData 探针 + 回落链**：按"显式 `CIVITAS_USER_DATA_DIR` → `%APPDATA%\CivitasAI`
+  → `%LOCALAPPDATA%\CivitasAI` → 系统临时目录"顺序，用**建目录 + 建子目录 + 写文件 + 清理**四步探针
+  选第一个真正可用的（第一版只测"写文件"不够——实测就是栽在这里：探针通过、缓存目录照样建不出来），
+  并把选择与原因写入 `CIVITAS_USER_DATA_DIR` / `CIVITAS_USER_DATA_REASON`（排障用）。
+  本机实测该探针正确选中产品口径 `%APPDATA%\CivitasAI`。
+
+### 排查后判定为环境现象（非代码缺陷，未改）
+
+- 打包进程日志里 Chromium 的 `Failed to create directory: …\Code Cache\js`、
+  `Failed to create network context data directory …\Network: 拒绝访问。(0x5)`：
+  同一进程用探针**能**在 `%APPDATA%\CivitasAI` 下建目录、写文件、清理，说明不是权限/签名问题；
+  是受限会话下 Chromium 网络/缓存子进程拿不到该目录（缓存自动仅内存化，功能可用）。
+  **已排除**：与代码签名无关（本轮产物已签名仍复现），与 `asar`/数据根无关。
+  建议在普通桌面会话复核一次。
+
+### 工具与文档
+
+- 新增 `Scripts/probePackagedBackend.cjs` + `npm run package:probe`：打包态后端冒烟探针
+  （端点全量探测 + 写路径 + 落盘检查 + 日志 ERROR 汇总），后续每次改打包都可一键回归。
+- 新增 `Tests/Infra/packagedRuntime.spec.ts`（**7 例**）覆盖上述三个修复。
+
+### 验证
+
+- `npx vitest run`：**132 文件 / 1613 用例全通过**；`npm run lint` 0 error；
+  `tsc`（后端 / electron / client）0 错误。
+- `npm run package:signed -- --all`：重新打包并签名，4 个产物 `Valid`（发布者 `Ma Hongyu (Self-Signed)`）。
+
+---
+
+## [2026-10-06] 安装交付改造（三）：本地自签代码签名（自用，零成本、不交出发布权）
+
+> 目标：不购买 CA 证书、也不把发布者身份登记到第三方（如 SignPath Foundation），
+> 让**本机/已部署根证书的内部设备**双击安装不再出现"未知发布者"。
+
+### 新增
+
+- **`Scripts/setupSelfSignedCert.ps1`**：生成本机自签代码签名证书（`CurrentUser\My`，RSA-3072、
+  CodeSigning EKU、默认 5 年），导出 `.pfx`（含私钥）+ `.cer`（公钥）+ `signing.env.json`
+  （供打包脚本读取，含随机 PFX 密码）；支持 `-Subject` / `-PfxPassword` / `-Years` / `-Force` /
+  `-InstallTrustedRoot` / `-TrustScope CurrentUser|LocalMachine`。
+- **`Scripts/packageSigned.cjs`**：自签打包包装——读 `signing.env.json` → 注入
+  `CSC_LINK`/`CSC_KEY_PASSWORD`（Windows 同时 `WIN_CSC_*`）→ 调既有一键打包 → 再跑签名校验门禁。
+- **`Scripts/verifySign.ps1`**：签名校验与发布门禁——逐个检查安装包/便携版/应用本体/`elevate.exe`，
+  打印状态、签名者、证书到期、**是否带时间戳**、链校验说明；`-Targets nsis|portable|all|dir` 只校验本次目标
+  （避免把上次遗留的旧产物算进来）；`-Require`（未签名即失败）/`-RequireTrusted`（链不可信也失败）。
+- **npm scripts**：`sign:setup` / `sign:verify` / `package:signed`。
+- **`.gitignore`**：新增 `*.pfx` / `*.p12` / `*.snk` / `signing.env.json` / `*selfsigned.cer`
+  （证书与私钥绝不入库）。
+
+### 变更
+
+- **`ELECTRON.md`**：新增"代码签名（本地自签，自用）"章节（三步流程、原理、实测对比表、边界与撤销命令），
+  并在 FAQ 增补"SmartScreen 提示三条路"（自签自用 / SignPath 免费但发布权在对方 / OV 证书）。
+- **签名配置不进 `package.json`**：仓库内没有任何证书路径或密码，未配置证书时 `npm run package` 行为不变。
+
+### 实机验证（本机，2026-10-06）
+
+- 生成证书：主体 `CN=Ma Hongyu (Self-Signed)`，指纹 `7A8BEB8ED9F01B33402B53EE2E5871B7206A1338`，有效至 2031-10-06。
+  （首发先用 `CN=Civitas AI (Self-Signed)` 打通链路，随后按需求把发布者改为 `Ma Hongyu`：
+  删旧根证书/旧签名证书 → 用 `-Force` 重生成 → 重装受信任根 → 重新打包，最终产物发布者即为 `Ma Hongyu (Self-Signed)`。）
+- `npm run package:signed -- --all`：**一次构建签完 4 个产物**——`CivitasAI-Setup-0.1.0.exe`、
+  `CivitasAI-Portable.exe`、`win-unpacked\CivitasAI.exe`、`win-unpacked\resources\elevate.exe`
+  （含卸载器链路由 electron-builder 在打包期自动完成，日志可见 `*.__uninstaller.exe` 与 Setup 的签名步骤）。
+- 签名校验：装根证书前 `UnknownError`（"已处理证书链，但在不受信任的根中终止"）→
+  用 `certutil -f -user -addstore Root` 把 `.cer` 装进**当前用户受信任根**后，4/4 变为 **`Valid`**，
+  且**均带时间戳**（`npm run sign:verify -- -Require -RequireTrusted` 通过）。
+- 踩到并修掉的两个脚本问题：
+  1. **PowerShell 变量名大小写不敏感**：校验脚本局部集合 `$targets` 覆盖了参数 `$Targets`，导致目标过滤失效
+     （已改名 `$checkFiles` 并加注释）；
+  2. **往受信任根写证书会弹模态"安全警告"**：`Import-Certificate` / `X509Store.Add` 在非交互会话里
+     **挂起等人工确认**或报"此操作中不允许使用 UI"；`certutil -f -user -addstore Root` 是静默路径，
+     已作为脚本首选实现。
+- 另修：`verifySign` 的 PowerShell 回退逻辑曾把"校验未通过（非零退出）"误判为"没找到 pwsh"，
+  于是用 Windows PowerShell 5.1 重跑 UTF-8 无 BOM 脚本触发中文乱码；现改为**仅 ENOENT 才回退**，
+  并给两个 `.ps1` 写入 UTF-8 BOM。
+
+### 未做（有意保留）
+
+- **对外分发仍需正式证书**：自签只对装了根证书的机器有效，别人下载后仍是"未知发布者"。
+- **自动更新（electron-updater）** 未接线；若启用，`publisherName` 需与实际证书主体一致
+  （自签场景下即 `Ma Hongyu (Self-Signed)`）。
+
+---
+
+## [2026-10-06] 安装交付改造（二）：首次运行初始化引导（onboarding）
+
+> 承接同日"安装交付改造（一）"：安装包已能装、能跑，这一批补上**首启引导**——
+> 用户首次打开不再面对空界面，而是走完「目录透明化 → 个性化 → 供应商 → API_KEY 与连通性校验 →
+> 默认模型 → 使用引导 → 完成」，全程**无需重启**。
+
+### 新增
+
+- **`Src/Services/Onboarding/onboardingState.ts`**：引导状态机与持久化——落 `<DATA_ROOT>/.state/onboarding.json`
+  （原子写）；`completed` / `skipped` / `version` 三态；文件缺失或损坏一律视为"未初始化"（宁可重引导，不可静默跳过）；
+  提供 `needsOnboarding()` / `completeOnboarding()` / `skipOnboarding()` / `resetOnboarding()`。
+- **`Src/Infra/Config/userConfigWriter.ts`**：用户配置层（`<DATA_ROOT>/Configs/local.json`）**白名单写入**——
+  允许 `server.httpPort|host|corsOrigins`、`system.logLevel`、`ui.*`、`routing.*`、`reasoningSandwich.*`、
+  `workspace.*`、`onboarding.*`；其余键**拒绝写入并如实返回 `rejected`**；端口/日志级别做取值校验；
+  与既有 `local.json` 深度合并、原子写；文件损坏时拒绝覆盖并报 FATAL。
+- **`Src/Infra/Llm/providerProbe.ts`**：供应商**连通性校验**——`GET /models`（校验鉴权与端点、拉模型清单）
+  + 最小 `POST /chat/completions`（`max_tokens:1`，真验证"这个 Key 能对话"，并测首字节时延）；
+  失败按 `auth / http / network / timeout / invalid_input` 归因并给出中文处置建议；`/models` 缺失（404）不算致命。
+- **`Src/Interface/IpcBridge/onboardingIpc.ts`**：8 条 IPC 通道——`ipc-get-app-paths`（目录透明化）、
+  `ipc-get-onboarding`（状态 + 已有供应商/模型/路由 + 用户配置）、`ipc-test-provider`、`ipc-write-user-config`、
+  `ipc-complete-onboarding`、`ipc-skip-onboarding`、`ipc-reset-onboarding`、`ipc-patch-onboarding`；
+  由 `stopIpcBridge` 统一摘除。供应商注册仍复用既有 `ipc-add-provider`（加密落盘），不重复实现。
+- **`Client/src/views/Onboarding/OnboardingWizard.tsx` + `Onboarding.module.css`**：全屏七步向导
+  （左侧步骤进度 + 右侧内容 + 底部上一步/下一步/跳过）：目录卡片（可一键打开数据/日志目录）、
+  日志级别与工作空间根选择、9 家预置供应商 + 自定义、API Key 输入与**测试连接**（结果面板含模型清单勾选与错误归因）、
+  角色模型与**仲裁模型 ≥3 硬约束**、使用引导卡片（工作模式/工作目录/审批安全门/Token 预算/数据位置/换模型）、
+  完成前汇总。
+- **`Client/src/stores/onboardingStore.ts`**：引导状态机（步骤、草稿、探测结果、路由推导、`canProceed()` 校验）。
+- **`Client/src/services/ipcApi.ts`**：8 个引导 API 包装 + `ipcOpenPath()`；非 Electron 环境一律返回"不可用"。
+- **`electron/preload.ts` / `electron/main.ts`**：暴露 `onboarding.*` 与 `openPath`；新增 `open-path` handler（仅允许打开已存在路径）。
+
+### 变更
+
+- **`Client/src/App.tsx` 首启门控**：启动后查询引导状态，**仅当主进程明确"需要引导"**才进入全屏向导；
+  IPC 不可用（浏览器/测试）或探测失败一律放行——避免把应用锁死在向导里；向导内可随时跳过。
+- **`Src/main.ts`**：读取用户配置 `workspace.root` 并注入 `CIVITAS_WORKSPACE_ROOT` + 清路径缓存 →
+  引导里选的工作空间目录**本次启动即生效**（无需重启）。
+- **`Src/Infra/Fs/pathResolver.ts`**：新增 `getStateDir()`（`<DATA_ROOT>/.state`）并纳入目录初始化与可写性诊断。
+
+### 测试
+
+- 新增 `Tests/Services/onboarding.spec.ts`（**20 例**）：引导状态机（未初始化/完成/跳过/重置/损坏回退/幂等 patch）、
+  用户配置白名单（越权拒绝、取值校验、合并、损坏保护）、连通性探测（成功/401/404+对话成功/列表可读对话失败/缺参/网络异常）。
+- 新增 `Tests/Client/onboarding-wizard.spec.tsx`（**9 例**）：门控（无 Electron 不拦截、探测失败放行）、
+  目录透明化渲染、供应商选择 → 测试连接 → 勾选模型、失败提示不可继续、仲裁模型 ≥3 硬约束、
+  完成时写出的 `configPatch`（含路由/日志级别/工作空间）、跳过通道。
+- 全量：`npx vitest run` **131 文件 / 1606 用例全通过**；`npm run lint` **0 error**；`npm run build:client` 通过。
+
+
+
+---
+
+## [2026-10-06] 安装交付改造（一）：目录契约 · 一键打包 · NSIS 安装包
+
+> 目标：让非开发者"下载安装包 → 选安装目录 → 一键安装 → 打开就能用"。
+> 本批解决**打不开/数据乱放**的根因（打包曾被当作便携、所有落盘路径走 `process.cwd()`），
+> 并交付 NSIS 安装包与一键打包链；首次运行引导向导为**下一批**（见 `Docs/Dev/安装包与首次运行引导-实施方案.md`）。
+
+### 新增
+
+- **目录与环境契约**（`Src/Infra/Fs/pathResolver.ts` 重写）：三个根变量
+  - `CIVITAS_APP_ROOT`（程序/只读资源根：`Configs`/`Prompts`/`Skills`/`assets`）
+  - `CIVITAS_DATA_ROOT`（全局数据根：数据库/日志/密钥/用户配置；安装态 = `%APPDATA%\CivitasAI`）
+  - `CIVITAS_WORKSPACE_ROOT`（工作空间根：会话工作目录/沙箱/`.civitas` 备份；安装态 = `<安装目录>\Workspace`，只读则回落数据根）
+  - 细粒度 `CIVITAS_LOG_DIR` / `CIVITAS_CONFIG_DIR` / `CIVITAS_CONFIG_DIR_BUILTIN` / `CIVITAS_BACKUP_DIR`；旧名 `CIVITAS_DATA_DIR` 保留兼容。
+  - 新 API：`getAppRoot` / `getDataRoot` / `getWorkspaceRoot` / `getSecretsDir` / `getBackupDir` / `getSessionWorkspaceDir` / `getSessionBackupDir` / `getBundledConfigDir` / `resolveDataPath` / `ensureDirSafe` / `probeWrite` / `describePaths`（目录+可写性诊断快照）。
+- **`Scripts/package.cjs` + `Scripts/verifyPackage.cjs` + npm scripts**：`npm run package`（一键：预检 → 构建后端 → 构建前端 → 产物校验 → electron-builder → 产物体积/SHA256 汇总），另含 `package:nsis` / `package:portable` / `package:dir` / `package:check`。
+- **NSIS 安装包配置**：`win.target = [nsis, portable]`；`nsis.oneClick=false`、`allowToChangeInstallationDirectory=true`（自选安装目录）、`perMachine=false`（默认 `%LOCALAPPDATA%\Programs\CivitasAI`，**无需管理员**）、桌面/开始菜单快捷方式、`deleteAppDataOnUninstall=false`（卸载不删数据）。
+- **图标资产**：`assets/icon.ico`（多尺寸）+ `assets/icon.png`（512）与可重跑的生成脚本 `Scripts/genIcons.py`。
+- **文档**：`Docs/Dev/安装包与首次运行引导-实施方案.md`（方案 + 验收清单 + 剩余待办）；`.env.example` 补齐 `CIVITAS_*` 目录契约与多供应商 Key 示例。
+
+### 修复
+
+- **FE-P1 打包态数据写入只读安装目录导致启动失败**：`electron/main.ts` 不再把 `app.isPackaged` 当便携；只在显式便携信号（`--portable` / exe 同级 `.portable` / `CIVITAS_PORTABLE`）下重定向到程序目录，否则注入 `%APPDATA%\CivitasAI`（数据）+ `<安装目录>\Workspace`（工作空间）；便携版按 `PORTABLE_EXECUTABLE_DIR` 定基，避免单文件包解压到临时目录后数据丢失。
+- **FE-P2 数据/日志/密钥/工作区绕过环境变量**：`secretsStore`（原 `process.cwd()/Data/.secrets`）、`configApi`（原 `cwd/Configs`）、`skillsApi` 与 `ipcBridge`（原 `cwd/Skills`）、`Src/main.ts` 的 DB 路径/日志目录/工作区/沙箱/配置监听、`workspaceGuard` 全部改由目录契约解析；DB 相对路径统一以数据根为基准（`resolveDataPath`）。
+- **FE-P3 `local.json` 覆盖被功能文件吃掉**：`configLoader` 改为"内置 `default` → 内置 `{env}` → 内置功能文件 → 内置 `local` → 用户 `{env}` → 用户功能文件 → 用户 `local`"，`local.json` 成为最高优先级——首次运行引导写一个文件即可选中供应商/模型/端口。
+  - 保持口径：`env:` 引用**只在 `default`+`{env}` 层解析**，`api_key_ref: "env:XXX"` 必须保持引用形态交由 Provider 层请求期解析（新增回归测试钉住）。
+- **FE-P4 启动失败无提示**：数据根不可写时抛出可操作错误（含 `CIVITAS_DATA_ROOT` 指引）；Electron 用 `dialog.showErrorBox` 展示程序根/数据根/工作空间与常见处理方式，不再静默退出。
+- **FE-P5 图标路径少一级**：`resolveIcon()` 修正为 `<APP_ROOT>/assets/icon.png`（原指向 `dist/assets/`，图标恒缺失）。
+- **FE-P6 静态托管目录**：`startHttpServer` 的 `staticDir` 由程序根推导（`Client/dist` → `dist/renderer`），不再依赖 cwd。
+- **FE-P7 打包后渲染进程 `/api/*` 必失败**（`file://` 下相对 fetch）：`Client/src/services/api.ts` 在 Electron 下把相对 `/api/*` 经主进程 `serverFetch` 转发（统一 `ApiResponseLike` 适配，429/超时语义不变），浏览器与测试环境行为不变；顺带兼容"只 mock 了 `json()` 的测试替身"。
+- **FE-P8 退出时停的是另一份模块副本**：Electron 侧改为调用后端导出的 `stopServer()`，与 `startServer()` 同实例，HTTP/IPC 真正优雅关闭。
+- **FE-P9 打包产物路径漂移**（本轮改造中实测踩到）：`Scripts/build.cjs` 单入口时 esbuild 会把 outbase 算成 `Src/`，后端产物落到 `dist/main/main.js`；加 `outbase: '.'` 钉死为 `dist/main/Src/main.js`。
+- **FE-P10 主进程/后端 electron 互操作不确定**：主进程与 preload 统一产出 **CJS**（`dist/main/electron/main.cjs`），`package.json.main` 同步；后端仍为 ESM，由主进程动态 import 并**注入 `ipcMain` / `safeStorage`**（`Src/main.ts` 新增 `setElectronRuntime()`），使 IPC 注册与 API Key 加密存储不再依赖 ESM↔CJS interop 的版本行为。
+- **FE-P11 用户数据目录名与产品名不一致**：`app.isPackaged` 时显式 `app.setName('CivitasAI')` + `app.setPath('userData', %APPDATA%\CivitasAI)`（原为 package.json 的 `civitas-ai`），与文档口径一致；同时不再注入 `CIVITAS_LOG_DIR`/`CIVITAS_CONFIG_DIR`，日志与用户配置一律从数据根派生（避免"改了数据根、日志仍写别处"）。
+
+### 测试
+
+- 新增 `Tests/Infra/appPaths.spec.ts`（**24 例**）：三根变量与旧变量兼容、开发/便携/安装三态、安装目录只读时工作空间回落 + 告警、`resolveDataPath` 语义、`ensureDirSafe`/`probeWrite` 不抛错、配置分层（`local.json` 覆盖功能文件 / `env:` 引用不被展开 / 用户层同名文件覆盖内置）。
+- 全量：`npx vitest run` **129 文件 / 1577 用例全通过**；`npx tsc --noEmit` 与 `tsc -p tsconfig.electron.json` **0 错误**；`npm run lint` **0 error**（既有 warning）。
+- 安装态实机模拟（`CIVITAS_INSTALLED=1` + 临时根，真实启动后端）：数据落 `<数据根>\{db,Logs,.secrets,Configs}`、工作空间落 `<安装目录>\Workspace`、`/api/configs` 200，且 `local.json` 改的端口真实生效。
+- **打包应用实机冒烟**（`release/win-unpacked/CivitasAI.exe`，安装态 + 临时根）：`[Electron] 模式: 安装` → 三根打印正确 → 3 个 DB 落数据根 → `<安装目录>\Workspace\.civitas` 建好 → 读用户 `local.json` 后在自定义端口上 `/api/configs` **HTTP 200（4 秒内）**。
+  - 自动化注意：验证脚本须 `delete env.ELECTRON_RUN_AS_NODE`（该变量会让 electron 退化为纯 Node，表现为"打包应用一启动就退出"的假故障），受限/无桌面会话下需加 `--no-sandbox`（否则 Chromium 沙箱初始化失败、进程以 `0x80000003` 静默退出）。二者均已写入 `Docs/Dev/安装包与首次运行引导-实施方案.md`。
+
+### 实机验证（安装 → 运行 → 卸载）
+
+用最终安装包 `release/CivitasAI-Setup-0.1.0.exe`（SHA256 `ac46b72d…`）在真机跑了一遍完整链路：
+
+| 步骤 | 结果 |
+|------|------|
+| 静默安装到自选目录（`/S /D=…`） | ✅ 退出码 0，装入 186 文件 / 409.2MB（含主程序、卸载器、`resources/app/{Configs,Prompts,Skills}`、`app.asar(.unpacked)`） |
+| 启动已安装应用（干净环境） | ✅ `模式: 安装`；程序根/数据根/工作空间打印正确；主进程 + GPU + 渲染进程正常 |
+| 后端就绪与落盘 | ✅ 读用户 `Configs/local.json` 后在自定义端口 **HTTP 200（3 秒内）**；`.secrets`/`Configs`/`db`(3 库)/`Logs`/`Workspace\.civitas` 全部落位 |
+| 静默卸载 | ⚠️ 退出码 0 但**未删文件**；且静默安装不建快捷方式、不写卸载注册表项（electron-builder 26 辅助式安装器的限制）→ 交互式安装/卸载仍需人工验证 |
+| 卸载后数据 | ✅ `deleteAppDataOnUninstall:false` 生效，用户数据保留 |
+| 本机环境限制 | ⚠️ 未签名打包 exe 在本会话无法写入 `C:`（`EPERM`），而 PowerShell/Node/官方 Electron 二进制对同一路径可写、且未启用 CFA/ASR → 判定为环境侧对未签名二进制的写入限制；**默认 `%APPDATA%` 数据根需在普通桌面会话或签名后复核**（数据根换到工程盘即完全正常） |
+
+
+
+### 交付物
+
+- `release/CivitasAI-Setup-<version>.exe`（NSIS 安装程序，105.1MB、SHA256 `ac46b72d2455123e98ce34486a69c9fa1b1eb1afa306b3eb52b40122eaaccfbf`：自选安装目录、免管理员、桌面/开始菜单快捷方式）
+- `release/CivitasAI-Portable.exe`（便携单文件，104.8MB、SHA256 `2a0c0b0821552c8593300b04a2d4fbb8b260836567b1437dc02fd68a48c7542e`）
+- 一键命令：`npm run package`（另有 `package:nsis|portable|dir|check`）；首次打包自 GitHub 不可达时脚本自动注入 npmmirror 镜像
+- 未做（下一批）：代码签名（SmartScreen 提示）、自动更新、**首次运行引导向导**（方案见 `Docs/Dev/安装包与首次运行引导-实施方案.md` §4）
+
+
+## [2026-10-05] 工具展示动画：语义化执行动效 + 人读描述（Harness.ToolGroup）
+
+> 工具在前端的"使用中"观感改造：每行 `+工具+描述`；执行期按语义播放动效，出结果即回落静态；
+> 一组内只要还在探索（读/查/列/搜）就持续显示小眼睛，直到探索完。
+
+### 新增
+
+- `Client/src/ai-components/harness/toolVisuals.ts`：工具视觉语义**纯函数层**（无 React 依赖，便于单测）——
+  - `classifyToolVisual`：五类语义 `gaze`（小眼睛）/ `flow`（光流）/ `erase`（方块阵列沉浮）/ `pulse`（终端扫描）/ `gear`（轨道环），按 `.`/`_`/`-`/`/` 分词 + 驼峰切分匹配，显式覆盖 `tool.execute`→gear、`tool.search`→gaze；
+  - `inferSubgroup`：扩展点号/驼峰命名（`file.read`→read、`file.grep`→read、`file.write`→write、`shell.exec`/`code.eval`→exec），旧前缀口径与**大小写敏感**语义保持不变（`Read_file`→system）；
+  - `isExploratoryTool`、`describeToolCall`（动作 · 对象 · 量词，如「写入文件 · Client/src/index.css · 写入 2.0 KB」「执行代码 · 3 行」）、`summarizeToolGroup`（组状态/语义计数/探索态）、`formatCounts`。
+- `Client/src/ai-components/harness/ToolGlyph.tsx` + `ToolGlyph.module.css`：五类执行动画 —— 小眼睛（瞳孔左右扫视 + 定时眨眼）、光流（细→宽→细，双光条错相半程，全程无空窗）、方块阵列沉浮（错峰上下 + 明暗）、终端扫描线、轨道环。
+  - `data-mode`：`running`（执行中）/ `preparing`（模型仍在生成参数，放慢并降透明）/ `settled`（出结果 → 静态同义图标，停止动画）；
+  - 尺寸由 `--glyph-size` 按比例推导，`--glyph-phase` 可错峰；`prefers-reduced-motion` 下停用动画但保留图形，装饰性图形对读屏 `aria-hidden`。
+- `Tests/AIComponents/toolVisuals.spec.tsx`：**52 用例**（语义分类 18 / 子分组与探索型 8 / 描述构建 13 / 组汇总与计数 8 / ToolGlyph 态 7 / ToolGroup 集成 8）。
+
+### 变更
+
+- `Client/src/ai-components/harness/ToolGroup.tsx`：工具行改为 `状态图标 + 动画/图标 + 工具名 + 人读描述 + 子分组徽章 + 耗时 + 参数`；组头增加语义动画、运行状态词（准备中… / 执行中… / 探索中… / N 项失败）与语义计数（`查阅 2 · 写入 1`），运行中组边框按语义着色；新增 `data-testid="tool-group"` 与 `data-state` / `data-exploring`，工具行新增 `data-status` / `data-visual`，出结果时播放一次"落定"扫光。
+- **探索态**：组内仍存在未完成的探索型（读/查/列/搜）调用时，组头持续显示小眼睛且组状态为 `exploring`；探索一完成即切回运行中工具的语义（或静态图标）——对应"接下来都是探索性内容就一致显示小眼睛直到探索完"。
+- `Client/src/ai-components/harness/ToolGroup.tsx` 保留 `inferSubgroup` 等纯函数对外导出（既有 `Tests/AIComponents/subscribeAndToolGroup.spec.ts` 断言口径不变）。
+
+### 测试
+
+- `npx vitest run Tests/AIComponents Tests/Client`：**23 文件 / 288 用例全通过**（含新增 52）。
+- `npx tsc --noEmit -p Client/tsconfig.json` **0 错误**；`npm run build:client`（vite 构建 + renderer 入口校验）通过。
+- 动效实测：headless Chrome 加载**真实** `ToolGlyph.module.css` 逐相位渲染截图 —— 五类图形/配色与 running→preparing→settled 三态符合预期，光流 0.1s 步进 16 相位无空窗（截图为本地临时产物，未入库）。
+
 ## [2026-10-04] 桩实现治理第四批：缓存接线 · 运维实装 · 决策诚实化 · 基础设施 · Skills 消费 · 招募执行（FE-063/064/066/069 ~ 072）
 
 > 第四批 P3 收口（平台运维与基础设施域）+ **同批分层修正**（18 个门禁违规清零）。验证：单测 + 质量门禁 + 真实 LLM 三轮执行（.verify/verify-fe063-fe072.mjs **10/10 PASS**）。

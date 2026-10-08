@@ -50,26 +50,42 @@ describe('G-20 仲裁者池 ↔ 真实 Agent', () => {
   });
   afterEach(() => { closeDatabase(); clearMigrations(); if (existsSync(DIR)) rmSync(DIR, { recursive: true, force: true }); });
 
-  it('★ 每个池位绑定独立真实 Agent（不再只是内存模拟位）', () => {
+  it('★ 初始化只建池位：不再凭空创建治理 Agent（2026-10-07 按需化）', () => {
     initArbitratorPool({ coreCount: 1, auxiliaryCount: 2 });
     const arbs = getAllArbitrators();
+    // 池位（内存槽）照旧 3 个，但**不绑定真实 Agent** —— 用户没做仲裁就不该多出 arbitrator 身份
     expect(arbs.length).toBe(3);
+    expect(arbs.every(a => !a.agentId)).toBe(true);
+    expect(getAgentsByRole('arbitrator' as never).length).toBe(0);
+  });
+
+  it('★ 真正分配仲裁者时才绑定独立真实 Agent（按需创建仍可用）', () => {
+    initArbitratorPool({ coreCount: 1, auxiliaryCount: 2 });
+    const assigned = assignArbitrators('case-need-agents', 2);
+    expect(assigned.ok).toBe(true);
+
+    const arbs = getAllArbitrators();
     const agentIds = arbs.map(a => a.agentId);
-    expect(agentIds.every(Boolean)).toBe(true);
-    expect(new Set(agentIds).size).toBe(3);                       // 互不相同
-    expect(getAgentsByRole('arbitrator' as never).length).toBe(3); // 真实注册了 3 个
+    expect(agentIds.every(Boolean)).toBe(true);                    // 已按需绑定
+    expect(new Set(agentIds).size).toBe(3);                        // 互不相同
+    expect(getAgentsByRole('arbitrator' as never).length).toBe(3);  // 真实注册了 3 个
+  });
+
+  it('★ provisionAgents: true 保留"初始化即绑定"的旧行为（兼容/测试用）', () => {
+    initArbitratorPool({ coreCount: 1, auxiliaryCount: 2, provisionAgents: true });
+    expect(getAgentsByRole('arbitrator' as never).length).toBe(3);
   });
 
   it('★ 池位扩容驱动 Agent 扩容（按需扩容落到 Agent 上）', () => {
     initArbitratorPool({ coreCount: 1, auxiliaryCount: 0 });
-    expect(getAgentsByRole('arbitrator' as never).length).toBe(1);
+    expect(getAgentsByRole('arbitrator' as never).length).toBe(0); // 懒绑定
 
     const scaled = resizeAuxiliaryPool(3);
     expect(scaled.ok).toBe(true);
     if (scaled.ok) expect(scaled.value.added).toBe(3);
 
     expect(getPoolStats().auxiliary).toBe(3);
-    expect(getAgentsByRole('arbitrator' as never).length).toBe(4); // 1 核心 + 3 辅助
+    expect(getAgentsByRole('arbitrator' as never).length).toBe(4); // 扩容后 1 核心 + 3 辅助
   });
 
   it('分配/释放不破坏 Agent 绑定信息', () => {
@@ -113,7 +129,9 @@ describe('G-21 按需回收：缩容与空闲回收联动 Agent', () => {
     getAgentsByRole('arbitrator' as never).filter(a => String(a.status) !== 'destroyed');
 
   it('★ 池位缩容 → 同步回收多余 Agent（软销毁，非物理删除）', () => {
-    initArbitratorPool({ coreCount: 1, auxiliaryCount: 4 });
+    // provisionAgents: true —— 本用例测的是 G-21 回收，需要池位**已绑定** Agent
+    // （池位默认懒绑定，见 2026-10-07 按需化）
+    initArbitratorPool({ coreCount: 1, auxiliaryCount: 4, provisionAgents: true });
     expect(usableArbitrators().length).toBe(5);          // 1 核心 + 4 辅助
 
     const shrunk = resizeAuxiliaryPool(1);
@@ -128,7 +146,8 @@ describe('G-21 按需回收：缩容与空闲回收联动 Agent', () => {
   });
 
   it('★ 空闲回收：只回收"空闲 + 从未裁决 + 超过阈值"的辅助层池位', () => {
-    initArbitratorPool({ coreCount: 1, auxiliaryCount: 3 });
+    // 同上：回收用例需要已绑定的 Agent（懒绑定下先显式 provision）
+    initArbitratorPool({ coreCount: 1, auxiliaryCount: 3, provisionAgents: true });
     // staleMs=0 → 全部辅助 idle 池位符合回收条件；核心层保底
     const recycled = recycleIdleArbitrators({ staleMs: 0 });
     expect(recycled.length).toBe(3);

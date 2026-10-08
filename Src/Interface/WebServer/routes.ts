@@ -20,6 +20,7 @@ import { registerGovernanceRoutes } from '../RestApi/governanceApi.js';
 import { registerRegulationRoutes } from '../RestApi/regulationApi.js';
 import { registerAuditRoutes } from '../RestApi/auditApi.js';
 import { registerArbitrationRoutes } from '../RestApi/arbitrationApi.js';
+import { registerA2ARoutes } from '../RestApi/a2aApi.js';
 import { clearRoutes } from '../RestApi/router.js';
 
 /**
@@ -43,4 +44,5 @@ export function registerAllRoutes(): void {
   registerRegulationRoutes();  // 监管域动作（FE-060：法典/广播/干预/终审）
   registerAuditRoutes();       // 审计域（FE-061：冻结/巡检/稽查）
   registerArbitrationRoutes(); // 仲裁域（FE-062：六步闭环手动驱动/干预/恢复查询）
+  registerA2ARoutes();         // A2A 查询/确认/处置（后端过滤可见性 + G-09 身份门）
 }

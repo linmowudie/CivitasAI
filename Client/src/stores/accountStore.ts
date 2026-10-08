@@ -37,6 +37,7 @@ import { apiPut } from '@/services/api';
 import { usePrefsStore } from '@/stores/prefsStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useApprovalStore } from '@/stores/approvalStore';
+import { syncA2A } from '@/services/a2aSync';
 import {
   exportBackup as syncExportBackup,
   pullAll,
@@ -596,6 +597,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
         statsOverview: res.data.stats ?? get().statsOverview,
         lastError: res.data.warnings.length > 0 ? res.data.warnings.join('；') : null,
       });
+      // A2A 对话同步（P0c）：独立通道随账号同步一起跑；失败不打断主同步（错误已在上层汇总）
+      try { await syncA2A(); } catch { /* 永不抛出：同步失败不影响账号同步结果 */ }
       return true;
     },
 
@@ -620,6 +623,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
       // 上传后刷新云端概览（否则概览数字要等下次拉取才更新）
       const overview = await serverGet<ServerStatsOverview>('/v1/stats/overview');
       if (overview.ok) set({ statsOverview: overview.data });
+      // A2A 对话同步（P0c）：独立通道随账号同步一起跑；失败不打断主同步（错误已在上层汇总）
+      try { await syncA2A(); } catch { /* 永不抛出：同步失败不影响账号同步结果 */ }
       return true;
     },
 

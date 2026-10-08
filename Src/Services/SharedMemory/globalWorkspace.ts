@@ -33,6 +33,36 @@ const entryOwners: Map<string, string> = new Map();
  * 写入条目——受 WriteGuard 保护 + 乐观锁。
  * expectedVersion 不匹配 → 拒写 + VERSION_CONFLICT 事件。
  */
+// ── 通道守卫（A2A 注入；避免 SharedMemory → A2A 循环依赖）────────────
+//
+// 由 `Services/A2A/memoryGuard.attachMemoryChannelGuard()` 在启动时装配。
+// 守卫负责"通道混用/权限互授/溯源完整"三类越界（设计 §16 C7-B、RM4、RM7）。
+
+export interface MemoryWriteGuardInput {
+  key: string;
+  content: string;
+  agentId: string;
+  taskId?: string;
+  actorRole?: string;
+  /** A2A 驱动的写入所对应的来源消息 */
+  sourceMessageId?: string;
+}
+
+export interface MemoryWriteGuardDecision {
+  allowed: boolean;
+  reason?: string;
+  rule?: string;
+}
+
+let memoryChannelGuard: ((input: MemoryWriteGuardInput) => MemoryWriteGuardDecision) | null = null;
+
+/** 装配/卸载通道守卫（传 null 卸载） */
+export function setMemoryChannelGuard(
+  guard: ((input: MemoryWriteGuardInput) => MemoryWriteGuardDecision) | null,
+): void {
+  memoryChannelGuard = guard;
+}
+
 export function write(
   params: {
     key: string;
@@ -48,11 +78,26 @@ export function write(
     conflictStrategy?: WorkspaceEntry['conflictStrategy'];
     /** 写入者角色（2026-10-04）：治理键仅 L0 / user 可写（灵感源 §1.3 分层） */
     actorRole?: string;
+    /** A2A 驱动的写入：来源消息 ID（RM7；须存在、同任务且已放行） */
+    sourceMessageId?: string;
   },
 ): Result<WriteResult> {
   // 红线检查
   if (isForbiddenKey(params.key)) {
     return err(`key "${params.key}" 禁止写入 GlobalWorkspace`);
+  }
+
+  // ★ 通道守卫（A2A 注入，2026-10-05）：C7-B 记忆当信箱 / RM4 权限互授 / RM7 溯源完整
+  if (memoryChannelGuard) {
+    const guarded = memoryChannelGuard({
+      key: params.key,
+      content: params.content,
+      agentId: params.agentId,
+      ...(params.taskId !== undefined ? { taskId: params.taskId } : {}),
+      ...(params.actorRole !== undefined ? { actorRole: params.actorRole } : {}),
+      ...(params.sourceMessageId !== undefined ? { sourceMessageId: params.sourceMessageId } : {}),
+    });
+    if (!guarded.allowed) return err(guarded.reason ?? '写入被通道守卫拒绝');
   }
 
   // ★ 分层写入权限（2026-10-04，灵感源《一些思考2》§1.3）：
@@ -110,6 +155,7 @@ export function write(
       timestamp: now,
       sourceAgentId: params.agentId,
       taskAuthority: params.taskAuthority ?? 0.5,
+      ...(params.sourceMessageId !== undefined ? { sourceMessageId: params.sourceMessageId } : {}),
       evidenceChain: params.evidenceChain,
     },
     version: currentVersion + 1,
