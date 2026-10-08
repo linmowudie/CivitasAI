@@ -12,8 +12,9 @@
 
 ## 0. 一句话目标
 
-在**不改动任何业务实现**的前提下，引入 `@deepseek-ai/cordis` 作为**进程内服务容器**，把 `Src/main.ts` 里
-**121 次手工装配调用**收敛为一棵**方向正确的分层插件树**（`infra → platform → agent-core → kernel/governance → interface`），
+在**隔离工作区**（新分支或新目录，见 §3.0；**禁止在 `main` 上原地修改**）、且**不改动任何业务实现**的前提下，
+引入 `@deepseek-ai/cordis` 作为**进程内服务容器**，把 `Src/main.ts` 里**121 次手工装配调用**收敛为一棵
+**方向正确的分层插件树**（`infra → platform → agent-core → kernel/governance → interface`），
 使：**启动顺序由依赖图保证、关闭顺序自动逆序回卷、服务缺失在启动期即报错（不再静默）**，
 并且 **1636 个既有用例全绿、单文件打包形态不变、Electron 行为不变**。
 
@@ -89,6 +90,40 @@
 
 ## 3. 范围
 
+### 3.0 工作区隔离（强制，开工第一步）
+
+**禁止在 `main` 分支上原地修改代码。** 必须在隔离工作区里改，改完验证通过后再决定是否合并。
+
+| 方案 | 命令 | 适用场景 | 注意 |
+|---|---|---|---|
+| **A. 隔离分支（推荐）** | `git switch -c feat/cordis-composition` | 单个工作目录、最省事；`main` 全程保持可发布 | 与既有改动共用同一个工作目录，隔离靠分支 |
+| **B. `git worktree`（= 另建目录 + 另开分支）** | `git worktree add ../CivitasAI-cordis -b feat/cordis-composition` | 需要**同时保留原目录**做对照（旧实现 vs 新容器） | worktree 只能从**已提交**状态切出——本仓库已于 `763b113` 提交完整快照，现在可直接使用；切出后需在新目录**单独 `npm install`**（worktree 不共享 `node_modules`） |
+| **C. 目录完整副本** | `robocopy . ..\CivitasAI-cordis /E /XD .git node_modules .tmp dist release Logs Data`，再在新目录 `npm install` | 不想让改造分支出现在原仓库的 `git branch` 列表里 | 副本与原仓库脱钩，回退=删目录；**不要**在副本里再开分支混用 |
+
+**禁止方案 D（重要）**：在 `Src/` 内新建 `SrcNext/` / `Src-cordis/` 之类的"影子源码目录"再逐步替换。
+那会造成**两套模块图 / 两个入口**，正是 `Src/main.ts:976-986` 与 `electron/main.ts:527-529` 记录过的历史事故
+（重复初始化 → 工具重复注册 → "所有工具注册失败" → Electron 启动即退出）。
+
+**开工自检**（必须执行并把输出贴进交付报告）：
+
+```bash
+git branch --show-current      # 必须不是 main / master
+git worktree list              # 若走方案 B，确认新目录已挂上
+git status --porcelain         # 必须为空（干净起点）
+git log -1 --format='%h %s'    # 记录基线提交（快照提交为 763b113 或其后续）
+```
+
+**隔离工作区内的提交纪律**：
+
+1. **新增文件**（`Src/Composition/**`、`Tests/Composition/**`、文档）与**既有文件修改**（§4.2）**分开提交**；
+2. 每个 WS 一个提交，例如
+   `chore(composition): WS0 补齐注册撤销 API`、
+   `feat(composition): WS1 容器骨架（上线不接管）`、
+   `feat(composition): WS2/WS3 服务外壳`、
+   `refactor(composition): WS4-1 迁移 infra 层到插件树` …；
+3. `Src/main.ts` 的装配替换按层分多次提交（§5 WS4-5），**禁止**压成一个巨型提交；
+4. 改造期间 `main` 分支上**不得出现任何 cordis 相关提交**；合并时机由人工决定，本任务只负责在隔离区内做完并给出证据。
+
 ### 3.1 本次交付（P1）
 
 | WS | 内容 | 预估人日 |
@@ -113,32 +148,41 @@
 
 ## 4. 交付物清单（文件级）
 
-| 路径 | 动作 | 说明 |
-|---|---|---|
-| `package.json` | 改 | 加依赖 `"@deepseek-ai/cordis": "4.0.4"`（**精确版本，不加 `^`**）；加脚本 `"verify:tree"` |
-| `package-lock.json` | 改 | `npm install` 生成 |
-| `.eslintrc.json` | **不改** | 分层 zones 保持原样 |
-| `Src/Composition/container.ts` | 新建 | `createContainer` / `mount` / `dispose` / 挂载计划 |
-| `Src/Composition/selftest.ts` | 新建 | `scanFibers` / `assertNoPending`（启动自检） |
-| `Src/Composition/plugins/*.ts` | 新建 | 每层/每服务一个插件（详见 §5） |
-| `Src/Composition/index.ts` | 新建 | 统一导出 |
-| `Src/main.ts` | 改 | 装配体逐步替换为"建容器 + 挂树 + 自检"；`stopServer()` 改为 `container.dispose()` |
-| `Src/Services/Hook/hookRegistry.ts` | 改 | 新增 `unregisterHookHandler`（WS0-1） |
-| `Src/Services/Hook/index.ts` | 改 | 导出上述新函数 |
-| `Src/Tools/Registry/toolRegistry.ts` | 改 | 新增 `unregisterTool`（WS0-2） |
-| `Src/Tools/index.ts` | 改 | 导出上述新函数 |
-| `Src/Interface/RestApi/router.ts` | 改 | 新增 `unregisterRoute`（WS0-3） |
-| `Src/Interface/WebServer/routes.ts` | 改 | 导出上述新函数 |
-| `Src/Core/Middleware/index.ts` | 改 | 补导出 `unregisterMiddleware`（WS0-4，函数已存在于 `middlewareRegistry.ts:59`） |
-| `Src/Infra/Watcher/configWatcher.ts` | 改 | 新增 `offConfigChange`（WS0-8；`onConfigChange` 无返回值） |
-| `Src/Infra/Watcher/index.ts` | 改 | 导出上述新函数 |
-| `package.json` 的 `layer-check` 脚本 | 改 | 去掉 `--rule` 覆盖，使分层 zones 真正生效（WS0-5） |
-| `.husky/pre-commit` | 改 | 去掉 `\|\| true`（WS0-6） |
-| `Tests/Composition/container.spec.ts` | 新建 | 容器语义与自检（§6.3） |
-| `Tests/Composition/layerTree.spec.ts` | 新建 | 层树不变量（§6.3） |
-| `Tests/Services/hookRegistryUnregister.spec.ts` 等 5 个 | 新建 | WS0 的 5 个新 API（§6.3） |
-| `CHANGELOG.md` | 追加 | 一条 `feat:` 记录（WS5） |
-| `Docs/Dev/Cordis容器化与分层插件树-实现记录.md` | 新建 | qoder 的交付记录（§7 内容） |
+> **⚠️ 全部改动都在 §3.0 的隔离工作区（新分支或新目录）内进行；`main` 分支不得出现下述任何改动。**
+
+### 4.1 新增文件（新目录，与既有文件零冲突）
+
+| 路径 | 说明 |
+|---|---|
+| `Src/Composition/container.ts` | `createContainer` / `mount` / `dispose` / 挂载计划 |
+| `Src/Composition/selftest.ts` | `scanFibers` / `assertAllActive`（启动自检） |
+| `Src/Composition/plugins/*.ts` | 每层/每服务一个插件（详见 §5 WS2–WS4） |
+| `Src/Composition/index.ts` | 统一导出 |
+| `Tests/Composition/container.spec.ts` | 容器语义与自检（§6.3） |
+| `Tests/Composition/layerTree.spec.ts` | 层树不变量（§6.3） |
+| `Tests/Services/hookRegistryUnregister.spec.ts` 等 5 个 | WS0 的 5 个新 API（§6.3） |
+| `Docs/Dev/Cordis容器化与分层插件树-实现记录.md` | qoder 的交付记录（§7 内容） |
+
+### 4.2 既有文件修改（**必须最小化、单独提交、逐条登记**）
+
+| 路径 | 动作 | 说明 | 归属提交 |
+|---|---|---|---|
+| `Src/Services/Hook/hookRegistry.ts` | 改 | 新增 `unregisterHookHandler`（WS0-1） | WS0 |
+| `Src/Services/Hook/index.ts` | 改 | 导出上述新函数 | WS0 |
+| `Src/Tools/Registry/toolRegistry.ts` | 改 | 新增 `unregisterTool`（WS0-2） | WS0 |
+| `Src/Tools/index.ts` | 改 | 导出上述新函数 | WS0 |
+| `Src/Interface/RestApi/router.ts` | 改 | 新增 `unregisterRoute`（WS0-3） | WS0 |
+| `Src/Interface/WebServer/routes.ts` | 改 | 追加一行 re-export | WS0 |
+| `Src/Core/Middleware/index.ts` | 改 | 补导出 `unregisterMiddleware`（WS0-4） | WS0 |
+| `Src/Infra/Watcher/configWatcher.ts` | 改 | 新增 `offConfigChange`（WS0-8） | WS0 |
+| `Src/Infra/Watcher/index.ts` | 改 | 导出上述新函数 | WS0 |
+| `package.json` | 改 | 加依赖 `"@deepseek-ai/cordis": "4.0.4"`（**精确版本，不加 `^`**）、加脚本 `"verify:tree"`、修实 `layer-check`（WS0-5） | WS0 / WS1 |
+| `package-lock.json` | 改 | `npm install` 生成 | WS1 |
+| `.husky/pre-commit` | 改 | 去掉 `\|\| true`（WS0-6） | WS0 |
+| `CHANGELOG.md` | 追加 | 一条 `feat(composition):` 记录 | WS5 |
+| `Src/main.ts` | 改 | **本次唯一的功能性既有文件改动**：装配体逐步替换为"建容器 + 挂树 + 自检"；`stopServer()` 改为 `container.dispose()` | WS4（按层分多次提交） |
+
+`.eslintrc.json`、`Scripts/build.cjs`、`electron/**`、`Client/**`、`Server/**`：**不改**。
 
 ---
 
@@ -657,6 +701,11 @@ node Scripts/verifyPackage.cjs      # 记录：输出结论
 ### 6.2 统一验收命令（每个 WS 结束都要跑，全部必须通过）
 
 ```bash
+# ⓪ 隔离校验（必须最先跑：确认不在 main 上改、且基线提交可追溯）
+git branch --show-current               # 必须不是 main / master
+git log -1 --format='%h %s'             # 记录基线（快照提交 763b113 或其后续）
+git status --porcelain                  # 提交后必须为空
+
 # ① 类型门禁（四套，全部 0 错误）
 npx tsc --noEmit                        # 根
 npm run typecheck:electron              # Electron 主进程/preload
@@ -674,6 +723,9 @@ npx vitest run Tests/Composition        # WS1 之后可用
 # ④ 构建与产物校验
 npm run build:server
 node Scripts/verifyPackage.cjs
+
+# ⑤ 隔离边界（必须为空输出）
+git diff --name-only main...HEAD -- .eslintrc.json Scripts/build.cjs electron Client Server
 ```
 
 ### 6.3 新增自动化验证（**必须新建，逐条覆盖**）
@@ -745,6 +797,7 @@ Select-String -Path Src\Composition -Recurse -Pattern "stopWatching|stopAuditCyc
 
 | 项 | 判据 | 证据形式 |
 |---|---|---|
+| **隔离合规** | 当前分支不是 `main`；`main` 上无 cordis 相关提交；§6.2 ⑤ 输出为空 | `git branch --show-current` + `git log --oneline main..HEAD` + 空输出 |
 | 既有用例不减少 | `npx vitest run` 通过数 ≥ 基线 | 命令 + 尾部输出 |
 | 新增用例全绿 | `npx vitest run Tests/Composition` 全通过 | 命令 + 输出 |
 | 四套类型门禁 | 全部 0 错误 | 四条命令输出 |
@@ -761,17 +814,21 @@ Select-String -Path Src\Composition -Recurse -Pattern "stopWatching|stopAuditCyc
 
 ## 7. 交付报告格式（写入 `Docs/Dev/Cordis容器化与分层插件树-实现记录.md`）
 
-1. **改动文件清单**（路径 + 一句话改动 + 新增/修改）。
+0. **隔离信息（置顶）**：采用哪种隔离方案（A 分支 / B worktree / C 副本）、**分支名**、**工作目录绝对路径**、
+   基线提交 hash（`git log -1 --format='%h %s'`）、以及本次全部提交的列表（`git log --oneline <基线>..HEAD`）。
+1. **改动文件清单**（路径 + 一句话改动 + 新增/修改），并**明确区分 §4.1 新增 与 §4.2 既有文件修改**。
 2. **基线 vs 结果对照表**：测试通过数、typecheck 错误数、lint 错误/警告数、`dist/main/Src/main.js` 体积。
 3. **每个 WS 的完成证据**：命令 + 关键输出（**不要只写"已实现"**）。
 4. **验收矩阵**（§6.6）逐行打勾 + 证据。
 5. **未完成/存疑项**：遇到无法解决的点**必须写下来**（含复现命令与现象），不要只在对话里说明。
 6. **与评估报告的偏差**：若实施中发现评估报告的某个判断不成立，**列出并附证据**，不要静默偏离。
+7. **合并建议**：给出"是否建议合并到 main / 需要人工复核的点 / 建议的合并方式（squash 或保留分步提交）"。
 
 ---
 
 ## 8. 明确**不要**做的事
 
+- ❌ **不要在 `main` 分支上原地修改**（见 §3.0）；不要在 `Src/` 内新建 `SrcNext/` 之类的影子源码目录。
 - ❌ 不要重写业务逻辑、不要"顺手"重构 `Src/Infra|Services|Core|Tools|Interface` 的内部实现。
 - ❌ 不要引入 loader / `cordis.yml` / HMR / schemastery（本次不在范围）。
 - ❌ 不要改 `Scripts/build.cjs`、不要改 electron-builder 配置、不要新增 external。
@@ -786,12 +843,18 @@ Select-String -Path Src\Composition -Recurse -Pattern "stopWatching|stopAuditCyc
 
 ## 9. 回退方案
 
+> 前提：全部改动都在 §3.0 的隔离分支/目录里，**`main` 从未被污染**，因此回退成本极低。
+
 | 场景 | 回退动作 |
 |---|---|
+| 想彻底放弃本次改造 | 方案 A：`git switch main` 后删除分支（`git branch -D feat/cordis-composition`）；方案 B：`git worktree remove ../CivitasAI-cordis --force`；方案 C：直接删除副本目录。`main` 不受任何影响 |
 | 某个 WS 卡住 | `git revert` 该 WS 的提交（每个 WS 独立提交正是为此） |
-| 容器导致启动变慢/异常且短期无法定位 | 在 `main.ts` 保留一个开关常量 `const USE_CONTAINER = true`，置 `false` 时走原装配路径**一次完整版本**再移除；**不允许长期双轨** |
+| 只想回退"对既有文件的修改" | `git checkout main -- <path>`（§4.2 的清单是有限且已知的），新建的 `Src/Composition/**` 可原样保留 |
+| `Src/main.ts` 装配替换出错 | `git checkout main -- Src/main.ts` 即可回到旧装配；容器骨架（新增文件）仍在，不影响启动 |
+| 容器导致启动变慢/异常且短期无法定位 | 在 `main.ts` 保留一个开关常量 `const USE_CONTAINER = true`，置 `false` 时走原装配路径**一次完整版本**再移除；**不允许长期双轨**（会形成两套装配入口） |
 | 打包后 Electron 白屏 | 先确认 `dist/main/Src/main.js` 生成且 `verifyPackage.cjs` 通过；本任务不应触碰 Electron 主进程，若确实相关立即 revert WS1 之后的提交 |
-| cordis 版本问题 | 依赖已精确锁 `4.0.4`；如需回退到上游，改动仅限 `package.json` 一处（但需重新跑 §6.4 全套） |
+| cordis 版本问题 | 依赖已精确锁 `4.0.4`；如需回退到上游，改动仅限 `package.json` 一处（但需重新跑 §6.2 全套） |
+| 改造中途需要同步 `main` 的新提交 | 在隔离分支上 `git merge main`（或 `git rebase main`）；**不要**把隔离分支的改动 cherry-pick 回 `main` |
 
 ---
 
