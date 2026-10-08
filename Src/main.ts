@@ -7,7 +7,7 @@
  */
 
 import { resolve, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 
 import { loadConfig, getConfigValueOr } from './Infra/Config/configLoader.js';
 import { initLogger, logger, shutdownLogger } from './Infra/Logging/logger.js';
@@ -839,10 +839,16 @@ attachA2AGovernance();
     host,
     port: httpPort,
     corsOrigins,
-    // 静态托管目录：开发态 = 仓库 `Client/dist`；打包态 = asar 内 `dist/renderer`。
-    // 桌面端走 `loadFile`，此处主要服务"浏览器模式/局域网访问"。
-    staticDir: [join(getAppRoot(), 'Client', 'dist'), join(getAppRoot(), 'dist', 'renderer')]
-      .find(dir => existsSync(dir)),
+    // 静态托管目录：开发态有两个历史路径 —— `dist/renderer`（vite 当前输出）与 `Client/dist`（旧输出）；
+    // 打包态为 asar 内 `dist/renderer`。两者都存在时**必须选最新构建**：实测 `Client/dist` 长期停留在
+    // 旧版本（2026-09-14，引用旧 hash），若按固定顺序取第一个，浏览器 / 局域网模式会一直提供过期前端，
+    // 而 Electron 走 loadFile 看不出问题 —— "界面改了没生效" 的经典陷阱。
+    staticDir: [
+      join(getAppRoot(), 'dist', 'renderer'),
+      join(getAppRoot(), 'Client', 'dist'),
+    ]
+      .filter(dir => existsSync(join(dir, 'index.html')))
+      .sort((a, b) => statSync(join(b, 'index.html')).mtimeMs - statSync(join(a, 'index.html')).mtimeMs)[0],
   });
   logger.info('HTTP 服务器启动', { source: 'main', port: httpPort });
 

@@ -91,16 +91,18 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
       res.end(JSON.stringify({ ok: false, error: `Not Found: ${path}` }));
     });
 
-    server.listen(config.port, config.host, () => {
-      // 启动成功
-    });
-
-    server.on('error', (e) => {
+    // 端口绑定是异步的：**必须等 listening 回调再 resolve**。
+    // 原实现在 listen() 之后立刻 resolve，于是 EADDRINUSE（端口被另一个实例占用）
+    // 被当成"启动成功"——启动日志照打 "HTTP 服务器启动"，实际请求却打到旧进程，
+    // 表现为"改了代码没生效"。错误必须从这里显式抛出。
+    server.once('error', (e) => {
+      server = null;
       reject(e);
     });
 
-    // 立即 resolve（端口绑定是异步的，但此处不阻塞启动链）
-    resolvePromise();
+    server.listen(config.port, config.host, () => {
+      resolvePromise();
+    });
   });
 }
 
