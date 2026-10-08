@@ -116,4 +116,69 @@ describe('workspaceGuard', () => {
     expect(findEscapingPathInCommand('type C:\\Windows\\win.ini', ws)).not.toBeNull();
     expect(findEscapingPathInCommand(`type ${join(ws, 'ok.txt')}`, ws)).toBeNull();
   });
+
+  // ── 重复路径归一化（2026-10-08：工作目录注入模型上下文后的新风险面）──
+  // 背景：模型看到绝对工作目录后，可能把该目录的"一部分"当成相对路径写，
+  // 直接解析会拼出 <root>/Data/workspaces/<sess>/... 这种根内但不存在的重复目录，
+  // 表现为"文件不存在/列目录为空"，比越界拒绝更难归因。
+
+  it('相对路径里重复了工作目录尾部（多段）→ 剥离后正确解析', () => {
+    const ws = join(root, 'ws-dup-1', 'Data', 'workspaces', 'sess-dup');
+    ensureWorkspaceDir(ws);
+    const r = resolveWithinWorkspace('Data/workspaces/sess-dup/src/a.ts', ws);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(join(ws, 'src', 'a.ts'));
+  });
+
+  it('反斜杠写法同样被归一化', () => {
+    const ws = join(root, 'ws-dup-2', 'Data', 'workspaces', 'sess-dup2');
+    ensureWorkspaceDir(ws);
+    const r = resolveWithinWorkspace('Data\\workspaces\\sess-dup2\\src\\a.ts', ws);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(join(ws, 'src', 'a.ts'));
+  });
+
+  it('只带会话目录名（单段）且根内无同名目录 → 归一化', () => {
+    const ws = join(root, 'ws-dup-3', 'Data', 'workspaces', 'sess-dup3');
+    ensureWorkspaceDir(ws);
+    const r = resolveWithinWorkspace('sess-dup3/src/a.ts', ws);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(join(ws, 'src', 'a.ts'));
+  });
+
+  it('单段同名目录在根内真实存在 → 不剥离（尊重真实相对路径）', () => {
+    const ws = join(root, 'ws-dup-4', 'Data', 'workspaces', 'sess-dup4');
+    ensureWorkspaceDir(ws);
+    ensureWorkspaceDir(join(ws, 'sess-dup4'));
+    const r = resolveWithinWorkspace('sess-dup4/report.txt', ws);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(join(ws, 'sess-dup4', 'report.txt'));
+  });
+
+  it('归一化不放松越界约束（`..` 与根外绝对路径仍被拒）', () => {
+    const ws = join(root, 'ws-dup-5', 'Data', 'workspaces', 'sess-dup5');
+    ensureWorkspaceDir(ws);
+    expect(resolveWithinWorkspace('../outside.txt', ws).ok).toBe(false);
+    expect(resolveWithinWorkspace('Data/../../outside.txt', ws).ok).toBe(false);
+    expect(resolveWithinWorkspace(join(root, 'elsewhere.txt'), ws).ok).toBe(false);
+  });
+
+  it('正常相对路径与根内绝对路径不受归一化影响', () => {
+    const ws = join(root, 'ws-dup-6', 'Data', 'workspaces', 'sess-dup6');
+    ensureWorkspaceDir(ws);
+    const rel = resolveWithinWorkspace('src/a.ts', ws);
+    expect(rel.ok).toBe(true);
+    if (rel.ok) expect(rel.value).toBe(join(ws, 'src', 'a.ts'));
+    const abs = resolveWithinWorkspace(join(ws, 'src', 'a.ts'), ws);
+    expect(abs.ok).toBe(true);
+    if (abs.ok) expect(abs.value).toBe(join(ws, 'src', 'a.ts'));
+  });
+
+  it('大小写不敏感匹配（Windows 路径）', () => {
+    const ws = join(root, 'ws-dup-7', 'Data', 'workspaces', 'Sess-Dup7');
+    ensureWorkspaceDir(ws);
+    const r = resolveWithinWorkspace('data/WORKSPACES/sess-dup7/src/a.ts', ws);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(join(ws, 'src', 'a.ts'));
+  });
 });

@@ -88,7 +88,7 @@ describe('runIteration · 工作目录进入模型可见上下文', () => {
 
     expect(wsMessage).toBeDefined();
     expect(String(wsMessage?.content)).toContain(WORK_DIR);
-    expect(String(wsMessage?.content)).toContain('以该目录为根');
+    expect(String(wsMessage?.content)).toContain('相对本目录的路径');
     // 追加区在历史之后（系统提示仍是第一条，前缀缓存不被破坏）
     expect(messages[0]?.role).toBe('system');
     expect(String(messages[0]?.content)).not.toContain('[ctx:workspace]');

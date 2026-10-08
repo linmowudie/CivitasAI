@@ -97,6 +97,41 @@ export function isWithinWorkspace(target: string, workspaceRoot: string): boolea
 }
 
 /**
+ * 归一化"把工作目录尾部当相对路径写"的入参。
+ *
+ * 场景：`runIteration` 会把会话工作目录注入模型上下文（追加区 `[ctx:workspace]`），
+ * 模型写相对路径时可能把该目录的一部分也带上，例如：
+ *   `Data/workspaces/<sess>/src/a.ts` 或 `<sess>/src/a.ts`
+ * 若直接 `resolve(root, target)`，会拼成 `<root>/Data/workspaces/<sess>/src/a.ts`
+ * —— **落在根内（守卫放行）却指向不存在的子目录**，表现为"文件不存在 / 列目录为空"，
+ * 比越界拒绝更难归因（用户反馈的"重复路径导致失败"即此）。
+ *
+ * 规则（只有 target 为相对路径时生效）：
+ * - 找 root 的**后缀**与 target 的**前缀**最长的逐段匹配（Windows 大小写不敏感）；
+ * - 匹配 n>=2 段：直接剥离（真实目录里几乎不可能存在与根尾部同形的相对子路径）；
+ * - 匹配 n==1 段：仅当根内**不存在**同名子目录时才剥离（避免把真实存在的同名目录误判为重复）。
+ *
+ * 安全性：被剥离的正是 root 自身的尾部，剥离后仍在 root 内 —— **不放松任何越界约束**。
+ */
+function stripDuplicatedRootPrefix(root: string, target: string): string {
+  const rootSegs = root.split(/[\\/]+/).filter(Boolean);
+  const head = target.split(/[\\/]+/).filter(s => s !== '' && s !== '.');
+  if (head.length === 0) return target;
+
+  const max = Math.min(rootSegs.length, head.length);
+  for (let n = max; n >= 1; n--) {
+    const suffix = rootSegs.slice(rootSegs.length - n).join('/').toLowerCase();
+    const prefix = head.slice(0, n).join('/').toLowerCase();
+    if (suffix !== prefix) continue;
+    // n==1：根内存在同名子目录 → 视为真实相对路径，不剥离
+    if (n === 1 && existsSync(join(root, head[0]!))) return target;
+    const rest = head.slice(n);
+    return rest.length > 0 ? rest.join(sep) : '.';
+  }
+  return target;
+}
+
+/**
  * 把工具入参路径解析为工作目录内的绝对路径。
  * 越界一律拒绝（FATAL，不可重试）。
  */
@@ -105,7 +140,10 @@ export function resolveWithinWorkspace(target: string, workspaceRoot: string): R
     return err('路径不能为空', 'ERROR');
   }
   const root = resolve(workspaceRoot);
-  const abs = isAbsolute(target) ? resolve(target) : resolve(root, target);
+  const trimmed = target.trim();
+  // 相对路径先做"重复根"归一化（模型可能把工作目录尾部也写进相对路径）
+  const effective = isAbsolute(trimmed) ? trimmed : stripDuplicatedRootPrefix(root, trimmed);
+  const abs = isAbsolute(effective) ? resolve(effective) : resolve(root, effective);
   if (!isWithinWorkspace(abs, root)) {
     return err(`路径越界：'${target}' 不在工作目录内（${root}）`, 'FATAL');
   }

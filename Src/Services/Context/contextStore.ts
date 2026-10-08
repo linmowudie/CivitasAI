@@ -12,6 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { sep } from 'node:path';
 
 /** 上下文分区：同键代表"同一主题的最新内容" */
 export interface ContextSection {
@@ -134,8 +135,12 @@ export function buildWorkspaceSection(workDir: string | undefined | null): Conte
   return {
     key: WORKSPACE_SECTION_KEY,
     content: `当前会话工作目录：${dir}\n`
-      + '相对路径（dir.list / file.read / file.write / file.edit / grep / shell.exec 的 cwd）一律以该目录为根；'
-      + '不要使用 "/"、"." 或其它绝对路径。',
+      + '路径写法（三选一，勿混用）：'
+      + '① 相对本目录的路径，例：src/a.ts；'
+      + `② 完整绝对路径，例：${dir}${sep}src${sep}a.ts；`
+      + '③ 单写 "." 表示本目录本身。\n'
+      + '禁止：不要写只带本目录"一部分"的路径（例：Data\\workspaces\\<会话>\\src\\a.ts 或 <会话>\\src\\a.ts）'
+      + '——它会被当成相对路径解析，拼出不存在的重复目录。',
     timestamp: Date.now(),
   };
 }

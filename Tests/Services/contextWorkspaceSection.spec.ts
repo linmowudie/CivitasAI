@@ -23,14 +23,18 @@ describe('buildWorkspaceSection · 会话工作目录分区', () => {
     expect(buildWorkspaceSection('   ')).toBeNull();
   });
 
-  it('有工作目录时给出绝对路径与"以此为根"的约束', () => {
+  it('有工作目录时给出绝对路径、三种合法写法与禁止写法', () => {
     const section = buildWorkspaceSection(DIR);
     expect(section).not.toBeNull();
     if (!section) return;
     expect(section.key).toBe(WORKSPACE_SECTION_KEY);
     expect(section.content).toContain(DIR);
-    expect(section.content).toContain('以该目录为根');
-    expect(section.content).toContain('不要使用');
+    expect(section.content).toContain('路径写法');
+    expect(section.content).toContain('相对本目录的路径');
+    expect(section.content).toContain('完整绝对路径');
+    // 明示"半截路径"会被当成相对路径拼出重复目录（2026-10-08 用户反馈的失败模式）
+    expect(section.content).toContain('禁止');
+    expect(section.content).toContain('重复目录');
   });
 
   it('两端空白被裁剪（避免路径带空格导致工具判定不一致）', () => {
