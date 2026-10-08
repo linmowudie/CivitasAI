@@ -7,6 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { resolve } from 'node:path';
 
 import { getMainDb } from '../../Infra/Db/index.js';
 import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
@@ -160,10 +161,58 @@ export function createSession(title?: string, workDir?: string): ChatSessionRow 
   };
 }
 
-/** 更新会话工作目录（不存在则创建；空值表示重置为默认目录） */
-export function updateSessionWorkDir(sessionId: string, workDir: string | null): Result<ChatSessionRow> {
+/**
+ * 该会话是否已经产生对话（存在任何一条消息）。
+ *
+ * 用途：工作目录锁定的判据。用 SQL 计数而不是 `listMessages()`，避免把整行消息读进来。
+ */
+export function hasConversation(sessionId: string): boolean {
+  const row = getMainDb()
+    .prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id = ? AND owner_user_id = ?')
+    .get(sessionId, getActiveOwner()) as { n: number } | undefined;
+  return (row?.n ?? 0) > 0;
+}
+
+/**
+ * 工作目录是否已被锁定（任务已有对话，且目标目录与当前目录不同）。
+ *
+ * 单一判据：领域层（`updateSessionWorkDir`）与接口层（REST/IPC 路由）共用，
+ * 避免"路由先放行、领域层再拒绝"这类双份规则漂移。
+ * 幂等情形（目标 == 当前）不视为锁定，重复提交同一目录不报错。
+ */
+export function isWorkDirLocked(sessionId: string, nextDir: string | null): boolean {
+  const session = getSession(sessionId);
+  if (!session) return false;
+  const target = nextDir && nextDir.trim() !== '' ? nextDir : defaultWorkspaceDir(sessionId);
+  const next = resolve(target);
+  const current = session.work_dir && session.work_dir.trim() !== ''
+    ? resolve(session.work_dir)
+    : null;
+  if (current !== null && current === next) return false;
+  return hasConversation(sessionId);
+}
+
+/**
+ * 更新会话工作目录（不存在则创建；空值表示重置为默认目录）。
+ *
+ * 业务规则（2026-10-08 用户明确）：**任务已经有对话后，不允许在当前任务切换工作目录**。
+ * 理由：中途换根会让已产生的工具结果、文件引用与模型上下文里的 `[ctx:workspace]`（仍是旧目录）
+ * 全部失效，表现为"文件突然找不到"，比直接拒绝更难排查。目录应在新建任务（空对话）时选定，
+ * 之后只读；需要换目录请新建任务。
+ *
+ * `options.allowLocked` 仅供内部回填（迁移前创建、`work_dir` 为空的老会话）使用。
+ */
+export function updateSessionWorkDir(
+  sessionId: string,
+  workDir: string | null,
+  options?: { allowLocked?: boolean },
+): Result<ChatSessionRow> {
   const session = getSession(sessionId);
   if (!session) return err(`会话不存在: ${sessionId}`, 'ERROR');
+
+  if (!options?.allowLocked && isWorkDirLocked(sessionId, workDir)) {
+    return err(WORK_DIR_LOCKED_MESSAGE, 'ERROR');
+  }
 
   const target = workDir && workDir.trim() !== '' ? workDir : defaultWorkspaceDir(sessionId);
   const workspace = ensureWorkspaceDir(target);
@@ -176,12 +225,16 @@ export function updateSessionWorkDir(sessionId: string, workDir: string | null):
   return ok({ ...session, work_dir: workspace.value, updated_at: Date.now() });
 }
 
+/** 工作目录锁定的用户可见文案（领域层与接口层共用，避免两处措辞漂移） */
+export const WORK_DIR_LOCKED_MESSAGE = '该任务已有对话，工作目录不可更改；如需更换请新建任务';
+
 /** 读取会话工作目录（缺省时补齐默认目录并落库，兼容迁移前创建的会话） */
 export function ensureSessionWorkDir(sessionId: string): string | null {
   const session = getSession(sessionId);
   if (!session) return null;
   if (session.work_dir && session.work_dir.trim() !== '') return session.work_dir;
-  const updated = updateSessionWorkDir(sessionId, null);
+  // 内部回填：老会话 work_dir 为空但可能已有对话 → 绕过锁定判据
+  const updated = updateSessionWorkDir(sessionId, null, { allowLocked: true });
   return updated.ok ? (updated.value.work_dir ?? null) : null;
 }
 
@@ -409,7 +462,12 @@ export function registerChatRoutes(): void {
     // workDir 支持显式修改；传 null/'' 表示重置为默认工作目录
     if (req.body !== undefined && 'workDir' in (req.body as Record<string, unknown>)) {
       const raw = (req.body as Record<string, unknown>)['workDir'];
-      const result = updateSessionWorkDir(sessionId, typeof raw === 'string' ? raw : null);
+      const next = typeof raw === 'string' ? raw : null;
+      // 已有对话 → 锁定（409 Conflict：前端据此提示"新建任务后再选目录"）
+      if (isWorkDirLocked(sessionId, next)) {
+        return apiError(WORK_DIR_LOCKED_MESSAGE, 409);
+      }
+      const result = updateSessionWorkDir(sessionId, next);
       if (!result.ok) return apiError(result.error, 400);
       return json(result.value);
     }

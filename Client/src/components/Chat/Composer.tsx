@@ -12,17 +12,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Paperclip, Image, Bot, Zap } from 'lucide-react';
 import type { WorkingMode } from '@/stores/chatStore';
-
-/** 工作方式标签映射 */
-const WORKING_MODE_LABELS: Record<WorkingMode, string> = {
-  DIRECT: '直接执行',
-  DELEGATION: '委托模式',
-  ASSEMBLY_LINE: '流水线',
-  CONSORTIUM: ' consortium',
-  LITIGATION: '诉讼模式',
-  REGULATION: '监管模式',
-  AUDIT: '审计模式',
-};
+import { WORKING_MODE_OPTIONS } from './workingModeLabels';
 
 interface ComposerProps {
   onSend: (content: string, model?: string, workingMode?: WorkingMode) => void;
@@ -39,12 +29,19 @@ interface ComposerProps {
   onSelectModel?: (model: string) => void;
   /** 切换工作方式 */
   onSelectWorkingMode?: (mode: WorkingMode) => void;
+  /**
+   * 隐藏底栏的"模型 / 工作方式"选择器。
+   *
+   * 用于新任务空态：那里由 NewTaskSetup 在输入框**上方**统一提供三个入口，
+   * 底栏再放一份会让同一设置出现两处。默认 false（常规对话布局不变）。
+   */
+  hideSelectors?: boolean;
 }
 
 export default function Composer({
   onSend, onStop, isStreaming, disabled,
   availableModels = [], selectedModel = '', selectedWorkingMode = 'DIRECT',
-  onSelectModel, onSelectWorkingMode,
+  onSelectModel, onSelectWorkingMode, hideSelectors = false,
 }: ComposerProps) {
   const [input, setInput] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -130,7 +127,7 @@ export default function Composer({
             </button>
 
             {/* 模型选择器 */}
-            {availableModels.length > 0 && onSelectModel && (
+            {!hideSelectors && availableModels.length > 0 && onSelectModel && (
               <div className="relative ml-1">
                 <select
                   value={selectedModel}
@@ -150,7 +147,7 @@ export default function Composer({
             )}
 
             {/* 工作方式选择器 */}
-            {onSelectWorkingMode && (
+            {!hideSelectors && onSelectWorkingMode && (
               <div className="relative ml-1">
                 <select
                   value={selectedWorkingMode}
@@ -159,7 +156,7 @@ export default function Composer({
                   className="h-7 pl-2 pr-6 rounded-md bg-surface-700 border border-surface-600 text-text-secondary text-xs outline-none focus:border-brand-500 appearance-none disabled:opacity-50 cursor-pointer"
                   title="工作方式"
                 >
-                  {Object.entries(WORKING_MODE_LABELS).map(([key, label]) => (
+                  {WORKING_MODE_OPTIONS.map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
                   ))}
                 </select>

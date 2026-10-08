@@ -18,6 +18,7 @@ import { send } from '@/services/eventBusBridge';
 import { AIEventBus } from '@/ai-components/AIEventBus';
 import MessageList from '@/components/Chat/MessageList';
 import Composer from '@/components/Chat/Composer';
+import NewTaskSetup from '@/components/Chat/NewTaskSetup';
 
 export default function ChatView() {
   const {
@@ -77,27 +78,59 @@ export default function ChatView() {
   // ── 派生数据 ──
   const activeMessages = messages[activeAgentSessionId ?? ''] ?? [];
   const isStreaming = streamingMessageId !== null;
+  /**
+   * 新任务空态：会话已选中但还没有任何消息。
+   * 此时输入框放在**中偏下**（上下弹性留白 1 : 0.75），上方摆"工作目录 / 模型 / 工作模式"三个入口；
+   * 一旦产生对话就回到常规布局（顶部对话流 + 底部输入框），且目录锁定。
+   */
+  const isEmptyTask = !!activeAgentSessionId && activeMessages.length === 0;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {activeAgentSessionId ? (
         <AIEventBus sessionId={activeAgentSessionId}>
-          <MessageList
-            key={chatKey}
-            messages={activeMessages}
-            streamingMessageId={streamingMessageId}
-            sessionId={activeAgentSessionId}
-          />
-          <Composer
-            onSend={handleSend}
-            onStop={handleStop}
-            isStreaming={isStreaming}
-            availableModels={availableModels}
-            selectedModel={selectedModel}
-            selectedWorkingMode={selectedWorkingMode}
-            onSelectModel={handleSelectModel}
-            onSelectWorkingMode={handleSelectWorkingMode}
-          />
+          {isEmptyTask ? (
+            <div className="flex-1 min-h-0 flex flex-col" data-testid="new-task-empty-state">
+              {/* 上下弹性留白 1 : 0.75 → 操作区落在"中偏下"，而不是贴底 */}
+              <div className="flex-[1] min-h-0" data-testid="new-task-spacer-top" />
+              <div className="w-full max-w-3xl mx-auto px-4">
+                <NewTaskSetup sessionId={activeAgentSessionId} />
+              </div>
+              <div className="w-full max-w-3xl mx-auto">
+                <Composer
+                  onSend={handleSend}
+                  onStop={handleStop}
+                  isStreaming={isStreaming}
+                  availableModels={availableModels}
+                  selectedModel={selectedModel}
+                  selectedWorkingMode={selectedWorkingMode}
+                  onSelectModel={handleSelectModel}
+                  onSelectWorkingMode={handleSelectWorkingMode}
+                  hideSelectors
+                />
+              </div>
+              <div className="flex-[0.75] min-h-0" data-testid="new-task-spacer-bottom" />
+            </div>
+          ) : (
+            <>
+              <MessageList
+                key={chatKey}
+                messages={activeMessages}
+                streamingMessageId={streamingMessageId}
+                sessionId={activeAgentSessionId}
+              />
+              <Composer
+                onSend={handleSend}
+                onStop={handleStop}
+                isStreaming={isStreaming}
+                availableModels={availableModels}
+                selectedModel={selectedModel}
+                selectedWorkingMode={selectedWorkingMode}
+                onSelectModel={handleSelectModel}
+                onSelectWorkingMode={handleSelectWorkingMode}
+              />
+            </>
+          )}
         </AIEventBus>
       ) : (
         <div className="flex-1 flex items-center justify-center text-text-muted text-sm">

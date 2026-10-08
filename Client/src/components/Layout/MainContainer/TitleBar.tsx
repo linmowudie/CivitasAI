@@ -51,6 +51,10 @@ function getViewInfo(mainView: MainView): { icon: React.ReactNode; title: string
 export default function TitleBar() {
   const mainView = useUIStore((s) => s.mainView);
   const activeSessionId = useChatStore((s) => s.activeAgentSessionId);
+  // 任务已有对话 → 工作目录锁定（只读）。接口层同样会拒绝切换，这里只是把状态可见化。
+  const hasConversation = useChatStore(
+    (s) => (s.activeAgentSessionId ? (s.messages[s.activeAgentSessionId]?.length ?? 0) > 0 : false),
+  );
   const info = getViewInfo(mainView);
 
   return (
@@ -62,9 +66,9 @@ export default function TitleBar() {
           <div className="text-[10px] text-text-muted truncate">{info.desc}</div>
         )}
       </div>
-      {/* 当前会话工作目录（仅对话视图显示） */}
+      {/* 当前会话工作目录（仅对话视图显示；已有对话时只读） */}
       {mainView.type === 'conversation' && activeSessionId && (
-        <WorkDirBar sessionId={activeSessionId} />
+        <WorkDirBar sessionId={activeSessionId} locked={hasConversation} />
       )}
     </div>
   );

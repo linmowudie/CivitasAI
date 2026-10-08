@@ -210,8 +210,13 @@ interface ChatState {
   createSession: (title?: string) => Promise<string | null>;
   /** 归档 / 取消归档任务（软状态）；成功后刷新两个列表 */
   archiveSession: (sessionId: string, archived: boolean) => Promise<boolean>;
-  /** 更新会话工作目录（空值=重置为默认目录），返回生效后的路径 */
-  setWorkDir: (sessionId: string, workDir: string | null) => Promise<string | null>;
+  /**
+   * 更新会话工作目录（空值=重置为默认目录）。
+   *
+   * 返回生效后的路径或失败原因：任务已有对话时后端会拒绝（HTTP 409），
+   * 需要把该原因透出给 UI，而不是统一显示"更新失败"。
+   */
+  setWorkDir: (sessionId: string, workDir: string | null) => Promise<{ ok: boolean; workDir: string | null; error?: string }>;
   sendMessage: (sessionId: string, content: string) => Promise<string | null>;
   setActiveSession: (id: string | null) => void;
   /** 选中右侧对话项 */
@@ -615,25 +620,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setWorkDir: async (sessionId, workDir) => {
     // 优先 IPC 直连，降级 HTTP
     let updatedSession: ChatSession | null = null;
+    let lastError: string | undefined;
     try {
       const ipcRes = await ipcUpdateSession({ sessionId, workDir });
       if (ipcRes.ok && ipcRes.data) {
         updatedSession = ipcRes.data as ChatSession;
       } else {
+        lastError = ipcRes.error;
         const res = await apiPatch<ChatSession>(`/api/sessions/${sessionId}`, { workDir });
-        if (!res.ok) return null;
+        if (!res.ok) return { ok: false, workDir: null, error: res.error.message };
         updatedSession = res.data;
       }
     } catch {
       const res = await apiPatch<ChatSession>(`/api/sessions/${sessionId}`, { workDir });
-      if (!res.ok) return null;
+      if (!res.ok) return { ok: false, workDir: null, error: res.error.message };
       updatedSession = res.data;
     }
-    if (!updatedSession) return null;
+    if (!updatedSession) {
+      return { ok: false, workDir: null, error: lastError ?? '工作目录更新失败' };
+    }
     set(state => ({
       sessions: state.sessions.map(s => (s.session_id === sessionId ? updatedSession! : s)),
     }));
-    return updatedSession.work_dir ?? null;
+    return { ok: true, workDir: updatedSession.work_dir ?? null };
   },
 
   sendMessage: async (sessionId, content) => {
