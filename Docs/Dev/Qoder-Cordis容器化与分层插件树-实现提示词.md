@@ -16,7 +16,7 @@
 引入 `@deepseek-ai/cordis` 作为**进程内服务容器**，把 `Src/main.ts` 里**121 次手工装配调用**收敛为一棵
 **方向正确的分层插件树**（`infra → platform → agent-core → kernel/governance → interface`），
 使：**启动顺序由依赖图保证、关闭顺序自动逆序回卷、服务缺失在启动期即报错（不再静默）**，
-并且 **1636 个既有用例全绿、单文件打包形态不变、Electron 行为不变**。
+并且 **1635 个既有用例全绿、单文件打包形态不变、Electron 行为不变**。
 
 ---
 
@@ -266,10 +266,17 @@ export function unregisterRoute(method: HttpMethod, path: string): boolean {
 ```
 （即与 `lint` 同规则但语义明确；`lint` 已包含 zones。）
 
-#### WS0-6 修实 pre-commit
+#### WS0-6 修实 pre-commit 并确认钩子真的接上了
 
-`.husky/pre-commit` 中 eslint 一行结尾的 `2>/dev/null || true` 改为**失败即中断**（去掉 `|| true`）。
-保留 `tsc --noEmit` 两条。若担心误伤，可改 `|| true` 为 `|| exit 1`。
+1. `.husky/pre-commit` 中 eslint 一行结尾的 `2>/dev/null || true` 改为**失败即中断**（去掉 `|| true`）；
+   保留 `tsc --noEmit` 两条。
+2. **确认 husky 是否生效**：`git config core.hooksPath` 必须为 `.husky`。
+   ⚠️ **本机实测为空**（`.husky/*` 文件权限也是 `100644`）→ 即 **pre-commit / pre-push 从未真正执行过**，
+   `commitlint` / `lint` / `vitest` 都不会在提交/推送时自动跑。若为空，执行 `npm run prepare`（即 `husky`）接线。
+3. ⚠️ 仓库**没有 `.prettierrc`**：`pretty-quick --staged --pattern '**/*.ts'` 会按 prettier 默认（80 列）改写文件
+   —— 2026-10-08 实测**待提交的 60 个 `.ts/.tsx` 全部会被重排**。**在补上 `.prettierrc`（或移除该步骤）之前，
+   不要启用 pre-commit 的 prettier 步骤**，否则会产生与本任务无关的全量格式 diff。
+   本任务的所有提交在解决该问题前允许使用 `--no-verify`，但**必须在交付报告里注明**并说明已人工跑过 §6.2 的门禁。
 
 #### WS0-7（可选）`engines.node`
 
@@ -448,7 +455,7 @@ export async function stopServer(): Promise<void> {
  * <服务名>：把现有 <模块> 的模块级 API 暴露为容器服务。
  *
  * 本外壳是"极薄转发"：方法体只调用现有函数，不改变任何行为与状态归属（状态仍在原模块里）。
- * 这样既有 1636 个用例（直接调用模块函数）不受影响，容器只是多了一条可注入的查找路径。
+ * 这样既有 1635 个用例（直接调用模块函数）不受影响，容器只是多了一条可注入的查找路径。
  */
 import { Service } from '@deepseek-ai/cordis';
 import type { Context } from '@deepseek-ai/cordis';
@@ -697,6 +704,10 @@ node Scripts/verifyPackage.cjs      # 记录：输出结论
 
 > ⚠️ **基线必须自己实测记录**，不要抄本文档里的数字（那些是 2026-10-08 的快照，可能已变化）。
 > 后续所有"不低于基线"的判定都以你实测的数字为准。
+>
+> 参考（2026-10-08 本机实测）：`npx vitest run` → **133 文件 / 1635 用例全绿，耗时约 17 s**；
+> `npm run typecheck` → 0 error；`npm run lint` → 0 error / 307 warnings；`dist/main/Src/main.js` ≈ 735 KB。
+> 本次快照提交为 `763b113`（132 文件 / +20838 / −467），隔离改造应从它或其后续提交切出。
 
 ### 6.2 统一验收命令（每个 WS 结束都要跑，全部必须通过）
 
