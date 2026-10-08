@@ -82,19 +82,19 @@ export async function parseSseStream(
     clearCurrentTimeout();
     timeoutHandle = setTimeout(() => {
       timeoutRejected = true;
-      reader.cancel().catch(() => {});
+      reader.cancel().catch(() => { /* fail-soft：正在中止读取，取消失败无需处理 */ });
     }, ms);
   };
 
   // 外部中止监听
   const abortHandler = () => {
     timeoutRejected = true;
-    reader.cancel().catch(() => {});
+    reader.cancel().catch(() => { /* fail-soft：正在中止读取，取消失败无需处理 */ });
   };
   if (config.signal?.aborted) {
     // 已经中止，立即生效
     timeoutRejected = true;
-    reader.cancel().catch(() => {});
+    reader.cancel().catch(() => { /* fail-soft：正在中止读取，取消失败无需处理 */ });
   } else {
     config.signal?.addEventListener('abort', abortHandler, { once: true });
   }

@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import AppLayout from '@/components/Layout/AppLayout';
 import AppTitleBar from '@/components/Layout/AppTitleBar';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ApiKeyDialog from '@/components/Settings/ApiKeyDialog';
 import LoginPage from '@/views/Auth/LoginPage';
 import OnboardingWizard from '@/views/Onboarding/OnboardingWizard';
 import { useAccountStore } from '@/stores/accountStore';
@@ -84,6 +85,8 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
         <Route path="/*" element={<AppLayout />} />
       </Routes>
+      {/* 全局提示层：缺 API Key 时弹窗并提供「前往设置密钥」（任意视图都能看到） */}
+      <ApiKeyDialog />
     </>
   );
 }

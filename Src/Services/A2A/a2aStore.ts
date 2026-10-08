@@ -10,6 +10,7 @@
 
 import { getMainDb } from '../../Infra/Db/database.js';
 import { getActiveOwner } from '../../Infra/AccountScope/activeAccount.js';
+import { logger } from '../../Infra/Logging/logger.js';
 import type { AgentCard, A2AEnvelope, BrokerDecision, CollusionAlert, HandoffBundle } from './types.js';
 
 /** 落库的消息记录（信封 + Broker 判定元数据） */
@@ -49,7 +50,16 @@ export function canPersist(): boolean {
 export function resetStoreProbe(): void { tablesReady = null; }
 
 function safeRun(fn: () => void): void {
-  try { fn(); } catch { /* fail-safe：持久化失败不影响主链路 */ }
+  try {
+    fn();
+  } catch (e) {
+    // fail-safe 保留（不阻塞主链路），但**必须留痕**：持久化失败意味着消息/卡片会丢，
+    // 用户侧表现为"记录不见了"，没有日志就完全无法归因。
+    logger.warn('[A2A] 持久化失败（已降级：本条不落库）', {
+      source: 'a2aStore',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 // ── 卡片 ────────────────────────────────────────────────────────────

@@ -448,7 +448,21 @@ export async function startServer(): Promise<{ httpPort: number }> {
         });
         const regResult = registerProvider(provider);
         if (regResult.ok) providerCount++;
-      } catch { /* Provider 注册失败不阻塞启动 */ }
+        else {
+          logger.warn('供应商注册未成功（该供应商的模型不可用）', {
+            source: 'main/provider', provider: pc['provider'], error: regResult.error,
+          });
+        }
+      } catch (e) {
+        // **不能静默**：`Configs/modelRouter.json` 是用户可编辑的，provider 名/URL/models 写错时
+        // 用户只会看到"模型凭空消失"，没有任何线索。这里点名 config 项与原因。
+        logger.warn('供应商配置无效，已跳过（请检查 Configs/modelRouter.json 的 providers 段）', {
+          source: 'main/provider',
+          provider: pc['provider'] ?? '(缺少 provider 字段)',
+          baseUrl: pc['base_url'],
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
   setRoutingConfig({

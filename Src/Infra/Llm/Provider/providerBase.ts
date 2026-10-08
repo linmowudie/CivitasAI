@@ -173,6 +173,24 @@ export abstract class LlmProvider {
     return this.config.models.find(m => m.id === modelId);
   }
 
+  /**
+   * API Key 是否就绪（**不抛异常**，供发消息前预检与界面提示使用）。
+   *
+   * 与 `resolveApiKey()` 同一判定，但把"未配置"从异常变成返回值：
+   * 缺 Key 是**用户可自行修复的配置问题**，应该在界面上给出可操作提示
+   * （弹窗 + 跳转"设置 → 模型供应商"），而不是等模型调用失败后只留一个空回复。
+   *
+   * @returns ok=true 表示可直接调用；ok=false 时 reason 为面向用户的原因
+   */
+  apiKeyStatus(): { ok: true } | { ok: false; reason: string } {
+    try {
+      this.resolveApiKey();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   /** 非流式调用 */
   abstract chat(options: CallOptions): Promise<Result<CallResult>>;
 

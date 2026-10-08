@@ -62,8 +62,12 @@ export interface SkillsAssetsLoadResult {
   behaviorCodeLoaded: boolean;
 }
 
-/** 装载 Skills/ 资产（幂等覆盖；单文件失败降级跳过，不阻断启动） */
+/** 装载 Skills/ 资产（幂等覆盖；单文件失败降级跳过，并**逐条告警**——用户放进来的资产读不出来必须可见） */
 export function loadSkillsAssets(dir: string = getSkillsDir()): SkillsAssetsLoadResult {
+  // 用户可自行修复的装载失败（路径/权限/编码）收集起来统一告警：
+  // 静默跳过会让用户面对"我明明加了 Skill 却不生效"，无处下手。
+  const loadFailures: string[] = [];
+
   // playbooks（全部 .md）
   playbooks = new Map();
   const playbookDir = join(dir, 'playbooks');
@@ -74,9 +78,13 @@ export function loadSkillsAssets(dir: string = getSkillsDir()): SkillsAssetsLoad
         try {
           const content = readFileSync(join(playbookDir, file), 'utf-8').trim();
           if (content) playbooks.set(file.slice(0, -3), content);
-        } catch { /* 单文件失败跳过 */ }
+        } catch (e) {
+          loadFailures.push(`playbooks/${file}: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
-    } catch { /* 目录读取失败跳过 */ }
+    } catch (e) {
+      loadFailures.push(`playbooks 目录不可读: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // rubrics/verifierL3Calibration.json
@@ -131,7 +139,14 @@ export function loadSkillsAssets(dir: string = getSkillsDir()): SkillsAssetsLoad
       const content = readFileSync(behaviorPath, 'utf-8').trim();
       behaviorCodeMarkdown = content || null;
     }
-  } catch { /* 跳过 */ }
+  } catch (e) {
+    loadFailures.push(`rules/behaviorCode.md: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // 用户可自行修复的装载失败必须留痕（否则表现为"资产静默不生效"）
+  for (const detail of loadFailures) {
+    logger.warn('Skills 资产装载失败（已跳过该文件）', { source: 'skillsAssets', detail });
+  }
 
   const result: SkillsAssetsLoadResult = {
     playbooks: playbooks.size,
@@ -139,7 +154,7 @@ export function loadSkillsAssets(dir: string = getSkillsDir()): SkillsAssetsLoad
     strategies: strategyCandidates.length,
     behaviorCodeLoaded: behaviorCodeMarkdown !== null,
   };
-  logger.info('Skills 资产装载完成', { source: 'skillsAssets', ...result });
+  logger.info('Skills 资产装载完成', { source: 'skillsAssets', ...result, failedFiles: loadFailures.length });
   return result;
 }
 

@@ -31,7 +31,14 @@ export function attachA2AGovernance(options: { reconcile?: boolean } = {}): void
       if (stats.issued || stats.synced || stats.destroyed) {
         logger.info(`[A2A] 卡片回灌对账：补签 ${stats.issued}｜同步 ${stats.synced}｜标记销毁 ${stats.destroyed}`);
       }
-    } catch { /* fail-safe：对账失败不影响启动 */ }
+    } catch (e) {
+      // fail-safe 保留，但**必须留痕**：对账失败会造成卡片与注册表不一致（治理面问题），
+      // 静默吞掉后没人知道需要人工介入。
+      logger.warn('[A2A] 卡片回灌对账失败（治理面可能不一致）', {
+        source: 'a2a/attach',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
   logger.info('[A2A] 治理面已装配（卡片同步 + 记忆通道守卫）');
 }

@@ -13,7 +13,9 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSystemStore } from '@/stores/systemStore';
 import { useEventStore } from '@/stores/eventStore';
 import { useHotReloadStore } from '@/stores/hotReloadStore';
+import { useUIStore } from '@/stores/uiStore';
 import { EventType } from '@/shared/eventTypes';
+import { isMissingApiKeyError, stripMissingApiKeyMarker } from '@/shared/apiKeyNotice';
 
 // ── 大屏/概要刷新节流（FE-012）──────────────────────────────────────
 
@@ -84,7 +86,18 @@ export function useEventBus() {
         const data = msg.data as { messageId?: string; tokensUsed?: number; error?: string };
         if (data.messageId) {
           if (data.error) {
-            useChatStore.getState().setStreamError(data.messageId, data.error);
+            /*
+             * 缺 API Key 是可自行修复的配置问题：除了把原因写到消息上，
+             * 还要**弹窗并引导到设置页**（2026-10-08）。此前后端什么都不回，
+             * 界面只剩一个空进度条，用户不知道发生了什么。
+             */
+            if (isMissingApiKeyError(data.error)) {
+              const reason = stripMissingApiKeyMarker(data.error);
+              useChatStore.getState().setStreamError(data.messageId, reason);
+              useUIStore.getState().showApiKeyNotice(reason);
+            } else {
+              useChatStore.getState().setStreamError(data.messageId, data.error);
+            }
           } else {
             useChatStore.getState().finalizeStream(data.messageId, data.tokensUsed);
           }

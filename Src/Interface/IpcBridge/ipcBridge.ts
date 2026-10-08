@@ -48,7 +48,19 @@ import {
   type ProvidersSecrets,
 } from '../../Infra/Security/secretsStore.js';
 import { getSkillsDir } from '../../Infra/Fs/pathResolver.js';
+import { findProviderToMerge } from '../../Infra/Llm/providerSecretMatch.js';
+import { evaluateSecretWrite } from '../../Infra/Security/secretWriteGuard.js';
 import { registerOnboardingIpc, ONBOARDING_IPC_CHANNELS } from './onboardingIpc.js';
+
+/**
+ * 「未配置 API Key」在流错误里的标记前缀。
+ *
+ * 为什么用标记而不是给事件加字段：`AGENT_STREAM_END` 的 payload 类型是代码生成的
+ * （`npm run gen:event-types`），加字段要连带改生成物与客户端；而前端只需要判断
+ * "这是可引导到设置页的配置问题"这一件事。
+ * 客户端有一份镜像常量（`Client/src/shared/apiKeyNotice.ts`），并有单测断言两者一致。
+ */
+export const MISSING_API_KEY_MARKER = '[MISSING_API_KEY] ';
 
 // ── Electron 动态导入（非 Electron 环境下优雅降级）────────────────
 
@@ -352,15 +364,45 @@ function registerIpcHandlers(ipcMain: any): void {
       if (!stored || stored.providers.length === 0) return;
       let restored = 0;
       let skipped = 0;
+      let merged = 0;
       for (const secret of stored.providers) {
         // 跳过历史脏数据（曾被子串覆盖写空）
         if (!hasUsableSecret(secret)) {
           skipped++;
           continue;
         }
+        const key = secret.provider?.trim() || secret.name;
+
+        /*
+         * 命中配置里已注册的同名 provider → **就地换密钥**（2026-10-08 修复）。
+         *
+         * 原实现无条件 `uniqueProviderName(key)` 造新名，于是：
+         * 配置里 `huawei-maas`（api_key_ref=env:XXX，环境变量没设）与恢复出的
+         * `huawei-maas-2`（inline 密钥，但 models 取自 secret、常为空）**并存**；
+         * 路由解析 `huawei-maas/DeepSeek-V4-Flash` 仍落到**没密钥的那个**，
+         * 用户保存过的 Key 形同不存在 → 每次调用都报"环境变量未设置"。
+         * 现在：同名则替换密钥，并**沿用配置里的模型清单**（配置是模型路由的权威来源）。
+         */
+        const existing = findProviderToMerge(getProviders(), secret);
+        if (existing) {
+          unregisterProvider(existing.name);
+          const mergedResult = registerProvider(new OpenAIProvider({
+            provider: existing.name,
+            base_url: secret.baseUrl || existing.config.base_url,
+            api_key_ref: `inline:${secret.apiKey}`,
+            display_name: existing.displayName,
+            models: existing.getModels(),
+          }));
+          if (mergedResult.ok !== false) {
+            restored++;
+            merged++;
+          }
+          continue;
+        }
+
         // 注册名唯一化（FE-036）：同类型多实例（如两条 openai-compatible 凭据）
         // 若都以类型名注册会互相覆盖，故按当前已注册集合生成唯一名。
-        const regName = uniqueProviderName(secret.provider?.trim() || secret.name);
+        const regName = uniqueProviderName(key);
         const result = registerProvider(new OpenAIProvider({
           provider: regName,
           base_url: secret.baseUrl,
@@ -371,7 +413,7 @@ function registerIpcHandlers(ipcMain: any): void {
         if (result.ok !== false) restored++;
       }
       logger.info('已按加密凭据恢复供应商', {
-        source: 'ipcBridge', restored, skipped, total: stored.providers.length,
+        source: 'ipcBridge', restored, skipped, merged, total: stored.providers.length,
       });
     } catch (e) {
       logger.warn('恢复供应商凭据失败', { source: 'ipcBridge', error: e instanceof Error ? e.message : String(e) });
@@ -423,7 +465,15 @@ function registerIpcHandlers(ipcMain: any): void {
   ipcMain.handle('ipc-remove-provider', (_event: any, name: string) => {
     try {
       unregisterProvider(name);
-      void removeProviderSecret(name).catch(() => { /* 忽略：凭据删除失败不影响注销 */ });
+      // 凭据删除失败**不能静默**：否则"移除供应商"后重启它又回来，用户既无法理解也无法修复
+      // （原则：可被用户解决的错误不得吞掉，至少要留可定位的日志）。
+      void removeProviderSecret(name).catch((e: unknown) => {
+        logger.warn('供应商凭据删除失败（重启后该供应商可能重新出现）', {
+          source: 'ipcBridge',
+          provider: name,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -746,14 +796,27 @@ function registerIpcHandlers(ipcMain: any): void {
     try {
       const current = await loadProviderSecrets();
       const incoming = secrets?.providers ?? [];
-      const blanks = incoming.filter((p) => !hasUsableSecret(p)).map((p) => p.name);
-      if (blanks.length > 0 && current?.providers?.length) {
-        return {
-          ok: false,
-          error: `拒绝写入不完整凭据（缺少 apiKey/baseUrl）：${blanks.join(', ')}。请通过「添加供应商」重新填写。`,
-        };
+      const currentCount = current?.providers?.length ?? 0;
+
+      // 守卫在 Infra（可单测）：**拒绝用空列表清空已有凭据**（实测导致过凭据静默丢失），
+      // 以及拒绝把字段写空的条目（历史客户端会把 apiKey 写成空串）。
+      const decision = evaluateSecretWrite(currentCount, incoming);
+      if (!decision.ok) {
+        logger.warn('拒绝写入供应商凭据（保护已有凭据不被覆盖/清空）', {
+          source: 'ipcBridge',
+          stored: currentCount,
+          incoming: incoming.length,
+          reason: decision.error,
+        });
+        return { ok: false, error: decision.error };
       }
-      await saveProviderSecrets(secrets);
+      if (decision.warning) {
+        logger.warn('供应商凭据数量减少', {
+          source: 'ipcBridge', stored: currentCount, incoming: incoming.length,
+        });
+      }
+
+      await saveProviderSecrets({ providers: incoming, updatedAt: Date.now() });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -909,6 +972,35 @@ async function startStreamGeneration(
           eventType: EventType.AGENT_STREAM_END,
           source: 'ipcBridge/streamGeneration',
           payload: { messageId: streamMessageId, error: '无可用模型' },
+        }));
+        return;
+      }
+    }
+
+    // 2.5 API Key 预检（2026-10-08）：缺 Key 是**用户可自行修复的配置问题**，
+    //     必须在跑循环之前就明确报出来，并带 `MISSING_API_KEY` 标记让前端弹窗引导到设置页。
+    //     此前直接进循环 → 模型调用秒失败 → 循环以 exitReason='risk' 结束 →
+    //     没产出正文也没有 error → 界面只留一个空进度条（用户看到的"没反应"）。
+    const resolvedNow = resolveModel(model);
+    if (resolvedNow.ok) {
+      const provider = resolvedNow.value.provider;
+      const keyStatus = provider.apiKeyStatus();
+      if (!keyStatus.ok) {
+        const providerLabel = provider.displayName || provider.name;
+        logger.warn('未配置 API Key，拒绝发起模型调用', {
+          source: 'ipcBridge/streamGeneration',
+          model,
+          provider: provider.name,
+          reason: keyStatus.reason,
+        });
+        publish(createEvent({
+          eventType: EventType.AGENT_STREAM_END,
+          source: 'ipcBridge/streamGeneration',
+          payload: {
+            messageId: streamMessageId,
+            error: `${MISSING_API_KEY_MARKER}未配置 API Key：${providerLabel}（${keyStatus.reason}）。`
+              + '请在「设置 → 模型供应商」填写 API Key 后重试。',
+          },
         }));
         return;
       }
@@ -1075,7 +1167,20 @@ async function startStreamGeneration(
       publish(createEvent({
         eventType: EventType.AGENT_STREAM_END,
         source: 'ipcBridge/streamGeneration',
-        payload: { messageId: streamMessageId, tokensUsed: result.totalTokensConsumed },
+        payload: {
+          messageId: streamMessageId,
+          tokensUsed: result.totalTokensConsumed,
+          // 2026-10-08：**绝不让一轮对话静默结束**。
+          // 循环返回 ok 但没有任何正文（模型调用失败/被短路/以 risk 退出）时，
+          // 必须把最后一轮的退出说明作为 error 回传，否则界面只剩一个空进度条。
+          ...(!outputText
+            ? {
+                error: lastIter?.decision?.exitMessage
+                  ?? lastIter?.shortCircuitReason
+                  ?? `本次未产生回复（exitReason=${result.exitReason ?? 'unknown'}）`,
+              }
+            : {}),
+        },
       }));
 
       // 首次请求：让模型为本次任务起名（失败回退为截断用户消息）

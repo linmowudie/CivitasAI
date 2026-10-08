@@ -8,6 +8,7 @@
 
 import type { Result } from '../../Infra/types.js';
 import { ok, err } from '../../Infra/types.js';
+import { logger } from '../../Infra/Logging/logger.js';
 
 import type { DomainEvent, EventType, EventHandler, Subscription, EventPriority } from './eventTypes.js';
 
@@ -58,8 +59,15 @@ export function publish(event: DomainEvent): Result<void> {
   for (const sub of subscribers) {
     if (sub.eventTypes.includes(event.eventType)) {
       // 异步执行，不阻塞发布者
-      Promise.resolve(sub.handler(event)).catch(() => {
-        // 消费者异常不传播到发布者
+      // 消费者异常**不传播**给发布者（fail-soft），但**必须留痕**：
+      // 静默吞掉会让订阅方（Hook / AI 组件 / 审计）的缺陷完全不可见。
+      Promise.resolve(sub.handler(event)).catch((e: unknown) => {
+        logger.warn('事件订阅者处理失败（已隔离，不影响发布者）', {
+          source: 'eventBus',
+          eventType: event.eventType,
+          subscriberId: sub.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
       });
     }
   }

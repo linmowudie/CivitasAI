@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import type { Result } from '../types.js';
 import { ok, err } from '../types.js';
 import { checkPath } from '../Security/pathGuard.js';
+import { logger } from '../Logging/logger.js';
 
 // ===== 类型定义 =====
 
@@ -113,7 +114,15 @@ export function atomicWriteBuffer(filePath: string, data: Buffer, options: Atomi
       try {
         const fd = openSync(tmpPath, 'r');
         try { fsyncSync(fd); } finally { closeSync(fd); }
-      } catch { /* fsync 失败静默跳过 */ }
+      } catch (e) {
+        // fsync 失败**不能静默**：它意味着"持久化写入"可能并未真正落盘
+        // （磁盘已满 / 卷只读 / IO 错误），而这正是用户可排查处置的情况。
+        logger.warn('原子写入 fsync 失败（数据可能未真正落盘）', {
+          source: 'atomicWrite',
+          target: targetPath,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
 
     renameSync(tmpPath, targetPath);
@@ -142,8 +151,19 @@ export function atomicAppend(filePath: string, content: string, options: AtomicW
   if (existsSync(check.resolvedPath)) {
     try {
       existing = readFileSync(check.resolvedPath, 'utf-8');
-    } catch {
-      // 读取失败 → 从空开始
+    } catch (e) {
+      /*
+       * 读旧内容失败**必须报错，不能从空开始**：否则 atomicAppend 会把原文件内容整段抹掉，
+       * 用户看到的是"追加了一段，前面全没了"——典型的数据丢失，且归因困难。
+       * （权限不足 / 文件被占用等都是用户可排查的情况。）
+       */
+      const message = e instanceof Error ? e.message : String(e);
+      logger.warn('追加写入前读取原内容失败（已中止，避免覆盖丢失）', {
+        source: 'atomicWrite/append',
+        target: check.resolvedPath,
+        error: message,
+      });
+      return err(`追加写入失败：无法读取原文件内容（${message}）`, 'ERROR');
     }
   }
 

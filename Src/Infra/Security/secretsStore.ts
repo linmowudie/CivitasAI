@@ -67,7 +67,7 @@ async function getSafeStorage(): Promise<SafeStorage | null> {
     const candidate = mod.safeStorage ?? mod.default?.safeStorage;
     if (candidate) safeStorage = candidate;
   } catch {
-    // 非 Electron 环境
+    // fail-soft：非 Electron 环境没有 safeStorage，降级为 Base64 存储（见 encrypt()）
   }
   return safeStorage;
 }

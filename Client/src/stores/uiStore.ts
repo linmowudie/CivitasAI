@@ -47,6 +47,11 @@ interface UIState {
   markTabVisited: (kind: PreviewKind) => void;
   previewFile: string | null;
   setPreviewFile: (file: string | null) => void;
+
+  /* 「未配置 API Key」提示（弹窗 + 引导到设置页） */
+  apiKeyNotice: string | null;
+  showApiKeyNotice: (message: string) => void;
+  dismissApiKeyNotice: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -93,6 +98,11 @@ export const useUIStore = create<UIState>((set, get) => ({
     }),
   previewFile: null,
   setPreviewFile: (file) => set({ previewFile: file }),
+
+  /* ── 「未配置 API Key」提示 ── */
+  apiKeyNotice: null,
+  showApiKeyNotice: (message) => set({ apiKeyNotice: message }),
+  dismissApiKeyNotice: () => set({ apiKeyNotice: null }),
 }));
 
 /* 导出常量供其他模块使用 */

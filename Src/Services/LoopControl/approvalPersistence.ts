@@ -47,15 +47,26 @@ interface ApprovalRow {
 }
 
 function rowToApproval(row: ApprovalRow): PendingApproval {
+  // 落库 JSON 损坏时降级为空值（不阻断读取），但**必须留痕**：
+  // 否则表现为"审批记录里的内容不见了"，用户与排障都无从下手。
+  const parseFailure = (field: string, e: unknown): void => {
+    logger.warn('审批记录字段解析失败（已降级为空值）', {
+      source: 'approvalPersistence',
+      approvalId: row.approval_id,
+      field,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  };
+
   let payload: unknown = null;
-  try { payload = JSON.parse(row.payload_json); } catch { /* 保留 null */ }
+  try { payload = JSON.parse(row.payload_json); } catch (e) { parseFailure('payload_json', e); }
 
   let deciders: ApprovalDecider[] = [];
-  try { deciders = JSON.parse(row.deciders_json) as ApprovalDecider[]; } catch { /* 保留空 */ }
+  try { deciders = JSON.parse(row.deciders_json) as ApprovalDecider[]; } catch (e) { parseFailure('deciders_json', e); }
 
   let decidedBy: string[] | undefined;
   if (row.decided_by_json) {
-    try { decidedBy = JSON.parse(row.decided_by_json) as string[]; } catch { /* 保留 undefined */ }
+    try { decidedBy = JSON.parse(row.decided_by_json) as string[]; } catch (e) { parseFailure('decided_by_json', e); }
   }
 
   return {

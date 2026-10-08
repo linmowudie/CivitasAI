@@ -10,6 +10,8 @@
 import { statSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
+import { logger } from '../Logging/logger.js';
+
 // ===== 类型定义 =====
 
 /** 配额配置 */
@@ -124,9 +126,22 @@ export function scanDirectorySize(dirPath: string): number {
         } else if (entry.isDirectory()) {
           total += scanDirectorySize(fullPath);
         }
-      } catch { /* ignore inaccessible entries */ }
+      } catch (e) {
+        // 不可访问条目（权限/占用）会让配额统计偏小 → 判定偏差，属用户可排查项，不能静默
+        logger.warn('配额扫描跳过不可访问条目（统计值可能偏小）', {
+          source: 'quotaManager',
+          path: fullPath,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    logger.warn('配额扫描无法读取目录（统计值可能偏小）', {
+      source: 'quotaManager',
+      path: resolved,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
   return total;
 }
 
