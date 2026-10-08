@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Trash2, RefreshCw, ChevronDown, Check, Circle, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { useModelStore, PRESET_PROVIDERS } from '@/stores/modelStore';
 import { ipcVerifyModels, type ModelVerificationDto } from '@/services/ipcApi';
+import { detectProviderByUrl, isValidHttpUrl, normalizeBaseUrl } from '@/services/providerDetect';
 import type { ModelSpec, RoutingConfig } from '@/stores/modelStore';
 
 export default function ModelProviderPanel() {
@@ -26,6 +27,8 @@ export default function ModelProviderPanel() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('');
+  /** API 地址：选预设时自动填充，留空则靠地址自动识别供应商（可手改） */
+  const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<ModelSpec[]>([]);
@@ -46,15 +49,35 @@ export default function ModelProviderPanel() {
 
   const currentPreset = PRESET_PROVIDERS.find(p => p.id === selectedPreset);
 
+  /** 实际使用的地址：用户输入优先（选预设时会自动填进来） */
+  const effectiveBaseUrl = normalizeBaseUrl(baseUrl);
+  const urlValid = isValidHttpUrl(effectiveBaseUrl);
+  /** 未选供应商时的自动识别结果 */
+  const detected = useMemo(() => detectProviderByUrl(effectiveBaseUrl), [effectiveBaseUrl]);
+  const providerLabel = useMemo(
+    () => (currentPreset
+      ? { id: currentPreset.id, name: currentPreset.name, detected: true, matchedBy: null as string | null }
+      : detected
+        ? { id: detected.id, name: detected.name, detected: true, matchedBy: detected.matchedBy }
+        : { id: 'custom', name: '自定义供应商', detected: false, matchedBy: null as string | null }),
+    [currentPreset, detected],
+  );
+
+  // 选了供应商 → 自动填充其地址（仍可手改）；切回"自动识别"时保留当前地址便于微调
+  useEffect(() => {
+    if (currentPreset) setBaseUrl(currentPreset.base_url);
+  }, [currentPreset]);
+
   // 拉取模型列表（拉取后：清空勾选与校验结果——绝不默认全选）
   const handleFetchModels = useCallback(async () => {
-    if (!currentPreset || !apiKey.trim()) {
-      setFormError('请先选择供应商并输入 API Key');
+    // 不要求先选供应商：只要地址合法 + 有 Key（供应商可由地址自动识别）
+    if (!urlValid || !apiKey.trim()) {
+      setFormError('请先填写 API 地址与 API Key');
       return;
     }
     setFetchingModels(true);
     setFormError('');
-    const result = await fetchProviderModels(currentPreset.base_url, apiKey.trim());
+    const result = await fetchProviderModels(effectiveBaseUrl, apiKey.trim());
     setFetchingModels(false);
     if (result.ok && result.data) {
       setFetchedModels(result.data);
@@ -63,7 +86,7 @@ export default function ModelProviderPanel() {
     } else {
       setFormError(result.error ?? '拉取模型失败');
     }
-  }, [currentPreset, apiKey, fetchProviderModels]);
+  }, [urlValid, effectiveBaseUrl, apiKey, fetchProviderModels]);
 
   /** 切换单个模型的勾选 */
   const toggleModel = useCallback((id: string) => {
@@ -79,7 +102,7 @@ export default function ModelProviderPanel() {
    * 只校验不导入；是否导入由用户勾选决定。
    */
   const handleVerifyModels = useCallback(async () => {
-    if (!currentPreset || !apiKey.trim() || fetchedModels.length === 0) {
+    if (!urlValid || !apiKey.trim() || fetchedModels.length === 0) {
       setFormError('请先"测试并拉取模型"');
       return;
     }
@@ -93,7 +116,7 @@ export default function ModelProviderPanel() {
     const next: Record<string, ModelVerificationDto> = {};
     for (let i = 0; i < all.length; i += BATCH) {
       const res = await ipcVerifyModels({
-        base_url: currentPreset.base_url,
+        base_url: effectiveBaseUrl,
         api_key: apiKey.trim(),
         models: all.slice(i, i + BATCH),
       });
@@ -113,7 +136,7 @@ export default function ModelProviderPanel() {
     const unavailable = all.filter(id => next[id]?.status === 'unavailable').length;
     const unknown = all.filter(id => next[id]?.status === 'unknown').length;
     setFormError(`可用性校验完成：可用 ${available} / 不可用 ${unavailable} / 未知 ${unknown}（未知多为限流或超时，可重试；不可用悬停可看原因）`);
-  }, [currentPreset, apiKey, fetchedModels]);
+  }, [urlValid, effectiveBaseUrl, apiKey, fetchedModels]);
 
   /** 仅勾选校验为可用的模型 */
   const selectOnlyAvailable = useCallback(() => {
@@ -129,23 +152,32 @@ export default function ModelProviderPanel() {
 
   // 注册供应商（**只提交用户勾选的模型**）
   const handleAddProvider = useCallback(async () => {
-    if (!currentPreset) return;
+    if (!urlValid) {
+      setFormError('请先填写合法的 API 地址（以 http:// 或 https:// 开头）');
+      return;
+    }
+    if (!apiKey.trim()) {
+      setFormError('请填写 API Key');
+      return;
+    }
     setFormError('');
     const picked = fetchedModels.filter(m => selectedIds.has(m.id));
     if (fetchedModels.length > 0 && picked.length === 0) {
       setFormError('请在列表里勾选要导入的模型（可先"校验可用性"再点"仅选可用"）');
       return;
     }
+    // 供应商身份：选了预设就用预设；否则用地址自动识别的结果；都不匹配则按自定义（OpenAI 兼容）
     const result = await addProvider({
-      provider: currentPreset.id,
-      base_url: currentPreset.base_url,
+      provider: providerLabel.id,
+      base_url: effectiveBaseUrl,
       api_key: apiKey.trim(),
-      display_name: currentPreset.name,
+      display_name: providerLabel.name,
       models: picked.length > 0 ? picked : undefined,
     });
     if (result.ok) {
       setShowAddForm(false);
       setSelectedPreset('');
+      setBaseUrl('');
       setApiKey('');
       setFetchedModels([]);
       setSelectedIds(new Set());
@@ -153,7 +185,7 @@ export default function ModelProviderPanel() {
     } else {
       setFormError(result.error ?? '注册失败');
     }
-  }, [currentPreset, apiKey, fetchedModels, selectedIds, addProvider]);
+  }, [urlValid, effectiveBaseUrl, apiKey, providerLabel, fetchedModels, selectedIds, addProvider]);
 
   // 移除供应商
   const handleRemoveProvider = useCallback(async (name: string) => {
@@ -195,24 +227,49 @@ export default function ModelProviderPanel() {
         <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-4">
           <h3 className="text-sm font-medium text-text-primary">添加新供应商</h3>
 
-          {/* 供应商选择 */}
+          {/* 供应商选择（可留空：只填地址+密钥，自动识别） */}
           <div className="space-y-1.5">
-            <label className="text-xs text-text-muted">选择供应商</label>
+            <label className="text-xs text-text-muted">选择供应商（可留空）</label>
             <div className="relative">
               <select
                 value={selectedPreset}
-                onChange={e => { setSelectedPreset(e.target.value); setFetchedModels([]); setFormError(''); }}
+                onChange={e => { setSelectedPreset(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); setFormError(''); }}
                 className="w-full px-3 py-2 rounded-lg bg-surface-700 border border-surface-600 text-text-primary text-sm outline-none focus:border-brand-500 appearance-none"
+                aria-label="选择供应商"
               >
-                <option value="">-- 选择供应商 --</option>
+                <option value="">自动识别（只填地址 + 密钥）</option>
                 {PRESET_PROVIDERS.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
-            {currentPreset && (
-              <p className="text-xs text-text-muted">API 地址：{currentPreset.base_url}</p>
+          </div>
+
+          {/* API 地址（可编辑；选预设时自动填充，留空则自动识别） */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-text-muted">
+              API 地址
+              {selectedPreset && <span className="ml-2 text-text-muted/60">已按所选供应商自动填充，可修改</span>}
+            </label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={e => { setBaseUrl(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); }}
+              placeholder="https://api.example.com/v1"
+              aria-label="API 地址"
+              spellCheck={false}
+              className="w-full px-3 py-2 rounded-lg bg-surface-700 border border-surface-600 text-text-primary text-sm outline-none focus:border-brand-500 placeholder:text-text-muted/50 font-mono"
+            />
+            {baseUrl.trim() && !urlValid && (
+              <p className="text-xs text-red-400">地址格式不对：需要以 http:// 或 https:// 开头的完整地址</p>
+            )}
+            {urlValid && (
+              <p className="text-xs text-text-muted/70" data-testid="provider-detect-hint">
+                {providerLabel.detected
+                  ? `自动识别：${providerLabel.name}（按 ${providerLabel.matchedBy ?? '地址'} 判断）`
+                  : '未识别到已知供应商，将按 OpenAI 兼容协议接入（自定义供应商）'}
+              </p>
             )}
           </div>
 
@@ -224,15 +281,16 @@ export default function ModelProviderPanel() {
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
               placeholder="输入 API Key..."
+              aria-label="API Key"
               className="w-full px-3 py-2 rounded-lg bg-surface-700 border border-surface-600 text-text-primary text-sm outline-none focus:border-brand-500 placeholder:text-text-muted/50"
             />
-            <p className="text-xs text-text-muted/60">API Key 仅在运行时内存中保存，重启后需重新输入</p>
+            <p className="text-xs text-text-muted/60">密钥加密保存在本机，重启后自动恢复（不会明文落盘）</p>
           </div>
 
           {/* 拉取模型按钮 */}
           <button
             onClick={handleFetchModels}
-            disabled={fetchingModels || !currentPreset || !apiKey.trim()}
+            disabled={fetchingModels || !urlValid || !apiKey.trim()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-600 text-text-primary text-sm hover:bg-surface-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {fetchingModels ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -326,8 +384,9 @@ export default function ModelProviderPanel() {
           <div className="flex gap-2 pt-2">
             <button
               onClick={handleAddProvider}
-              disabled={!currentPreset || !apiKey.trim() || (fetchedModels.length > 0 && selectedIds.size === 0)}
+              disabled={!urlValid || !apiKey.trim() || (fetchedModels.length > 0 && selectedIds.size === 0)}
               className="px-4 py-1.5 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              data-testid="add-provider-confirm"
             >
               确认添加{fetchedModels.length > 0 ? `（${selectedIds.size} 个模型）` : ''}
             </button>
