@@ -9,6 +9,7 @@ export { type AppendWriteOptions, writeEntry, writeEntries, serializeContext, TY
 export {
   type ContextSection, ContextStore, messageFingerprint,
   WORK_SET_FILE_TOOLS, WORK_SET_MAX_CHARS, recordFileWorkSet,
+  WORKSPACE_SECTION_KEY, buildWorkspaceSection,
 } from './contextStore.js';
 export { type EntryScore, type ScoringConfig, DEFAULT_SCORING_CONFIG, scoreEntry, scoreAllEntries, getDroppableEntries, computeRecencyScore, computeFrequencyScore } from './scoring.js';
 export { type AssemblyResult, type AssembledMessage, type AssemblyOptions, assembleContext, computeCachePrefixHash } from './assembler.js';

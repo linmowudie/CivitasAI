@@ -112,6 +112,34 @@ export class ContextStore {
   }
 }
 
+// ── 会话工作目录（写侧接线）───────────────────────────
+
+/** 会话工作目录在追加区中的固定键（同一会话内位置稳定） */
+export const WORKSPACE_SECTION_KEY = 'workspace';
+
+/**
+ * 构造"会话工作目录"追加分区。
+ *
+ * 为什么需要：`workDir` 此前只进工具执行上下文（`runIteration` 的 `toolCtx.workDir`），
+ * **从未进入模型可见的任何消息**。模型因此不知道工作目录，只能猜 `.` / `/` / 其它绝对路径，
+ * 触发 `PATH_DENIED`，并进一步引发"空转 / 一失败即退出"。把绝对路径写进**追加区**
+ * （消息尾部、`ContextStore.toAppendMessages()`）即可让模型看到，且不破坏系统提示前缀缓存。
+ *
+ * @param workDir 会话绑定的工作目录（绝对路径）；空值返回 null（不注入）
+ * @returns 追加分区，或 null
+ */
+export function buildWorkspaceSection(workDir: string | undefined | null): ContextSection | null {
+  const dir = typeof workDir === 'string' ? workDir.trim() : '';
+  if (!dir) return null;
+  return {
+    key: WORKSPACE_SECTION_KEY,
+    content: `当前会话工作目录：${dir}\n`
+      + '相对路径（dir.list / file.read / file.write / file.edit / grep / shell.exec 的 cwd）一律以该目录为根；'
+      + '不要使用 "/"、"." 或其它绝对路径。',
+    timestamp: Date.now(),
+  };
+}
+
 /**
  * 消息指纹（role + 内容前 300 字符），用于去重校验。
  * 使用 sha256 取前 16 位十六进制。

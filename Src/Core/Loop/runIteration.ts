@@ -16,11 +16,11 @@
 
 // ── Services 层 ──
 import { runPreSupervision } from '../../Services/Supervision/preSupervision.js';
-import { runPostSupervision } from '../../Services/Supervision/postSupervision.js';
+import { runPostSupervision, accumulateConsecutiveErrors } from '../../Services/Supervision/postSupervision.js';
 import { evaluateStopRules, getActiveStopRuleSet, type StopRuleSet, type LoopRuntimeSnapshot, type StopDecision } from '../../Services/LoopControl/stopRules.js';
 import type { StoppedReason } from '../../Services/LoopControl/types.js';
 import { dispatchHook } from '../../Services/Hook/hookRegistry.js';
-import { recordFileWorkSet, type ContextStore } from '../../Services/Context/contextStore.js';
+import { recordFileWorkSet, buildWorkspaceSection, type ContextStore } from '../../Services/Context/contextStore.js';
 import { getRolePrompt, getSystemMainLoop } from '../../Services/Prompts/promptRegistry.js';
 import { getStrategyCandidates } from '../../Services/Prompts/skillsAssets.js';
 import { selectNextStrategy } from '../../Services/LoopControl/strategyLedger.js';
@@ -212,6 +212,11 @@ export interface IterationContext {
   }) => void;
   /** LoopControl 运行时快照（供 StopRules 判定） */
   loopControlSnapshot?: Partial<LoopRuntimeSnapshot>;
+  /**
+   * 本轮开始前已连续发生的工具错误数（由 `executeLoop` 跨轮维护）。
+   * 缺省 0。用于把"连续 N 次工具失败才终止"落到判定里（`maxConsecutiveErrors`）。
+   */
+  consecutiveErrorCount?: number;
   /** 追加式上下文集合（T4：同键同内容→跳过；同键不同内容→原位替换；新键→追加末尾） */
   contextStore?: ContextStore;
 }
@@ -494,6 +499,12 @@ export async function runIteration(
     // 追加式上下文（同键同内容→跳过；同键不同内容→原位替换；新键→追加末尾）；
     // FE-054：写侧 = ⑧ 步工具结果入 store（文件工作集），传递侧 = ipcBridge 创建会话级实例；
     // 四层分区装配见 Services/Context/assembler.ts（后续）
+    // 会话工作目录：`workDir` 若只进工具上下文，模型就不知道自己在哪个目录，只能猜 `.`/`/`
+    // 并触发 PATH_DENIED → 空转或一失败即退。写进追加区（消息尾部）让模型可见且不破坏前缀缓存。
+    const workspaceSection = buildWorkspaceSection(ctx.workDir);
+    if (workspaceSection && ctx.contextStore) {
+      ctx.contextStore.put(workspaceSection);
+    }
     const appended = ctx.contextStore ? ctx.contextStore.toAppendMessages() : [];
     let messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -773,6 +784,10 @@ export async function runIteration(
       tokenBudget: ctx.config.token_budget,
       currentIteration: ctx.currentIteration,
       maxIterations: ctx.config.max_iterations,
+      // 连续错误阈值取自已登记的 StopRuleSet（main.ts ⑮ 由 Configs/loopConfig.json 构建）；
+      // 未登记（测试/子 Agent 场景）时用 DEFAULT_MAX_CONSECUTIVE_ERRORS，与配置默认值一致。
+      consecutiveErrors: ctx.consecutiveErrorCount ?? 0,
+      maxConsecutiveErrors: getActiveStopRuleSet()?.limits.maxConsecutiveErrors,
     });
 
     // ── ⑩ 迭代判定 ──────────────────────────────────────
@@ -785,6 +800,15 @@ export async function runIteration(
       riskDetected: postSupResult.ok && postSupResult.value.anomalies.length > 0,
     };
     const decision = decideIteration(loopState.iteration, iterInput);
+
+    // 工具连续失败退出时保留详细说明：decideIteration 只会写 "Risk detected, forced exit"，
+    // 排障时看不到是哪个工具、失败了几次（原实现的 exitMessage 等于没有信息）。
+    if (postSupResult.ok
+      && postSupResult.value.exitDecision.shouldExit
+      && postSupResult.value.exitDecision.exitReason === 'error'
+      && !decision.shouldContinue) {
+      decision.exitMessage = postSupResult.value.exitDecision.message ?? decision.exitMessage;
+    }
 
     // StopRules 五类独立退出（读取全局已登记的 StopRuleSet，而非每轮硬重建）
     let stopDecision: StopDecision | undefined;
@@ -910,6 +934,14 @@ export async function executeLoop(
   const allEvents: LoopEvent[] = [];
   let totalTokens = 0;
   let totalToolCalls = 0;
+  /**
+   * 跨轮维护的"连续工具错误数"。
+   *
+   * 为什么在这里维护：`stopRules` 的 `maxConsecutiveErrors` 判定读的是 `ctx.loopControlSnapshot`，
+   * 而两个生产调用点（`ipcBridge` / `agentExecutor`）都不传该字段 → 该判定在生产路径上从未生效，
+   * 于是"连续 3 次失败才停"退化为"第一次不可恢复错误即停"。这里用本地计数把它真正接上。
+   */
+  let consecutiveErrors = 0;
   const t0 = Date.now();
 
   logger.info('主循环启动', {
@@ -930,6 +962,8 @@ export async function executeLoop(
       ...initialCtx,
       currentIteration: iter,
       totalTokensConsumed: totalTokens,
+      // 本轮开始前的连续错误数（本轮判定用的就是"本轮失败后"的累计值，见 runPostSupervision）
+      consecutiveErrorCount: consecutiveErrors,
     };
 
     const result = await runIteration(loopState, iterCtx);
@@ -944,6 +978,10 @@ export async function executeLoop(
     allEvents.push(...iterResult.events);
     totalTokens += iterResult.tokensConsumed;
     totalToolCalls += iterResult.toolCalls.length;
+
+    // 跨轮累计连续错误数（与 runPostSupervision 内部同一算法，保证判定一致）：
+    // 本轮无错误 → 归零（模型已自我纠正）；有错误 → 累加本轮错误条数。
+    consecutiveErrors = accumulateConsecutiveErrors(consecutiveErrors, iterResult.toolResults);
 
     // 更新对话历史（追加助手输出 + 工具结果，供下一轮使用）
     if (iterResult.outputText) {
