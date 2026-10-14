@@ -11,7 +11,7 @@
 | 线 | 存储 | 迁移可否逐条下滚 | 备份/恢复通道 |
 |----|------|----------------|--------------|
 | 本地端 `Src/` | SQLite 三库 `Data/db/civitas_{main,events,memory}.db`（WAL 模式，`Src/Infra/Db/database.ts:141`） | **可**：每条迁移都带 `down` SQL（`Src/Infra/Db/migrations.ts`），`migrateDown()` 在 `:711`，并由 `Src/Infra/Db/index.ts:6` 导出 | **无**：仓库没有任何备份写入代码（见 §2.1） |
-| 服务端 `Server/` | PostgreSQL 16（`Server/docker-compose.yml`，卷 `civitas_pgdata`） | **不可**：`runMigrations()` 无 down 分支（`Server/src/db/migrate.ts:80-122`），`Server/migrations/*.sql` 内 `grep -i down` **0 命中**，且 `schema_migrations` 有 checksum 漂移锁（`:91-95`：已应用的迁移内容改动即报错） | **有**：`GET /v1/backup`、`GET /v1/backup/download`、`POST /v1/restore`（`Server/src/routes/backup.ts:20`、`:33`、`:46`），或运维侧 `pg_dump` |
+| 服务端 `Server/` | PostgreSQL 16（`Server/docker-compose.yml`，卷 `civitas_pgdata`） | **不可**：迁移器无 down 分支（`Server/src/main/java/com/civitas/server/db/MigrationRunner.java` + `cli/MigrationCli.java`），`Server/migrations/*.sql` 内 `grep -i down` **0 命中**，且 `schema_migrations` 有 checksum 漂移锁（已应用的迁移内容改动即报错） | **有**：`GET /v1/backup`、`GET /v1/backup/download`、`POST /v1/restore`（`Server/src/main/java/com/civitas/server/routes/BackupController.java`），或运维侧 `pg_dump` |
 
 > 结论：**本地端优先用"迁移下滚"，服务端优先用"备份/恢复"**。原「回滚决策」里"迁移出问题只能备份恢复或重置"的写法对 SQLite 不成立（2026-10-03 校准，见 §2.3）。
 
@@ -37,14 +37,13 @@ git checkout <commit-hash>
 # 重新安装依赖（本地端）
 npm install
 
-# 服务端线是独立包，需在 Server/ 内二次安装（Server/package.json，name=@civitas/server，根 package.json 无 workspaces）
-cd Server && npm install
+# 服务端线无需重装依赖：Server/ 是独立 Maven 工程（依赖由 Maven 管理；JDK 21+ / Maven 3.9+）
 ```
 
 **注意事项（2026-10-03 校准）**
 
-- **回滚点不可追溯是现状**：`git tag` 计数为 **0**，且 `Server/`、大量 `Client/` 改动目前以**未提交工作区改动**存在（`Server/` 为未跟踪目录）→ `git checkout <hash>` 不会带走它们，跨线"整体回滚"做不到。属流程决策，见 §预防措施 2 的【需人工裁定】。
-- **本文档不提供迁移 CLI**：根 `package.json:10-40` 的全部 scripts 里**没有**本地端 `migrate`/`rollback`/`db:*` 条目（`migrateDown` 无入口，见 §2.3）；Server 侧只有 `server:migrate` / `server:migrate:status`（`package.json:22-23`），且底层 CLI 只支持前进与状态：`--status`（`Server/scripts/migrate.ts:31`）、`--dry-run`（`:44`）。
+- **回滚点不可追溯是现状**：`git tag` 计数为 **0**，且 `Server/`（已入库自 763b113；2026-10-14 Java 重写后 `Server/src/main|test`、`pom.xml` 为工作树内新一轮变更）、大量 `Client/` 改动目前以**未提交工作区改动**存在 → `git checkout <hash>` 不会带走它们，跨线"整体回滚"做不到。属流程决策，见 §预防措施 2 的【需人工裁定】。
+- **本文档不提供迁移 CLI**：根 `package.json:10-40` 的全部 scripts 里**没有**本地端 `migrate`/`rollback`/`db:*` 条目（`migrateDown` 无入口，见 §2.3）；Server 侧只有 `server:migrate` / `server:migrate:status`（`package.json:22-23`，已改为 Maven 包装），且底层 CLI 只支持前进与状态：`--migrate-status`、`--migrate --dry-run`（`Server/src/main/java/com/civitas/server/cli/MigrationCli.java`）。
 - 回滚后"用什么命令起服务"要按代码实态说：`npm run start` = `tsx Src/main.ts`（`package.json:15`），**跑的是 TS 源码**，不加载 `npm run build:all` 的产物 `dist/main/main.js`（`Scripts/build.cjs`）；产物入口是 `npm run start:electron`（`package.json:16`）。因此"回滚到已构建版本"不能靠 `npm run start` 验证。
 
 ### 2. 本地端数据库（SQLite）
@@ -126,7 +125,7 @@ npm run server:db:up        # docker compose up -d db
 npm run server:migrate      # 前进式迁移（无 down）
 npm run server:migrate:status
 
-# 数据导出（需鉴权；guard = createAuthGuard，见 Server/src/routes/backup.ts:18-20）
+# 数据导出（需鉴权；鉴权守卫 @RequireAuth，见 Server/src/main/java/com/civitas/server/http/RequireAuth.java）
 curl -s -H "Authorization: Bearer <token>" "http://127.0.0.1:8787/v1/backup?includeStats=true" -o backup.json
 curl -s -H "Authorization: Bearer <token>"  http://127.0.0.1:8787/v1/backup/download -o backup-download.json
 
@@ -138,9 +137,9 @@ curl -s -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application
 
 要点：
 
-- **参数与鉴权口径**：`includeStats` 接受 `true`/`1`（`Server/src/http/schemas.ts:176-181`），`statsLimit` 必须是 1..100000 的整数（`:187-193`，缺省走键集分页全量导出）；`/v1/restore` 的 body 是 `{ bundle, mode }`，`mode` 取 `merge`（默认）或 `replace`（`:262-265`）。鉴权为 `Authorization: Bearer <token>`（`Server/src/http/authGuard.ts:24-33`），缺失即 `unauthenticated`。
-- **改已应用迁移会被硬拒**：`schema_migrations` 存 checksum，内容与已应用记录不一致时 `runMigrations` 直接抛错「已应用的迁移不可修改，请新增迁移文件」（`Server/src/db/migrate.ts:91-95`）。回滚代码时**不要**顺手编辑历史 `.sql`。
-- `/v1/backup`、`/v1/restore` 是**账号数据包级**备份/恢复（设置 + 记忆 + 可选统计，`Server/src/routes/backup.ts:4-6`），不等于物理库快照；整库层面请用 `pg_dump` / `pg_restore`（仓库未提供封装脚本，属运维手工）。
+- **参数与鉴权口径**：`includeStats` 接受 `true`/`1`，`statsLimit` 必须是 1..100000 的整数（缺省走键集分页全量导出）；`/v1/restore` 的 body 是 `{ bundle, mode }`，`mode` 取 `merge`（默认）或 `replace`（字段校验见 `Server/src/main/java/com/civitas/server/http/validation/BackupBodies.java`）。鉴权为 `Authorization: Bearer <token>`（`Server/src/main/java/com/civitas/server/http/RequireAuth.java`），缺失即 `unauthenticated`。
+- **改已应用迁移会被硬拒**：`schema_migrations` 存 checksum，内容与已应用记录不一致时 `MigrationRunner` 直接抛错「已应用的迁移不可修改，请新增迁移文件」（`Server/src/main/java/com/civitas/server/db/MigrationRunner.java`）。回滚代码时**不要**顺手编辑历史 `.sql`。
+- `/v1/backup`、`/v1/restore` 是**账号数据包级**备份/恢复（设置 + 记忆 + 可选统计，`Server/src/main/java/com/civitas/server/routes/BackupController.java`），不等于物理库快照；整库层面请用 `pg_dump` / `pg_restore`（仓库未提供封装脚本，属运维手工）。
 - **⚠️ 破坏性**：整库重置 = 删数据卷 + 重放迁移，账号数据不可挽回：
 
 ```bash
@@ -180,3 +179,5 @@ git checkout <commit-hash> -- Configs/
 - 日志与 `_Meta` 排查：`Docs/Server/03-部署运维/Runbooks/logAnalysis.md`
 - 常见故障：`Docs/Server/03-部署运维/Runbooks/commonIssues.md`
 - 依赖栈起停：`Server/docker-compose.yml`、`Server/README.md`
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

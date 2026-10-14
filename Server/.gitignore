@@ -1,6 +1,7 @@
-node_modules/
 .env
 .env.local
 pgdata/
 pg.log
 *.log
+target/
+.verify-out/

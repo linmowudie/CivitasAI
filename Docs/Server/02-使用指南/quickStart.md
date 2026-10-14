@@ -17,13 +17,13 @@
 
 ## 安装
 
-⚠️ **2026-10-03 校准**：本仓库是**三个彼此独立的 npm 工程**——根 `package.json` 既无 `workspaces` 也无 `postinstall`，所以**在根目录执行一次 `npm install` 装不上前端依赖**，而 `npm run dev` 内部要执行 `cd Client && npx vite`，干净克隆会在这一步失败。
+⚠️ **2026-10-03 校准**：本仓库是**两个彼此独立的 npm 工程**（`Server/` 已改为独立 Maven 工程，见下）——根 `package.json` 既无 `workspaces` 也无 `postinstall`，所以**在根目录执行一次 `npm install` 装不上前端依赖**，而 `npm run dev` 内部要执行 `cd Client && npx vite`，干净克隆会在这一步失败。
 
 | 目录 | 内容 | 是否必装 |
 |------|------|---------|
 | 仓库根 | 后端 `Src/` + Electron 壳 `electron/` + 构建/诊断脚本 `Scripts/` | 必装 |
 | `Client/` | Vite + React 19 前端（自带 `package.json` + `package-lock.json`） | 要看界面就必装 |
-| `Server/` | 自托管账号/数据服务端（Fastify + PostgreSQL，独立 npm 包） | 可选，见 `Server/README.md` |
+| `Server/` | 自托管账号/数据服务端（Spring Boot + PostgreSQL，独立 Maven 工程，不进入 npm 安装/Electron 打包） | 可选，见 `Server/README.md` |
 
 ```bash
 git clone https://github.com/linmowudie/CivitasAI.git
@@ -157,4 +157,6 @@ CI 步骤与之一致（`.github/workflows/ci.yml`）：`npm ci` → `npm run li
 首次启动自动创建 SQLite 数据库（`Data/db/` 下三个库，路径见 `Configs/default.json → database`），无需手动操作；`Scripts/install.sh` / `install.ps1` 也会预建 `Data/*` 与 `Logs/`。
 
 ### 需要账号/数据服务端（可选，与桌面主流程无关）
-根 `package.json` 另提供转发脚本：`npm run server:db:up`（docker compose 起 PostgreSQL）、`npm run server:db:down`、`npm run server:migrate`、`npm run server:migrate:status`、`npm run server:dev`、`npm run server:test` —— 它们都是 `cd Server && npm run <同名脚本>`，需先在 `Server/` 内 `npm install`。详见 `Server/README.md`。
+根 `package.json` 另提供转发脚本：`npm run server:db:up`（docker compose 起 PostgreSQL）、`npm run server:db:down`、`npm run server:migrate`、`npm run server:migrate:status`、`npm run server:dev`、`npm run server:test` —— 它们均已改为 Maven 包装（如 `server:dev` = `cd Server && mvn spring-boot:run`），**无需**在 `Server/` 内 `npm install`（`Server/node_modules` 已移除；需 JDK 21+ 与 Maven 3.9+）。详见 `Server/README.md`。
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

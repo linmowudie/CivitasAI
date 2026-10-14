@@ -11,7 +11,7 @@
 | 线 | 启动方式 | 端口 | 探活端点 |
 |----|---------|------|---------|
 | 本地端（`Src/`，含 Electron） | `npm run start` = `tsx Src/main.ts`（`package.json:15`） | HTTP **3000**（`Configs/default.json:12` 的 `server.httpPort`，读取点 `Src/main.ts:368`） | **无专用 health 路由**，只能用只读 `/api/*` 判活（见 §1） |
-| 服务端（`Server/`，Fastify + PostgreSQL） | `npm run server:dev`（`Server/package.json:11` = `tsx watch src/index.ts`） | API **8787**（`Server/src/config.ts:164`、`Server/.env.example:8`）；PostgreSQL **5432**（`Server/docker-compose.yml`） | `GET /healthz`、`GET /readyz`（`Server/src/app.ts:144`、`:145-152`） |
+| 服务端（`Server/`，Spring Boot + PostgreSQL） | `npm run server:dev`（根 `package.json` = `cd Server && mvn spring-boot:run`） | API **8787**（`Server/src/main/java/com/civitas/server/config/ConfigLoader.java` 的 `PORT` 默认值、`Server/.env.example:8`）；PostgreSQL **5432**（`Server/docker-compose.yml`） | `GET /healthz`、`GET /readyz`（`Server/src/main/java/com/civitas/server/http/HealthController.java`） |
 
 > WebSocket（`ws://localhost:3001`）已删除（2026-09-28）：`Src/Interface/WebSocket/` 仅剩 `.gitkeep`，`wsPort` 只留在 `Configs/default.json:13` 与 `Src/Infra/Config/configValidator.ts:52` 的校验里，**无监听方**。前端实时事件经 Electron IPC（`electron/preload.ts:93` 的 `backend-event`），无独立端口可探活。
 
@@ -129,9 +129,9 @@ curl -s http://127.0.0.1:8787/healthz          # { status: 'ok', uptimeSec }    
 curl -s http://127.0.0.1:8787/readyz           # { status: 'ready', db: 'up' }      —— 含数据库连通
 ```
 
-- `/healthz`：`Server/src/app.ts:144`；`/readyz`：`Server/src/app.ts:145-152`，内部 `await db.ping()`，失败走统一错误链返回 **503 / `UNAVAILABLE`**（`fail(reply, unavailable('数据库不可用'))`）。
+- `/healthz` 与 `/readyz`：`Server/src/main/java/com/civitas/server/http/HealthController.java`；`/readyz` 内部 `db.ping()`，失败走统一错误链返回 **503 / `UNAVAILABLE`**（`数据库不可用`）。
 - **`/readyz` 才含数据库连通性**，`/healthz` 不查库；判"能不能用"以 `/readyz` 为准。
-- 两者均在 `PUBLIC_EXACT` 白名单（`Server/src/app.ts:56`）：**免限流、免鉴权**，可安全用于高频探针。
+- 两者均在 `PUBLIC_EXACT` 白名单（`Server/src/main/java/com/civitas/server/http/IpRateLimitFilter.java`）：**免限流、免鉴权**，可安全用于高频探针。
 - 依赖栈健康：PostgreSQL 容器自带 `pg_isready` healthcheck（`Server/docker-compose.yml` healthcheck 段）；起停用根目录 `npm run server:db:up` / `server:db:down`（`package.json:25-26`）。
 - 前端已在用这两个端点：`Client/src/stores/accountStore.ts:414`、`:417`。
 
@@ -196,3 +196,5 @@ node -e "const db=require('better-sqlite3')('Data/db/civitas_main.db');console.l
 | Token 异常（单 Agent 消耗 > 均值 3 倍） | `:31` 常量存在，**规则体是 TODO**（`:92-97`，缺 Agent 级消耗统计） | 未生效 |
 
 **待办**：若要"服务端侧告警"，需要先补指标出口；否则本文档不应出现可执行的阈值判定步骤。
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

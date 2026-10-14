@@ -2,7 +2,7 @@
 
 > 运维中常见问题的快速处理方案
 
-> **适用范围（2026-10-03 校准）**：§1–§4 主要面向**本地端**（`Src/`，HTTP :3000 + Electron）。服务端线（`Server/`，Fastify :8787 + PostgreSQL）的故障面独立，探活见 `healthCheck.md` §5、回滚见 `rollback.md` §3。
+> **适用范围（2026-10-03 校准）**：§1–§4 主要面向**本地端**（`Src/`，HTTP :3000 + Electron）。服务端线（`Server/`，Spring Boot :8787 + PostgreSQL）的故障面独立，探活见 `healthCheck.md` §5、回滚见 `rollback.md` §3。
 
 ---
 
@@ -113,7 +113,7 @@ node Scripts/llmLatency.cjs GLM-5
 # 1. 停止当前服务（含 Electron 主进程，避免持写锁）
 # 2. 回退代码
 git checkout <last-known-good-commit>
-# 3. 重新安装依赖（Server 线需在 Server/ 内再装一次）
+# 3. 重新安装依赖（本地端 npm；Server 线是独立 Maven 工程，依赖无需重装）
 npm install
 # 4. 重启：注意 npm run start 跑的是 TS 源码（tsx Src/main.ts），不是构建产物
 npm run start          # 无头/后端
@@ -123,7 +123,7 @@ npm run start:electron # 桌面产物入口（package.json:16）
 **事实更正（2026-10-03 校准）**：原文注"数据库迁移不可回退"——
 
 - 对**本地端 SQLite 不成立**：每条迁移都带 `down` SQL、`migrateDown()` 存在（`Src/Infra/Db/migrations.ts:26`、`:711-731`），只是**没有 CLI 入口**（根 `package.json` 无 `db:*` 迁移 script）。
-- 对**服务端 PG 成立**：`runMigrations()` 无 down 分支 + checksum 漂移锁（`Server/src/db/migrate.ts:80-122`、`:91-95`），但存在 `/v1/backup`、`/v1/restore` 备份通道（`Server/src/routes/backup.ts:20`、`:46`）。
+- 对**服务端 PG 成立**：迁移器无 down 分支 + checksum 漂移锁（`Server/src/main/java/com/civitas/server/db/MigrationRunner.java` + `cli/MigrationCli.java`），但存在 `/v1/backup`、`/v1/restore` 备份通道（`Server/src/main/java/com/civitas/server/routes/BackupController.java`）。
 
 **【需人工裁定】现状记录 + 待办**：本节与 `rollback.md` 属同一流程的双写，历史上已出现口径互相矛盾（本文原写"不可回退"、`rollback.md` 原写"只能备份恢复"）。是否把本节删成一行纯链接、由 `rollback.md` 单点承载，属文档编排决策，留人工定夺；在此之前本节仅做事实对齐，不合并、不删除。
 
@@ -132,3 +132,5 @@ npm run start:electron # 桌面产物入口（package.json:16）
 - 探活与端点：`Docs/Server/03-部署运维/Runbooks/healthCheck.md`
 - 日志字段/轨道/失踪排查：`Docs/Server/03-部署运维/Runbooks/logAnalysis.md`
 - 回滚与备份：`Docs/Server/03-部署运维/Runbooks/rollback.md`
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

@@ -3,7 +3,7 @@
 > 在本地开发环境中部署 Civitas-AI
 
 > **2026-10-03 校准**（依据 `Docs/Dev/Server-03-部署运维-差别清单.md` L-01 / L-02 / L-03，逐条复核当前仓库实态后回写）：
-> 本仓库是**两条独立部署线**——本地端 `Src/`（HTTP :3000 + Electron 壳）与服务端 `Server/`（Fastify :8787 + PostgreSQL :5432）。
+> 本仓库是**两条独立部署线**——本地端 `Src/`（HTTP :3000 + Electron 壳）与服务端 `Server/`（Spring Boot :8787 + PostgreSQL :5432）。
 > 原文只覆盖本地端，且把 `npm run start` 写成"生产启动"（实为 `tsx` 跑 TS 源码），本版一并纠正。
 
 ---
@@ -14,7 +14,7 @@
 - **npm** ≥ 10.0.0
 - **Git**
 - 华为云 MaaS API Key（或其他 LLM Provider）
-- 仅当要跑服务端线（`Server/`）时另需：**PostgreSQL 16**（经 Docker/容器运行时起 `Server/docker-compose.yml`，或原生 PG）
+- 仅当要跑服务端线（`Server/`）时另需：**JDK 21+ 与 Maven 3.9+**（构建/启动），以及 **PostgreSQL 16**（经 Docker/容器运行时起 `Server/docker-compose.yml`，或原生 PG）
 
 ## 安装步骤
 
@@ -26,10 +26,8 @@ cd CivitasAI
 # 2a. 安装本地端依赖（根包 civitas-ai）
 npm install
 
-# 2b. 服务端线依赖 —— 根目录 npm install 覆盖不到（L-03）
-#     Server/ 是独立 npm 包（Server/package.json:2-4 name=@civitas/server、private:true），
-#     根 package.json 没有 workspaces 字段，Server/ 自带 Server/package-lock.json → 必须二次安装
-cd Server && npm install && cd ..
+# 2b. 服务端线无需 npm 安装 —— Server/ 已是独立 Maven 工程（Server/pom.xml），
+#     依赖由 Maven 管理（需 JDK 21+ 与 Maven 3.9+；Server/node_modules 已移除）
 
 # 3. 配置环境变量
 cp .env.example .env                    # 本地端：唯一键 HUAWEI_MAAS_API_KEY（.env.example:6）
@@ -39,8 +37,8 @@ cp Server/.env.example Server/.env      # 服务端：HOST/PORT/DATABASE_URL 等
 npm run dev
 ```
 
-> ⚠️ 前置说明：`Server/` 在当前工作区是**未跟踪目录**（`git status --porcelain Server` = `?? Server/`，`git ls-files Server` 计数 0），
-> 因此按上面 `git clone` 拿到的仓库**没有 `Server/`**，步骤 2b 与 §服务端线 会失败。是否入库属【需人工裁定】，此处仅登记现状与待办（待办：`Server/` 提交入库后本文步骤方可对所有克隆者成立）。
+> ⚠️ 前置说明：`Server/` **已入库**（自提交 763b113 起被跟踪），克隆该分支即包含它；
+> 2026-10-14 Java 重写后 `Server/src/main|test`、`pom.xml` 为该分支工作树内的新一轮变更（尚未提交）。
 
 ## 服务端口
 
@@ -49,7 +47,7 @@ npm run dev
 | HTTP API | 3000 | `server.httpPort`（`Configs/default.json:12`） | 本地端 |
 | 前端（Electron 壳） | — | 经 `electron/preload.ts` IPC 桥接与后端通信 | 本地端 |
 | 前端（Vite，开发） | 5173 | `Client/vite.config.ts:40`（`strictPort: true`，`/api` 代理到 :3000） | 本地端 |
-| 服务端 API | 8787 | `Server/src/config.ts:164` 默认值 + `Server/.env.example:8` `PORT` | 服务端（L-01 补） |
+| 服务端 API | 8787 | `Server/src/main/java/com/civitas/server/config/ConfigLoader.java`（`PORT` 默认 8787）+ `Server/.env.example:8` | 服务端（L-01 补） |
 | PostgreSQL | 5432 | `Server/docker-compose.yml:24` + `Server/.env.example:12` `DATABASE_URL` | 服务端（L-01 补） |
 
 > WebSocket（`server.wsPort`，3001）已删除（2026-09-28），现为 Electron IPC 桥接 + REST(:3000)。`Configs/default.json` 中的 `wsPort: 3001` 为历史遗留，无实际 WS 服务。
@@ -70,16 +68,16 @@ npm run dev:electron
 
 ## 服务端线（`Server/`，可选）
 
-根 `package.json:21-26` 已提供转发脚本，无需手工 `cd`：
+根 `package.json:21-26` 已提供转发脚本（现为 Maven 包装），无需手工 `cd`：
 
 ```bash
 npm run server:db:up        # docker compose up -d db（postgres:16-alpine，端口 5432，卷 civitas_pgdata）
 npm run server:migrate      # 执行 Server/migrations/*.sql（幂等）
-npm run server:dev          # cd Server && npm run dev（Fastify :8787）
-npm run server:test         # Server 单元 + 集成测试
+npm run server:dev          # cd Server && mvn spring-boot:run（Spring Boot :8787）
+npm run server:test         # Server 单元 + 集成测试（mvn test）
 ```
 
-- 探活：`GET http://127.0.0.1:8787/healthz`、`GET /readyz`（含数据库连通性）——`Server/src/app.ts:144-145`，免鉴权白名单见 `:56`。
+- 探活：`GET http://127.0.0.1:8787/healthz`、`GET /readyz`（含数据库连通性）——`Server/src/main/java/com/civitas/server/http/HealthController.java`（免鉴权/免限流白名单见同包 `IpRateLimitFilter.java`）。
 - 更多用法见 `Server/README.md`。
 
 ## 生产模式
@@ -119,3 +117,5 @@ npm run lint
 # 服务端线（可选，需可用的 PostgreSQL）
 npm run server:test
 ```
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

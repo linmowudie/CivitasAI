@@ -19,12 +19,12 @@
 |------|----------|------|------|------|-----------|
 | 本地端 HTTP API | `Src/main.ts`（`npm run start` = `tsx Src/main.ts`，`package.json:15`） | 3000（`Configs/default.json:12` `server.httpPort`） | SQLite 三库 `Data/db/civitas_{main,events,memory}.db` | 无专用探活端点（见 `../Runbooks/healthCheck.md`） | ⚠️ 未实现（无 Dockerfile） |
 | 本地端桌面壳 | `electron/main.ts`（`npm run start:electron`，`package.json:16`） | — | `dist/main/electron/main.js`（`package.json:6` `main` 字段） | — | 不适用（桌面产物走 `electron-builder`，见 `windows.md`） |
-| 服务端 API | `Server/src/`（Fastify 5，`Server/package.json:26`） | 8787（`Server/src/config.ts:164`；`Server/.env.example:8`） | PostgreSQL、`@node-rs/argon2` 原生模块（`Server/package.json:25`） | `GET /healthz` / `GET /readyz`（`Server/src/app.ts:144-145`，免鉴权白名单见 `:56`） | ⚠️ 未实现（compose 仅含数据库） |
+| 服务端 API | `Server/src/main/java/`（Spring Boot 3.3.5 + Tomcat，Java 21 / Maven 工程） | 8787（`Server/src/main/java/com/civitas/server/config/ConfigLoader.java` 的 `PORT` 默认值；`Server/.env.example:8`） | PostgreSQL；密码库 BouncyCastle（纯 JVM，无原生模块） | `GET /healthz` / `GET /readyz`（`Server/src/main/java/com/civitas/server/http/HealthController.java`） | ⚠️ 未实现（compose 仅含数据库） |
 | 服务端数据库 | `Server/docker-compose.yml:13-31`（`postgres:16-alpine`、`container_name: civitas-server-db`） | 5432（`:24`） | Docker / 容器运行时 | compose 内置 `pg_isready` 健康检查（`:27-31`） | ✅ 已存在 |
 
 - 两条线互不影响：`Server/README.md` 明确服务端与桌面端进程内的本地服务（`:3000`）各自独立。
-- 服务端线的数据迁移**不在容器里做**：`npm run server:migrate`（根 `package.json:22`）→ `cd Server && npm run migrate`。
-- ⚠️ `Server/` 目前是工作区**未跟踪目录**（`git status --porcelain Server` = `?? Server/`，`git ls-files Server` 计数 0）→ 按 `git clone` 流程拿到的仓库不含它。是否入库属【需人工裁定】，此处仅登记现状。
+- 服务端线的数据迁移**不在容器里做**：`npm run server:migrate`（根 `package.json:22`，已改为 Maven 包装）→ `cd Server && mvn -q spring-boot:run -Dspring-boot.run.arguments=--migrate`。
+- `Server/` **已入库**（自提交 763b113 起被跟踪）；2026-10-14 Java 重写后 `Server/src/main|test`、`pom.xml` 为该分支工作树内的新一轮变更。
 
 ## 依赖栈：`Server/docker-compose.yml`（✅ 已存在，D-02）
 
@@ -71,7 +71,7 @@ RUN npm run build:server
 # （Src/Interface/WebSocket/ 仅剩 .gitkeep；wsPort 只在 Configs/default.json:13 存值、
 #   由 Src/Infra/Config/configValidator.ts:52 做类型校验，无任何监听方）。
 EXPOSE 3000
-# 若把服务端线（Server/，Fastify :8787）也容器化，再追加：EXPOSE 8787
+# 若把服务端线（Server/，Spring Boot :8787）也容器化，再追加：EXPOSE 8787
 
 # 【D-04 校准】原 CMD ["npm","run","start"] 名不副实：它用 tsx 跑 TS 源码，
 #   上面 RUN npm run build:server 的产物不会被加载。目标态改为直跑编译产物：
@@ -137,7 +137,7 @@ docker logs -f civitasai
   实态已配置并发缓解——`journal_mode = WAL`（`Src/Infra/Db/database.ts:141`）+ `busy_timeout`（`:143`，取自 `Configs/default.json:21` `database.busyTimeoutMs = 5000`）。
   结论不变但理由要正：**单容器/单进程持有写锁**即可，切勿多副本共享同一 `Data/db`。
 - **服务端线（`Server/`，8787 + PostgreSQL）不受上述 SQLite 口径约束**，其数据库副本/HA 另议；
-  PG 迁移是**前进式**——`Server/src/db/migrate.ts` 无 down 分支，且 `schema_migrations` 带 checksum 漂移锁（`:91-93`，"已应用的迁移不可修改，请新增迁移文件"），回滚语义见 `../Runbooks/rollback.md`。
+  PG 迁移是**前进式**——`Server/src/main/java/com/civitas/server/db/MigrationRunner.java`（+ `cli/MigrationCli.java`）无 down 分支，且 `schema_migrations` 带 checksum 漂移锁（"已应用的迁移不可修改，请新增迁移文件"），回滚语义见 `../Runbooks/rollback.md`。
 
 ## 待办 / 未裁决登记
 
@@ -146,4 +146,6 @@ docker logs -f civitasai
 | D-01 | 落地根目录 `Dockerfile`（`node:20`、apt 构建依赖、多阶段剥离 devDeps） | ⚠️ 未实现，本文只提供草案 |
 | D-04 | 新增无头启动入口（如 `start:headless` = `node dist/main/Src/main.js --portable`）并验证产物可独立运行 | ⚠️ 未实现 |
 | D-05 | 补 `.dockerignore`（至少 `node_modules`、`Data`、`Logs`、`.git`、`dist`、`.tmp`、`coverage`） | 【需人工裁定】现状：仓库确无 `.dockerignore`，`COPY . .` 会把 `Data/.secrets/` 带入镜像层；本文不代工程侧决策，登记为安全缺陷待办 |
-| D-07 | 服务端线（`Server/`）容器化与多进程编排 | ⚠️ 未实现，目前只有 PG 的 compose；`Server/` 自身仍未纳入版本库 |
+| D-07 | 服务端线（`Server/`）容器化与多进程编排 | ⚠️ 未实现，目前只有 PG 的 compose（`Server/` 代码库已入库，自提交 763b113；应用容器化仍待办） |
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。

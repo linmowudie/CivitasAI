@@ -9,6 +9,9 @@
 # 端到端验证 v2：真实 HTTP 走通"注册 → 写入 → 备份 → 重装登录 → 恢复"
 # 说明：请求体统一用 ConvertTo-Json 生成，避免手写转义出错
 $ErrorActionPreference = 'Stop'
+# GBK 控制台下 curl.exe 输出的 UTF-8 中文会被按错误编码解码，破坏 JSON 解析；
+# 显式把原生输出解码固定为 UTF-8（否则含中文的响应体会解析失败 → 误报空值）。
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $base = if ($env:SERVER_BASE) { $env:SERVER_BASE } else { 'http://127.0.0.1:8787' }
 $v = if ($env:VERIFY_OUT) { $env:VERIFY_OUT } else { Join-Path $PSScriptRoot '..\.verify-out' }
 New-Item -ItemType Directory -Force -Path $v | Out-Null

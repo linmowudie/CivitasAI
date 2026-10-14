@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  在 Spring 接管日志配置前收敛框架噪音（Bootstrap 阶段的连接池探测等）：
+  应用自身日志走 JsonLogger（直接写 stdout/stderr），此处只保留 WARN 以上的框架日志。
+  Spring 启动后仍会叠加 application.yml 中的 logging.level 配置。
+-->
+<configuration>
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{40} -- %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="WARN">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>
