@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: civitas-server
+  main:
+    banner-mode: "off"
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+  error:
+    whitelabel:
+      enabled: false
+
+# 应用日志走自研 JsonLogger（JSON 行）；此处仅收敛框架日志噪音
+logging:
+  level:
+    root: warn

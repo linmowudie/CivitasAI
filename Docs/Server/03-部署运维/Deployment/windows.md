@@ -15,8 +15,8 @@
 - **Node.js** ≥ 20.0.0（推荐通过 [nvm-windows](https://github.com/coreybutler/nvm-windows) 安装；`package.json:7-9` `engines.node`）
 - **Git for Windows**
 - **Visual Studio Build Tools**（原生模块编译场景；适用面与是否降级为可选，见下方 W-02 登记，本轮不裁决）
-- **仅跑服务端线（`Server/`）时才需要**：Docker Desktop（起 `Server/docker-compose.yml` 的 PostgreSQL 16）**或**本机原生 PostgreSQL 16（`Server/README.md` §1.2 给了无 Docker 的 `initdb`/`pg_ctl` 路径）
-  - `Server/package.json:25` 依赖 `@node-rs/argon2` 原生模块，Windows x64 通常有预编译产物，安装失败时才需本机编译链。
+- **仅跑服务端线（`Server/`）时才需要**：**JDK 21+ 与 Maven 3.9+**（独立 Maven 工程），以及 Docker Desktop（起 `Server/docker-compose.yml` 的 PostgreSQL 16）**或**本机原生 PostgreSQL 16（`Server/README.md` §1.2 给了无 Docker 的 `initdb`/`pg_ctl` 路径）
+  - 服务端依赖 BouncyCastle（纯 JVM 密码库），**无需本机原生编译链**（旧 `@node-rs/argon2` 原生模块已随 Java 重写移除）。
   - ⚠️ 仅跑本地端（`:3000` + Electron）可完全忽略上一条。
 
 > **2026-10-03 校准（W-02，【需人工裁定】）**：原前置"Visual Studio Build Tools（better-sqlite3 编译需要）"与实态有出入，登记如下两条事实：
@@ -44,13 +44,12 @@ cd CivitasAI
 # 4. 安装本地端依赖
 npm install
 
-# 4b. 服务端线依赖（Server/ 是独立 npm 包，根 npm install 覆盖不到）
-#     ⚠️ 当前 Server/ 为工作区未跟踪目录（git status = ?? Server/），克隆结果里可能不存在它
-cd Server; npm install; cd ..
+# 4b. 服务端线无需 npm 安装 —— Server/ 已是独立 Maven 工程（依赖由 Maven 管理）
+#     Server/ 已入库（自提交 763b113 起被跟踪）；需 JDK 21+ 与 Maven 3.9+
 
 # 5. 配置环境变量
 Copy-Item .env.example .env            # 本地端 LLM Key
-Copy-Item Server\.env.example Server\.env   # 服务端线（若存在 Server/）
+Copy-Item Server\.env.example Server\.env   # 服务端线（Server/.env.example 路径不变）
 # 编辑 .env，填入 API Key
 
 # 6. 启动本地端
@@ -59,7 +58,7 @@ npm run dev
 # 6b. 启动服务端线（需 Docker Desktop 或原生 PG；docker compose 属 Docker Desktop 的 CLI）
 npm run server:db:up      # PostgreSQL 16，端口 5432，卷 civitas_pgdata
 npm run server:migrate
-npm run server:dev        # Fastify :8787
+npm run server:dev        # Spring Boot :8787
 ```
 
 ## Electron 桌面模式
@@ -128,3 +127,5 @@ docker compose logs -f db   # 看数据库是否完成初始化、端口是否�
 ```
 
 - 无 Docker Desktop 时改用本机 PG，步骤见 `Server/README.md` §1.2；随后把 `Server/.env` 的 `DATABASE_URL` 指向本机实例（`Server/.env.example:12` 为默认值示例）。
+
+> **2026-10-14 校准（Java 重写）**：本节 Server 线命令/符号已按 Java 版（Maven）改写；TS 版历史口径不再适用，逐条对位见 `Docs/Server/01-服务端/服务端设计文档.md` 附录 E。
