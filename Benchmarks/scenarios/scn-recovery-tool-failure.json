@@ -1,0 +1,33 @@
+{
+  "id": "scn-recovery-tool-failure",
+  "title": "故障恢复：连续工具失败后自愈收敛",
+  "tags": ["recovery", "resilience"],
+  "matrixCells": ["AG-ENV-TOOLFAIL"],
+  "task": {
+    "description": "读取一份配置并汇报；中途工具可能失败，需要自行换路数继续",
+    "goal": "拿到配置内容并汇报"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 6, "tokenBudget": 100000, "timeoutMs": 60000, "stream": false },
+  "tools": [
+    { "name": "bench.fail", "behavior": "fail" },
+    { "name": "bench.read", "behavior": "ok" }
+  ],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "bench.fail", "arguments": { "text": "try-1" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.fail", "arguments": { "text": "try-2" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.read", "arguments": { "path": "src/config.json" } }] },
+      { "kind": "text", "content": "配置为：重试 3 次、超时 30 秒。任务完成。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 5,
+    "mustCallTools": ["bench.fail", "bench.read"],
+    "minToolResults": 3,
+    "forbidDiagnoses": ["recovery_missing", "false_success"],
+    "allowDiagnoses": ["tool_misuse"]
+  }
+}

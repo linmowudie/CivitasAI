@@ -9,14 +9,14 @@
  * - 解析 env: 引用
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, join } from "node:path";
 
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
+import type { Result } from "../types.js";
+import { ok, err } from "../types.js";
 
-import { validateAllConfigs } from './configValidator.js';
-import { getBundledConfigDir, getConfigDir } from '../Fs/pathResolver.js';
+import { validateAllConfigs } from "./configValidator.js";
+import { getBundledConfigDir, getConfigDir } from "../Fs/pathResolver.js";
 
 /** 配置加载选项 */
 export interface ConfigLoaderOptions {
@@ -35,10 +35,17 @@ export interface ConfigLoaderOptions {
  * 本轮不改动其接线状态，避免顺带改变工具头部冻结与保留期行为。
  */
 const FEATURE_CONFIGS = [
-  'modelRouter', 'routingRules', 'economyRules',
-  'arbitration', 'audit', 'supervision',
-  'loopConfig', 'durable', 'session',
-  'memory', 'security',
+  "modelRouter",
+  "routingRules",
+  "economyRules",
+  "arbitration",
+  "audit",
+  "supervision",
+  "loopConfig",
+  "durable",
+  "session",
+  "memory",
+  "security",
 ] as const;
 
 /** 已加载的配置集合 */
@@ -84,28 +91,35 @@ export interface LoadedConfig {
  *
  * @param options 覆盖目录 / 环境名
  */
-export function loadConfig(options: ConfigLoaderOptions = {}): Result<LoadedConfig> {
+export function loadConfig(
+  options: ConfigLoaderOptions = {},
+): Result<LoadedConfig> {
   const bundledDir = options.configDir ?? getBundledConfigDir();
   const userDir = options.userConfigDir ?? getConfigDir();
-  const env = options.env ?? process.env['CIVITAS_ENV'] ?? 'dev';
+  const env = options.env ?? process.env["CIVITAS_ENV"] ?? "dev";
 
   /** 需要读取的目录序列（低 → 高）；开发态两者相同，去重避免重复合并 */
-  const dirs = userDir && resolve(userDir) !== resolve(bundledDir)
-    ? [bundledDir, userDir]
-    : [bundledDir];
+  const dirs =
+    userDir && resolve(userDir) !== resolve(bundledDir)
+      ? [bundledDir, userDir]
+      : [bundledDir];
 
-  const readIfExists = (dir: string, file: string): Result<Record<string, unknown>> | null => {
+  const readIfExists = (
+    dir: string,
+    file: string,
+  ): Result<Record<string, unknown>> | null => {
     const filePath = join(dir, file);
     return existsSync(filePath) ? readJsonFile(filePath) : null;
   };
 
   // 1. 加载 default.json（内置目录必须存在）
-  const defaultPath = join(bundledDir, 'default.json');
+  const defaultPath = join(bundledDir, "default.json");
   if (!existsSync(defaultPath)) {
-    return err(`[FATAL] default.json 不存在: ${defaultPath}`, 'FATAL');
+    return err(`[FATAL] default.json 不存在: ${defaultPath}`, "FATAL");
   }
   const defaultConfig = readJsonFile(defaultPath);
-  if (!defaultConfig.ok) return defaultConfig as unknown as Result<LoadedConfig>;
+  if (!defaultConfig.ok)
+    return defaultConfig as unknown as Result<LoadedConfig>;
 
   // 2. {env}.json（内置 → 用户，用户层后写覆盖）
   let envConfig: Record<string, unknown> = {};
@@ -121,10 +135,18 @@ export function loadConfig(options: ConfigLoaderOptions = {}): Result<LoadedConf
   resolveEnvReferences(merged);
 
   // 4. 功能配置文件（内置 → 用户；用户的同名文件覆盖内置）
-  const mergeTopLevel = (target: Record<string, unknown>, source: Record<string, unknown>): void => {
+  const mergeTopLevel = (
+    target: Record<string, unknown>,
+    source: Record<string, unknown>,
+  ): void => {
     for (const [key, value] of Object.entries(source)) {
-      if (key in target && typeof target[key] === 'object' && typeof value === 'object' &&
-          !Array.isArray(target[key]) && !Array.isArray(value)) {
+      if (
+        key in target &&
+        typeof target[key] === "object" &&
+        typeof value === "object" &&
+        !Array.isArray(target[key]) &&
+        !Array.isArray(value)
+      ) {
         target[key] = deepMerge(
           target[key] as Record<string, unknown>,
           value as Record<string, unknown>,
@@ -147,7 +169,7 @@ export function loadConfig(options: ConfigLoaderOptions = {}): Result<LoadedConf
   // 5. local.json（最高优先级：个性化设置 / 路由选择 / 供应商覆盖的落点）
   let localConfig: Record<string, unknown> = {};
   for (const dir of dirs) {
-    const result = readIfExists(dir, 'local.json');
+    const result = readIfExists(dir, "local.json");
     if (!result) continue;
     if (!result.ok) return result as unknown as Result<LoadedConfig>;
     localConfig = deepMerge(localConfig, result.value);
@@ -156,8 +178,8 @@ export function loadConfig(options: ConfigLoaderOptions = {}): Result<LoadedConf
 
   // 6. 校验配置（merged 已包含所有文件的顶层键）
   const allConfigs: Record<string, Record<string, unknown>> = {
-    'default': finalMerged,
-    'loopConfig': finalMerged,
+    default: finalMerged,
+    loopConfig: finalMerged,
   };
   const validationResult = validateAllConfigs(allConfigs);
   if (!validationResult.ok) {
@@ -182,11 +204,18 @@ export function loadConfig(options: ConfigLoaderOptions = {}): Result<LoadedConf
  * @param config 已加载的配置
  * @param path 点分隔路径，如 'database.busyTimeoutMs'
  */
-export function getConfigValue<T>(config: LoadedConfig, path: string): T | undefined {
-  const keys = path.split('.');
+export function getConfigValue<T>(
+  config: LoadedConfig,
+  path: string,
+): T | undefined {
+  const keys = path.split(".");
   let current: unknown = config.merged;
   for (const key of keys) {
-    if (current === null || current === undefined || typeof current !== 'object') {
+    if (
+      current === null ||
+      current === undefined ||
+      typeof current !== "object"
+    ) {
       return undefined;
     }
     current = (current as Record<string, unknown>)[key];
@@ -197,22 +226,53 @@ export function getConfigValue<T>(config: LoadedConfig, path: string): T | undef
 /**
  * 从配置中读取某个值，不存在则返回默认值
  */
-export function getConfigValueOr<T>(config: LoadedConfig, path: string, defaultValue: T): T {
+export function getConfigValueOr<T>(
+  config: LoadedConfig,
+  path: string,
+  defaultValue: T,
+): T {
   return getConfigValue<T>(config, path) ?? defaultValue;
+}
+
+// ===== 进程内「当前生效」快照 =====
+
+/**
+ * 本进程**正在使用**的配置快照（`main.ts` 在 `loadConfig()` 成功后注入）。
+ *
+ * 为什么需要：`loadConfig()` 只在启动时读一次文件，之后所有消费方都拿这份内存对象。
+ * 于是"写文件"和"生效"是两件事——接入层必须能区分
+ *   - 当前运行值（running）
+ *   - 配置文件里的值（onDisk，重启后才会被读到）
+ * 否则设置界面的"已生效/待生效"就只能是前端自说自话（REV-265/266 的根因）。
+ */
+let runningConfig: LoadedConfig | null = null;
+
+export function setRunningConfig(config: LoadedConfig | null): void {
+  runningConfig = config;
+}
+
+export function getRunningConfig(): LoadedConfig | null {
+  return runningConfig;
 }
 
 // ===== 内部辅助函数 =====
 
 /** 深度合并两个对象（override 覆盖 base） */
-function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base };
   for (const key of Object.keys(override)) {
     const baseVal = base[key];
     const overrideVal = override[key];
     if (
-      baseVal !== null && overrideVal !== null &&
-      typeof baseVal === 'object' && typeof overrideVal === 'object' &&
-      !Array.isArray(baseVal) && !Array.isArray(overrideVal)
+      baseVal !== null &&
+      overrideVal !== null &&
+      typeof baseVal === "object" &&
+      typeof overrideVal === "object" &&
+      !Array.isArray(baseVal) &&
+      !Array.isArray(overrideVal)
     ) {
       result[key] = deepMerge(
         baseVal as Record<string, unknown>,
@@ -228,12 +288,12 @@ function deepMerge(base: Record<string, unknown>, override: Record<string, unkno
 /** 读取并解析 JSON 文件 */
 function readJsonFile(filePath: string): Result<Record<string, unknown>> {
   try {
-    const content = readFileSync(filePath, 'utf-8');
+    const content = readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(content) as Record<string, unknown>;
     return ok(parsed);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`JSON 解析失败 [${filePath}]: ${message}`, 'FATAL');
+    return err(`JSON 解析失败 [${filePath}]: ${message}`, "FATAL");
   }
 }
 
@@ -245,14 +305,18 @@ function readJsonFile(filePath: string): Result<Record<string, unknown>> {
  */
 function resolveEnvReferences(obj: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string' && value.startsWith('env:')) {
+    if (typeof value === "string" && value.startsWith("env:")) {
       const envVar = value.slice(4);
       const envValue = process.env[envVar];
       if (envValue !== undefined) {
         obj[key] = envValue;
       }
       // 未设置时保留原值，由使用方检查
-    } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    } else if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
       resolveEnvReferences(value as Record<string, unknown>);
     }
   }

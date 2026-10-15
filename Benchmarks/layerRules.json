@@ -1,0 +1,59 @@
+{
+  "$comment": "实验设施 × 调用层规登记表。守门强制每条设施声明 driverEntry / layerUnderTest / compliant；非合规项必须带 reason 与 blockerSide（登记为可追踪的债，不许静默存在）。",
+  "layerOrder": [
+    "Interface",
+    "Core",
+    "Services",
+    "Tools",
+    "Infra"
+  ],
+  "$layerOrderNote": "箭头方向为「依赖」：前者依赖后者，故 Tools 在 Services **之下**。层规要求：驱动实验的入口必须位于**被测层之上**。",
+  "layerRule": "只能调用被测层之上的接口驱动实验；层下探针只用于监控、不用于驱动。",
+  "facilities": [
+    {
+      "id": "FAC-LOOP-DRIVE",
+      "facility": "场景驱动主循环（scn-* 经 executeLoop）",
+      "layerUnderTest": "Core/Loop 及以下全部数据流转",
+      "driverEntry": "Core（executeLoop 公共入口）",
+      "compliant": true,
+      "note": "Benchmark 主体。按裁定⑤，这正是「Agent 数据流转」的正规形态。"
+    },
+    {
+      "id": "FAC-ASSERT-PROBES",
+      "facility": "真实调用探针（runner/assertProbes.ts）",
+      "layerUnderTest": "逐条探针自述（见 whyThisEntry）",
+      "driverEntry": "逐条探针自述；装配期属性允许调用本层公共 API 并标注 assemblyTime",
+      "compliant": true,
+      "note": "含 MEM-CONSOLIDATE-GATE：入口 consolidateLoopKnowledge 位于 Core，在被测层 Services **之上** —— 合规。"
+    },
+    {
+      "id": "FAC-CLOCK-SKEW",
+      "facility": "时钟回拨混沌（clockSkewProbe）",
+      "layerUnderTest": "Core/Loop 在时钟异常下的行为",
+      "driverEntry": "Core（循环）+ Infra 层的 Date.now 故障注入（探针，只注入不驱动）",
+      "compliant": true,
+      "note": "注入发生在下层、观测在 Core 层，符合「层下探针用于监控」。"
+    },
+    {
+      "id": "FAC-MEMORY-PROBES",
+      "facility": "记忆红线探针（scn-memory-governance 的 memoryProbes）",
+      "layerUnderTest": "Services/SharedMemory 写侧",
+      "driverEntry": "**Services 本层**（直接调用 writeMemory / globalWorkspace.write）",
+      "compliant": false,
+      "blockerSide": "product",
+      "reason": "违反层规：直接调用被测层自身写 API。而产品中**没有从 Core/Interface 写任意键的上层入口** —— 唯一的 Core→记忆写路径是 consolidateLoopKnowledge（仅 success 且长度达标的沉淀），无法产生 FORBIDDEN 键、治理键、任意 version 冲突等被测输入。",
+      "consequence": "按裁定「Benchmark 测 Agent 数据流转、Tests 测接口能否正常调用」，这些**接口级红线断言本质属 Tests 领域**；在 Benchmark 内不应作为 executed 计入落地率。",
+      "migration": "二选一：(a) 产品侧提供上层写入入口（如经 Interface 的记忆 API 由 Agent 调用）后改为上层驱动；(b) 承认属 Tests 领域，把这些 cell 的 attestation 由 executed 改为 tests/static 并注明。待用户裁定口径（见 CONFORMANCE §10.2 裁定①）。"
+    },
+    {
+      "id": "FAC-RETRIEVAL-SUITE",
+      "facility": "检索质量套件（retrievalSuite → runRetrievalSuite）",
+      "layerUnderTest": "Services/Retrieval",
+      "driverEntry": "Core（retrieveForContextAssembly —— 与 loop ⑷ ContextAssembly 同一入口）",
+      "compliant": true,
+      "reason": "保留的 setup 例外：语料**播种**仍用 Services 的 writeMemory（fixture 准备，不是被测行为；产品里没有 Agent 可触达的播种入口）。播种不在度量路径上，度量路径已全部经 Core 入口。",
+      "migration": "**进行中（裁定 (a)，2026-10-14）**：第一步已完成 —— Core 已具备检索上层入口 (Src/Core/Loop/runIteration.ts: IterationContext.memorySearchPort，在 ⑷ ContextAssembly 消费，结果以稳定键 ctx:memory:retrieval 进追加式上下文，不破坏前缀缓存；未注入端口时行为不变)。余下：① main.ts 注入使生产可用；② 把检索质量实验由直调 createMemoryRetriever 改为经此入口驱动。",
+      "note": "裁定① / §10.3.2 迁移完成：检索质量实验改经 Core 层入口 retrieveForContextAssembly() 驱动（Src/Core/Loop/memoryRetrievalEntry.ts），不再直调 createMemoryRetriever。迁移后 Recall@5 / MRR 与迁移前完全一致（0.9118）。"
+    }
+  ]
+}

@@ -1,38 +1,89 @@
 /**
  * @vitest-environment jsdom
  *
- * 内嵌审批回归（2026-10-01 FE-024）：
+ * 内嵌审批回归（2026-10-01 FE-024 + 2026-10-08 REV-264）：
  * - 被安全门阻塞的危险工具，其审批卡**内嵌在对话中的工具行**里；
  * - 与左侧「审批栏」读同一份 approvalStore → 任一处决策都同步生效；
- * - 自动审批（策略白名单）无需用户确认，显示已自动通过；拒绝/超时显示对应结果。
+ * - 自动审批（策略白名单）无需用户确认，显示已自动通过；拒绝/超时显示对应结果；
+ * - 双人控制按**不同身份**判定：一次点击只投一票，同一身份重复提交被拒（不再假通过）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
-const h = vi.hoisted(() => ({ posts: [] as Array<{ path: string; body: unknown }>, approvals: [] as unknown[] }));
+const h = vi.hoisted(() => ({
+  posts: [] as Array<{ path: string; body: unknown }>,
+  approvals: [] as unknown[],
+  /** 已记账的 `role:identity`（模拟后端队列） */
+  decidedBy: [] as string[],
+  /** 当前活动账号（用于模拟"换另一位操作者登录"） */
+  owner: 'local',
+  status: 'PENDING' as string,
+}));
 
 vi.mock('@/services/api', () => ({
   apiGet: vi.fn(async (path: string) => {
-    // 审批详情端点：点击时若 store 里还没有该审批，decide 会拉详情取所需角色
-    if (path.startsWith('/api/approvals/')) return { ok: true, data: PENDING_APPROVAL };
-    return { ok: true, data: h.approvals };
+    const withQueue = (a: unknown) => ({ ...(a as object), decidedBy: [...h.decidedBy], status: h.status });
+    // 审批详情端点：点击时若 store 里还没有该审批，decide 会拉详情取决策池角色
+    if (path.startsWith('/api/approvals/')) return { ok: true, data: withQueue(PENDING_APPROVAL) };
+    if (path === '/api/reviews') return { ok: true, data: [] };
+    return { ok: true, data: h.approvals.map(withQueue) };
   }),
   apiPost: vi.fn(async (path: string, body: unknown) => {
-  apiPut: vi.fn(async () => ({ ok: false, error: { type: 'network', message: 'n/a' } })),
     h.posts.push({ path, body });
-    // 模拟后端 unanimous 策略：集齐 2 个不同角色才落 APPROVED
-    const roles = new Set(h.posts.map(p => String((p.body as { decidedBy?: string }).decidedBy ?? '')));
-    const status = roles.size >= 2 ? 'APPROVED' : 'PENDING';
-    return { ok: true, data: { approvalId: 'ap-1', status, decidedBy: [...roles] } };
+    const b = body as { approve: boolean; decidedBy: string };
+
+    // 与后端 approvalIdentity 同构：人类自报身份一律绑到当前活动账号，
+    // 只有形如 agent-* 的身份才是独立行为主体。
+    const sep = b.decidedBy.indexOf(':');
+    const role = sep > 0 ? b.decidedBy.slice(0, sep) : b.decidedBy;
+    const claimed = sep > 0 ? b.decidedBy.slice(sep + 1) : '';
+    const identity = /^agent-[a-z_]+-\d+$/i.test(claimed) ? claimed : h.owner;
+    const entry = `${role}:${identity}`;
+
+    const requiredRoles = PENDING_APPROVAL.deciders.map(d => d.role);
+    const before = countDistinctRoleMatches(requiredRoles, h.decidedBy);
+    const after = countDistinctRoleMatches(requiredRoles, [...h.decidedBy, entry]);
+    if (after === before) {
+      return {
+        ok: false,
+        error: { type: '4xx', message: `裁决未计入：身份 ${entry} 已在本审批中行使过投票权` },
+      };
+    }
+
+    h.decidedBy.push(entry);
+    h.status = after >= 2 ? 'APPROVED' : 'PENDING';
+    return {
+      ok: true,
+      data: {
+        ...PENDING_APPROVAL,
+        decidedBy: [...h.decidedBy],
+        status: h.status,
+        ...(h.status === 'PENDING'
+          ? {
+            quorumBlocked: {
+              required: 2,
+              matched: after,
+              remainingIdentities: 2 - after,
+              reason: `已记录本身份的裁决，仍需 ${2 - after} 位不同身份的审批人`,
+            },
+          }
+          : {}),
+      },
+    };
   }),
+  apiPut: vi.fn(async () => ({ ok: false, error: { type: 'network', message: 'n/a' } })),
   apiPatch: vi.fn(async () => ({ ok: false, error: { type: '4xx', message: 'n/a' } })),
 }));
 
 import { ToolGroup } from '../../Client/src/ai-components/harness/ToolGroup';
 import ApprovalQueue from '../../Client/src/views/ApprovalQueue';
-import { useApprovalStore, type Approval } from '../../Client/src/stores/approvalStore';
+import {
+  useApprovalStore,
+  countDistinctRoleMatches,
+  type Approval,
+} from '../../Client/src/stores/approvalStore';
 
 const PENDING_APPROVAL: Approval = {
   approvalId: 'ap-1',
@@ -62,8 +113,17 @@ function toolCalls(approvalStatus?: 'pending' | 'approved' | 'rejected' | 'timeo
 
 beforeEach(() => {
   h.posts.length = 0;
+  h.decidedBy.length = 0;
+  h.owner = 'local';
+  h.status = 'PENDING';
   h.approvals = [PENDING_APPROVAL];
-  useApprovalStore.setState({ approvals: [PENDING_APPROVAL], loading: false });
+  useApprovalStore.setState({
+    approvals: [PENDING_APPROVAL],
+    loading: false,
+    lastError: null,
+    lastErrorId: null,
+    listError: null,
+  });
   vi.clearAllMocks();
 });
 
@@ -114,38 +174,36 @@ describe('工具行内嵌审批', () => {
     expect(screen.queryByRole('button', { name: /拒绝/ })).not.toBeInTheDocument();
   });
 
-  it('store 尚未拉取到该审批时，点击也能补齐全部角色（先取详情再逐个提交）', async () => {
-    // 审批栏轮询还没跑到 → store 为空（此前会导致只提交 1/N，工具一直阻塞）
-    useApprovalStore.setState({ approvals: [], loading: false });
+  it('store 尚未拉取到该审批时：先取详情再提交一票，并如实显示法定人数缺口', async () => {
+    // 审批栏轮询还没跑到 → store 为空（此前会拿不到决策池角色，投错角色而永久 PENDING）
+    useApprovalStore.setState({ approvals: [] });
 
     render(<ToolGroup toolCalls={toolCalls('pending')} />);
     fireEvent.click(screen.getByRole('button', { name: /确认执行/ }));
 
-    await waitFor(() => {
-      expect(h.posts.map(p => (p.body as { decidedBy: string }).decidedBy)).toEqual([
-        'user:human-operator',
-        'prime_director:human-operator',
-      ]);
-    });
-    expect(useApprovalStore.getState().approvals[0]?.status).toBe('APPROVED');
+    await waitFor(() => expect(h.posts.length).toBe(1));
+    expect((h.posts[0]!.body as { decidedBy: string }).decidedBy).toBe('user:human-operator');
+    // 一票 = 一个身份 → 只满足 1/2，状态仍是 PENDING，缺口必须回传并显示
+    expect(useApprovalStore.getState().approvals[0]?.status).toBe('PENDING');
+    expect(useApprovalStore.getState().approvals[0]?.quorumBlocked?.remainingIdentities).toBe(1);
+    expect(await screen.findByText(/仍需 1 位不同身份的审批人/)).toBeInTheDocument();
   });
 
-  it('单操作者模式：一次点击依次满足双角色策略（否则永远阻塞到超时）', async () => {
+  it('双人控制按不同身份判定：同一身份第二次点击被拒且原因可见（不再假通过）', async () => {
     render(<ToolGroup toolCalls={toolCalls('pending')} />);
 
     fireEvent.click(screen.getByRole('button', { name: /确认执行/ }));
+    await waitFor(() => expect(h.posts.length).toBe(1));
 
-    await waitFor(() => {
-      expect(h.posts.map(p => (p.body as { decidedBy: string }).decidedBy)).toEqual([
-        'user:human-operator',
-        'prime_director:human-operator',
-      ]);
-    });
-    expect(useApprovalStore.getState().approvals[0]?.status).toBe('APPROVED');
+    fireEvent.click(screen.getByRole('button', { name: /确认执行/ }));
+    await waitFor(() => expect(h.posts.length).toBe(2));
+
+    // 第二票由同一身份投出 → 后端当场拒绝，前端显示原文（旧行为：静默补齐角色后永久阻塞）
+    expect(useApprovalStore.getState().lastError).toContain('已在本审批中行使过投票权');
+    expect(useApprovalStore.getState().approvals[0]?.status).toBe('PENDING');
   });
 
-  it('两处同步：内嵌卡决策后，审批栏同步反映为已通过', async () => {
-    // 同时渲染"对话中的内嵌卡"与"审批栏"（两者都读 approvalStore）
+  it('两处同步：两位不同身份分别裁决后落定 APPROVED，审批栏同步显示已通过', async () => {
     render(
       <>
         <ToolGroup toolCalls={toolCalls('pending')} />
@@ -155,11 +213,31 @@ describe('工具行内嵌审批', () => {
     await waitFor(() => expect(screen.getByText('ap-1')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /确认执行/ }));
+    await waitFor(() => expect(h.posts.length).toBe(1));
 
-    // 同一条审批被更新 → 审批栏卡片同步显示决策后状态
+    // 另一位操作者登录（活动账号切换）后投第二票：应投给仍未被满足的角色
+    h.owner = 'account-b';
+    fireEvent.click(screen.getByRole('button', { name: /确认执行/ }));
+
+    await waitFor(() => expect(h.posts.length).toBe(2));
+    expect((h.posts[1]!.body as { decidedBy: string }).decidedBy).toBe('prime_director:human-operator');
     await waitFor(() => {
       expect(useApprovalStore.getState().approvals[0]?.status).toBe('APPROVED');
     });
+    expect(h.decidedBy).toEqual(['user:local', 'prime_director:account-b']);
     await waitFor(() => expect(screen.getByText('已通过')).toBeInTheDocument());
+  });
+
+  it('评审记录读取失败时区分于"没有审批"（REV-317 只读轨迹）', async () => {
+    const apiGet = vi.mocked((await import('@/services/api')).apiGet);
+    apiGet.mockImplementation(async (path: string) => {
+      if (path === '/api/reviews') return { ok: false, error: { type: 'network', message: '评审记录不可达' } };
+      if (path.startsWith('/api/approvals/')) return { ok: true, data: PENDING_APPROVAL };
+      return { ok: true, data: [PENDING_APPROVAL] };
+    });
+
+    render(<ApprovalQueue embedded />);
+    await waitFor(() => expect(screen.getByText(/评审记录读取失败/)).toBeInTheDocument());
+    expect(screen.getByText(/1 项待处理/)).toBeInTheDocument();
   });
 });

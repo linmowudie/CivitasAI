@@ -24,6 +24,8 @@ interface MessageShellProps {
   kindIcon?: ReactNode;
   /** 内容区（CoTFolder + ToolGroup + StreamBuffer 等组合） */
   children: ReactNode;
+  /** 气泡下方的操作行（复制等）；只在助手消息使用 */
+  footer?: ReactNode;
 }
 
 const statusIcon: Record<MessageStatus, ReactNode> = {
@@ -41,7 +43,7 @@ const statusLabel: Record<MessageStatus, string> = {
 };
 
 export function MessageShell({
-  role, status, createdAt, model, tokensUsed, totalIterations, error, kindLabel, kindIcon, children,
+  role, status, createdAt, model, tokensUsed, totalIterations, error, kindLabel, kindIcon, children, footer,
 }: MessageShellProps) {
   const isUser = role === 'user';
 
@@ -125,10 +127,12 @@ export function MessageShell({
                 生成出错：{error.length > 300 ? `${error.slice(0, 300)}…` : error}
               </span>
             ) : (
-              <span>生成出错，可点击重新生成</span>
+              <span>生成出错，可重新发送该问题</span>
             )}
           </div>
         )}
+
+        {footer}
       </div>
     </div>
   );

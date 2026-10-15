@@ -40,6 +40,47 @@ jobs:
           echo "Coverage: ${COVERAGE}%, Baseline: ${BASELINE}%"
           node -e "if(${COVERAGE} < ${BASELINE}) { console.error('Coverage below baseline!'); process.exit(1) }"
 
+  bench:
+    name: Experiment Matrix & Baseline
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # 实验台自测：保护测量仪器本身（判据/诊断/打分/报告渲染），含 2 条误报回归锁。
+      # 没有这一步，实验台的 bug 会被读成"这个 Agent 不行"。
+      - name: 实验台自测
+        run: npm run bench:selftest
+      # §2.2 反假绿铁律 1：缺真实凭据的用例记 NOT-RUN，**不得记 SKIP-pass**。
+      # 这一步只跑受门禁的 7 个文件，产出有效通过数（vitest 的 passed 里含未执行被测行为的用例）。
+      - name: NOT-RUN 汇总（缺凭据用例不计通过）
+        run: npm run bench:notrun
+      # L0 静态对账：九系统轴的大量判定点是静态事实（零调用者/字段无消费方），场景压不到。
+      # 注意：gap 检查为红是设计内的（缺口证明），本步只在 lock 漂移时非 0 退出。
+      - name: L0 静态对账
+        run: npm run bench:static
+      # 矩阵守门：每面 BEN+对抗齐备、六类对抗家族全覆盖、anchor 可解析。
+      # 注意：gap（缺口证明实验）按设计会红，本 job 用非 --strict 模式，gap 只报告不阻断。
+      - name: 实验矩阵守门
+        run: npm run bench:matrix
+      # 基线一致性：改了 Tests/、场景或 experimentMatrix.json 却忘了重新采集基线 → 当场红。
+      # （修复：node Scripts/benchMetrics.cjs）
+      - name: 基线一致性检查
+        run: npm run bench:metrics:check
+      # Benchmark 运行器类型检查（tsx 只转译不校验类型，必须显式跑 tsc）
+      - name: Benchmark 运行器类型检查
+        run: npm run bench:typecheck
+      # 对照表完整性审计：把 CONFORMANCE.md 里的 "✅" 变成可当场重算的断言（不信任文档叙述）
+      - name: 对照表完整性审计
+        run: npm run bench:conformance
+      # 端到端跑一遍 Agent 能力实验（桩 Provider，无需 API Key，确定性）
+      - name: Agent 能力实验（两层：实验矩阵准入 → 打分矩阵）
+        run: npm run bench:run
+
   build:
     name: Build
     runs-on: ubuntu-latest

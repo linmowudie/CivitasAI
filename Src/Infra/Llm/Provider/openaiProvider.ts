@@ -8,24 +8,56 @@
  * - 其他兼容实现
  */
 
-import type { Result } from '../../types.js';
-import { ok, err } from '../../types.js';
+import type { Result } from "../../types.js";
+import { ok, err } from "../../types.js";
 
-import { LlmProvider, ProviderError } from './providerBase.js';
+import { LlmProvider, ProviderError } from "./providerBase.js";
 import type {
-  ProviderConfig, CallOptions, CallResult, StreamChunk,
-} from './providerBase.js';
+  ProviderConfig,
+  CallOptions,
+  CallResult,
+  StreamChunk,
+  ChatMessage,
+  ToolCallSpec,
+} from "./providerBase.js";
 
 // ===== 类型定义 =====
 
 /** OpenAI API 请求体 */
 interface OpenAIRequest {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: WireMessage[];
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
   tools?: unknown[];
+}
+
+/**
+ * 发往供应商的消息体。
+ *
+ * 工具关联字段必须原样带上（REV-341）：`role:'tool'` 靠 `tool_call_id` 认领自己的调用，
+ * 而它前面那条助手消息必须用 `tool_calls` 声明"我发起了这些调用"。
+ * 只映射 `{role, content}` 时，多轮工具循环的第二轮起整个请求体会被上游判非法
+ * （实测 `Invalid messages at index N: Messages with role 'tool' must be a response to a
+ * preceding message with 'tool_calls'`），且该 400 文本在旧实现里被当成模型输出返回给用户。
+ */
+interface WireMessage {
+  role: string;
+  content: string;
+  tool_call_id?: string;
+  tool_calls?: ToolCallSpec[];
+}
+
+function toWireMessages(messages: ChatMessage[]): WireMessage[] {
+  return messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
+    ...(m.tool_calls && m.tool_calls.length > 0
+      ? { tool_calls: m.tool_calls }
+      : {}),
+  }));
 }
 
 /** OpenAI API 响应体 */
@@ -87,7 +119,7 @@ export class OpenAIProvider extends LlmProvider {
 
       const body: OpenAIRequest = {
         model: this.resolveRequestModel(options.model),
-        messages: options.messages.map(m => ({ role: m.role, content: m.content })),
+        messages: toWireMessages(options.messages),
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: false,
@@ -95,10 +127,10 @@ export class OpenAIProvider extends LlmProvider {
       };
 
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(body),
         signal: options.signal,
@@ -109,34 +141,42 @@ export class OpenAIProvider extends LlmProvider {
         throw this.classifyHttpError(response.status, errorBody);
       }
 
-      const data = await response.json() as OpenAIResponse;
+      const data = (await response.json()) as OpenAIResponse;
       const choice = data.choices[0];
       if (!choice) {
-        throw this.classifyHttpError(502, 'empty choices in response');
+        throw this.classifyHttpError(502, "empty choices in response");
       }
 
       return ok({
-        content: choice.message?.content ?? '',
+        content: choice.message?.content ?? "",
         reasoning_content: choice.message?.reasoning_content,
-        finish_reason: choice.finish_reason ?? 'stop',
-        usage: data.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        finish_reason: choice.finish_reason ?? "stop",
+        usage: data.usage ?? {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+        },
         model: data.model,
         tool_calls: choice.message?.tool_calls,
       });
     } catch (e) {
       if (e instanceof ProviderError) {
-        return err(e.message, e.category === 'auth' ? 'FATAL' : 'ERROR');
+        return err(e.message, e.category === "auth" ? "FATAL" : "ERROR");
       }
-      if (e instanceof Error && e.name === 'AbortError') {
-        return err('请求已取消', 'ERROR');
+      if (e instanceof Error && e.name === "AbortError") {
+        return err("请求已取消", "ERROR");
       }
       const message = e instanceof Error ? e.message : String(e);
       // 网络错误分类
-      if (message.includes('ECONNRESET') || message.includes('ETIMEDOUT') ||
-          message.includes('fetch failed') || message.includes('ENOTFOUND')) {
-        return err(`网络错误: ${message}`, 'ERROR');
+      if (
+        message.includes("ECONNRESET") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("fetch failed") ||
+        message.includes("ENOTFOUND")
+      ) {
+        return err(`网络错误: ${message}`, "ERROR");
       }
-      return err(`调用失败: ${message}`, 'ERROR');
+      return err(`调用失败: ${message}`, "ERROR");
     }
   }
 
@@ -153,7 +193,7 @@ export class OpenAIProvider extends LlmProvider {
 
       const body: OpenAIRequest = {
         model: this.resolveRequestModel(options.model),
-        messages: options.messages.map(m => ({ role: m.role, content: m.content })),
+        messages: toWireMessages(options.messages),
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: true,
@@ -161,10 +201,10 @@ export class OpenAIProvider extends LlmProvider {
       };
 
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(body),
         signal: options.signal,
@@ -176,32 +216,39 @@ export class OpenAIProvider extends LlmProvider {
       }
 
       if (!response.body) {
-        return err('响应体为空', 'ERROR');
+        return err("响应体为空", "ERROR");
       }
 
       // 解析 SSE 流
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let fullContent = '';
-      let fullReasoning = '';
-      let finishReason = 'stop';
-      let usage: CallResult['usage'] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-      let buffer = '';
+      let fullContent = "";
+      let fullReasoning = "";
+      let finishReason = "stop";
+      let usage: CallResult["usage"] = {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      };
+      let buffer = "";
       // 流式工具调用累积
-      const toolCallMap = new Map<number, { id: string; type: string; name: string; arguments: string }>();
+      const toolCallMap = new Map<
+        number,
+        { id: string; type: string; name: string; arguments: string }
+      >();
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? ''; // 保留未完成的行
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // 保留未完成的行
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
 
           try {
             const json = JSON.parse(trimmed.slice(6)) as OpenAIResponse & {
@@ -227,15 +274,20 @@ export class OpenAIProvider extends LlmProvider {
             const errCode = json.error?.code ?? json.error?.type ?? json.code;
             const errMessage = json.error?.message ?? json.message;
             if (errCode || (errMessage && !json.choices)) {
-              const detail = `${errMessage ?? ''}${errCode ? `（${errCode}）` : ''}` || JSON.stringify(json).slice(0, 300);
-              const looksAuth = /api[_-]?key|unauthor|forbidden|401|403|auth/i.test(`${errCode ?? ''} ${errMessage ?? ''}`);
+              const detail =
+                `${errMessage ?? ""}${errCode ? `（${errCode}）` : ""}` ||
+                JSON.stringify(json).slice(0, 300);
+              const looksAuth =
+                /api[_-]?key|unauthor|forbidden|401|403|auth/i.test(
+                  `${errCode ?? ""} ${errMessage ?? ""}`,
+                );
               throw this.classifyHttpError(looksAuth ? 401 : 502, detail);
             }
 
             const choice = json.choices[0];
 
             if (choice?.delta) {
-              const delta = choice.delta.content ?? '';
+              const delta = choice.delta.content ?? "";
               const reasoningDelta = choice.delta.reasoning_content;
               const rawToolCalls = choice.delta.tool_calls;
 
@@ -243,11 +295,15 @@ export class OpenAIProvider extends LlmProvider {
               const toolCallDelta = rawToolCalls?.length
                 ? rawToolCalls.map((tc) => {
                     const d: {
-                      index: number; id?: string; name?: string; argumentsDelta?: string;
+                      index: number;
+                      id?: string;
+                      name?: string;
+                      argumentsDelta?: string;
                     } = { index: tc.index };
                     if (tc.id) d.id = tc.id;
                     if (tc.function?.name) d.name = tc.function.name;
-                    if (tc.function?.arguments) d.argumentsDelta = tc.function.arguments;
+                    if (tc.function?.arguments)
+                      d.argumentsDelta = tc.function.arguments;
                     return d;
                   })
                 : undefined;
@@ -273,14 +329,15 @@ export class OpenAIProvider extends LlmProvider {
                   if (existing) {
                     // 追加片段
                     if (tc.function?.name) existing.name += tc.function.name;
-                    if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+                    if (tc.function?.arguments)
+                      existing.arguments += tc.function.arguments;
                   } else {
                     // 新工具调用
                     toolCallMap.set(idx, {
-                      id: tc.id ?? '',
-                      type: tc.type ?? 'function',
-                      name: tc.function?.name ?? '',
-                      arguments: tc.function?.arguments ?? '',
+                      id: tc.id ?? "",
+                      type: tc.type ?? "function",
+                      name: tc.function?.name ?? "",
+                      arguments: tc.function?.arguments ?? "",
                     });
                   }
                 }
@@ -300,7 +357,7 @@ export class OpenAIProvider extends LlmProvider {
       }
 
       // 构造 tool_calls
-      const toolCalls = Array.from(toolCallMap.values()).map(tc => ({
+      const toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
         id: tc.id,
         type: tc.type,
         function: {
@@ -319,17 +376,21 @@ export class OpenAIProvider extends LlmProvider {
       });
     } catch (e) {
       if (e instanceof ProviderError) {
-        return err(e.message, e.category === 'auth' ? 'FATAL' : 'ERROR');
+        return err(e.message, e.category === "auth" ? "FATAL" : "ERROR");
       }
-      if (e instanceof Error && e.name === 'AbortError') {
-        return err('请求已取消', 'ERROR');
+      if (e instanceof Error && e.name === "AbortError") {
+        return err("请求已取消", "ERROR");
       }
       const message = e instanceof Error ? e.message : String(e);
-      if (message.includes('ECONNRESET') || message.includes('ETIMEDOUT') ||
-          message.includes('fetch failed') || message.includes('ENOTFOUND')) {
-        return err(`网络错误: ${message}`, 'ERROR');
+      if (
+        message.includes("ECONNRESET") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("fetch failed") ||
+        message.includes("ENOTFOUND")
+      ) {
+        return err(`网络错误: ${message}`, "ERROR");
       }
-      return err(`流式调用失败: ${message}`, 'ERROR');
+      return err(`流式调用失败: ${message}`, "ERROR");
     }
   }
 }

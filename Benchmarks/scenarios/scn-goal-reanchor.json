@@ -1,0 +1,30 @@
+{
+  "id": "scn-goal-reanchor",
+  "title": "约束保持：置位重锚标志后，下一轮请求必须带原始目标且不可变区不被改动",
+  "tags": ["constraint-retention", "governance"],
+  "matrixCells": ["AG-BEN-GOALRETAIN", "AG-SEC-CONSTRAINTDROP"],
+  "task": {
+    "description": "连续读取两份资料并逐步推进；中途上下文被压缩，压缩后必须重新锚定原始目标",
+    "goal": "依次读取 src/notes.txt 与 src/config.json，最后汇报两者的关键参数"
+  },
+  "agentRole": "worker",
+  "injectReanchorAfterIteration": 1,
+  "loop": { "maxIterations": 5, "tokenBudget": 200000, "timeoutMs": 45000, "stream": false },
+  "tools": [{ "name": "bench.read", "behavior": "ok" }, { "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "bench.read", "arguments": { "path": "src/notes.txt" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.read", "arguments": { "path": "src/config.json" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "consolidate" } }] },
+      { "kind": "text", "content": "构建步骤为安装依赖→跑测试→打包；配置为重试 3 次、超时 30 秒。任务完成。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 5,
+    "mustCallTools": ["bench.read"],
+    "requestMustContain": ["【任务原始目标"],
+    "goalMustBeIntact": true
+  }
+}

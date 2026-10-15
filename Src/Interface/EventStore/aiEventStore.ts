@@ -14,19 +14,32 @@
  * 且其最终文本已由 `chat_messages.content` 持久化，故不落库。
  */
 
-import { getMainDb, isDatabaseInitialized } from '../../Infra/Db/database.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { EventType, type DomainEvent } from '../../Services/EventBus/eventTypes.js';
-import { subscribeMany } from '../../Services/EventBus/eventBus.js';
-import { getActiveOwner } from '../../Services/AccountScope/activeAccount.js';
+import { getMainDb, isDatabaseInitialized } from "../../Infra/Db/database.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import {
+  EventType,
+  type DomainEvent,
+} from "../../Services/EventBus/eventTypes.js";
+import { subscribeMany } from "../../Services/EventBus/eventBus.js";
+import { getActiveOwner } from "../../Services/AccountScope/activeAccount.js";
 
 /** 不落库的高频事件（逐 token 增量） */
-const SKIP_TYPES = new Set(['agent:stream_chunk']);
+const SKIP_TYPES = new Set(["agent:stream_chunk"]);
 
 /** 需要持久化的事件类型（组件族相关；前缀匹配见 matches） */
 const PERSIST_PREFIXES = [
-  'agent:', 'task:', 'tool:', 'approval:', 'memory:', 'middleware:', 'hook:',
-  'delegation:', 'arbitration:', 'token:', 'chat:',
+  "agent:",
+  "task:",
+  "tool:",
+  "approval:",
+  "memory:",
+  "middleware:",
+  "hook:",
+  "delegation:",
+  "arbitration:",
+  "token:",
+  "chat:",
+  "loop:",
 ];
 
 export interface PersistedAiEvent {
@@ -57,19 +70,19 @@ let lastKnownSessionId: string | null = null;
 /** 会话 ID 的候选字段（不同事件把会话放在不同位置） */
 function sessionIdOf(event: DomainEvent): string | null {
   const payload = (event.payload ?? {}) as Record<string, unknown>;
-  for (const key of ['sessionId', 'session_id', 'chatSessionId']) {
+  for (const key of ["sessionId", "session_id", "chatSessionId"]) {
     const v = payload[key];
-    if (typeof v === 'string' && v.length > 0) {
+    if (typeof v === "string" && v.length > 0) {
       lastKnownSessionId = v;
       return v;
     }
   }
   // 嵌套（部分事件把上下文放在 data/context 里）
-  for (const nested of ['data', 'context', 'meta']) {
+  for (const nested of ["data", "context", "meta"]) {
     const sub = payload[nested];
-    if (sub && typeof sub === 'object') {
-      const v = (sub as Record<string, unknown>)['sessionId'];
-      if (typeof v === 'string' && v.length > 0) {
+    if (sub && typeof sub === "object") {
+      const v = (sub as Record<string, unknown>)["sessionId"];
+      if (typeof v === "string" && v.length > 0) {
         lastKnownSessionId = v;
         return v;
       }
@@ -85,7 +98,10 @@ let seqCounter = 0;
  *
  * @param ownerOverride 显式属主（一般不用；默认取当前账号作用域）
  */
-export function persistAiEvent(event: DomainEvent, ownerOverride?: string): void {
+export function persistAiEvent(
+  event: DomainEvent,
+  ownerOverride?: string,
+): void {
   if (!isDatabaseInitialized()) return;
   if (!shouldPersist(event.eventType)) return;
 
@@ -105,8 +121,8 @@ export function persistAiEvent(event: DomainEvent, ownerOverride?: string): void
       ++seqCounter,
     );
   } catch (e) {
-    logger.warn('AI 组件事件落库失败（不影响运行）', {
-      source: 'aiEventStore',
+    logger.warn("AI 组件事件落库失败（不影响运行）", {
+      source: "aiEventStore",
       type: event.eventType,
       error: e instanceof Error ? e.message : String(e),
     });
@@ -114,19 +130,30 @@ export function persistAiEvent(event: DomainEvent, ownerOverride?: string): void
 }
 
 /** 读取某会话（当前属主）的事件流，供前端回放重建组件 */
-export function listAiEvents(sessionId: string, options: { sinceTs?: number; limit?: number } = {}): PersistedAiEvent[] {
+export function listAiEvents(
+  sessionId: string,
+  options: { sinceTs?: number; limit?: number } = {},
+): PersistedAiEvent[] {
   if (!isDatabaseInitialized()) return [];
   const limit = Math.min(Math.max(options.limit ?? 2000, 1), 5000);
   try {
     const db = getMainDb();
-    return db.prepare(
-      `SELECT * FROM ai_events
+    return db
+      .prepare(
+        `SELECT * FROM ai_events
        WHERE owner_user_id = ? AND session_id = ? AND ts >= ?
        ORDER BY ts ASC, seq ASC LIMIT ?`,
-    ).all(getActiveOwner(), sessionId, options.sinceTs ?? 0, limit) as PersistedAiEvent[];
+      )
+      .all(
+        getActiveOwner(),
+        sessionId,
+        options.sinceTs ?? 0,
+        limit,
+      ) as PersistedAiEvent[];
   } catch (e) {
-    logger.warn('AI 组件事件读取失败', {
-      source: 'aiEventStore', sessionId,
+    logger.warn("AI 组件事件读取失败", {
+      source: "aiEventStore",
+      sessionId,
       error: e instanceof Error ? e.message : String(e),
     });
     return [];
@@ -139,10 +166,16 @@ export function countAiEvents(sessionId?: string): number {
   try {
     const db = getMainDb();
     const row = sessionId
-      ? db.prepare('SELECT COUNT(*) AS n FROM ai_events WHERE owner_user_id = ? AND session_id = ?')
-        .get(getActiveOwner(), sessionId) as { n: number } | undefined
-      : db.prepare('SELECT COUNT(*) AS n FROM ai_events WHERE owner_user_id = ?')
-        .get(getActiveOwner()) as { n: number } | undefined;
+      ? (db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM ai_events WHERE owner_user_id = ? AND session_id = ?",
+          )
+          .get(getActiveOwner(), sessionId) as { n: number } | undefined)
+      : (db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM ai_events WHERE owner_user_id = ?",
+          )
+          .get(getActiveOwner()) as { n: number } | undefined);
     return row?.n ?? 0;
   } catch {
     return 0;
@@ -153,7 +186,10 @@ export function countAiEvents(sessionId?: string): number {
 export function clearSessionEvents(sessionId: string): void {
   if (!isDatabaseInitialized()) return;
   try {
-    getMainDb().prepare('DELETE FROM ai_events WHERE owner_user_id = ? AND session_id = ?')
+    getMainDb()
+      .prepare(
+        "DELETE FROM ai_events WHERE owner_user_id = ? AND session_id = ?",
+      )
       .run(getActiveOwner(), sessionId);
   } catch {
     /* 清理失败不阻塞删除会话 */
@@ -179,7 +215,10 @@ export function startAiEventPersistence(): number {
     persistAiEvent(event);
   });
   subscribed = true;
-  logger.info('AI 组件事件持久化已启用', { source: 'aiEventStore', types: types.length });
+  logger.info("AI 组件事件持久化已启用", {
+    source: "aiEventStore",
+    types: types.length,
+  });
   return types.length;
 }
 

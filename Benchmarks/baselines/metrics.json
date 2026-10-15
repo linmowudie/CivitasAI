@@ -1,22 +1,262 @@
 {
-  "version": "0.1.0",
-  "recordedAt": "2026-09-14T14:20:00.000Z",
+  "version": "0.3.0",
+  "schemaVersion": 4,
+  "recordedAt": "2026-10-14T12:40:38.205Z",
+  "generator": "Scripts/benchMetrics.cjs",
+  "notes": [
+    "**agentMetrics 是本基线的主角**：Benchmark 量的是 Agent 能力（准入率 / 评分 / 问题分布），来自最近一次 `npx tsx Benchmarks/runner/run.ts` 的产物 `Benchmarks/reports/*.json`。",
+    "`matrix` 段是第 1 层【实验矩阵】的覆盖事实（双轴：能力轴 + 九系统轴 / 平台前置 / 锚点强度）。",
+    "`testSuite` 段是 **Tests 系统**（传统 bug 与业务）的规模，仅作仓库整体参考，不是 Benchmark 指标。",
+    "**`notRun` 段落实九系统检验方案 §2.2 铁律 1**：缺真实凭据时不记 SKIP-pass。vitest 报的 passed 里含未执行被测行为的用例，`effectivePassed` 才是诚实口径。",
+    "testCaseCount 为源码级 `it(`/`test(` 出现次数（口径固定，见脚本 CASE_RE），与 `vitest run` 输出不同。"
+  ],
   "metrics": {
-    "testCount": 582,
-    "testPassRate": 1.0,
-    "testFilesCount": 24,
-    "testDurationMs": 25000,
-    "e2eScenarios": 20,
-    "faultInjectionCoverage": "DUR-001~006",
-    "apiEndpointCount": 15,
-    "eventTypesCount": 42,
+    "agentMetrics": {
+      "reportFile": "latest.json",
+      "generatedAt": "2026-10-14T12:36:41.540Z",
+      "scenarios": 16,
+      "admitted": 14,
+      "admissionRate": 0.875,
+      "avgScore": 0.9247,
+      "gradeDistribution": {
+        "A": 12,
+        "C": 1,
+        "B": 1
+      },
+      "retrievalQuality": {
+        "goldenSet": "Benchmarks/datasets/retrievalGoldenSet.json",
+        "goldenVersion": "0.1.0",
+        "corpusSize": 20,
+        "seeded": 20,
+        "queryCount": 36,
+        "scoredQueries": 34,
+        "k": 5,
+        "meanRecallAtK": 0.9118,
+        "mrr": 0.9118
+      },
+      "diagnosisDistribution": {
+        "no_progress": 2,
+        "tool_loop": 1
+      },
+      "problems": [
+        {
+          "scenario": "scn-assembly-probes",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-model-error-honest",
+          "types": [
+            "recovery_missing"
+          ]
+        },
+        {
+          "scenario": "scn-no-progress-spin",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-recovery-tool-failure",
+          "types": [
+            "tool_misuse"
+          ]
+        },
+        {
+          "scenario": "scn-tool-loop",
+          "types": [
+            "tool_loop"
+          ]
+        }
+      ]
+    },
+    "matrix": {
+      "version": "0.3.0",
+      "cells": 74,
+      "axes": {
+        "capability": 18,
+        "system": 56
+      },
+      "prerequisites": 42,
+      "surfaces": 15,
+      "families": 6,
+      "landedCells": 29,
+      "staticAttested": 3,
+      "byStatusAttestation": {
+        "existing-covered/executed": 29,
+        "gap/none": 6,
+        "gap/static": 20,
+        "existing-covered/static": 3,
+        "declared-only/none": 19,
+        "gap/executed": 1,
+        "existing-covered/tests": 21,
+        "new-scaffold/tests": 17
+      },
+      "landingRate": 0.3919,
+      "byCls": {
+        "BEN": 22,
+        "ENV": 21,
+        "SEC": 31
+      },
+      "byStatus": {
+        "new-scaffold": 0,
+        "existing-covered": 32,
+        "declared-only": 15,
+        "gap": 27
+      },
+      "anchorStrength": {
+        "assertion": 82,
+        "file-only": 9,
+        "none": 25
+      }
+    },
+    "testSuite": {
+      "testFilesCount": 172,
+      "testCaseCount": 2015,
+      "note": "Tests 系统规模（参考值，非 Benchmark 指标）"
+    },
+    "notRun": {
+      "credential": "HUAWEI_MAAS_API_KEY",
+      "credentialPresent": false,
+      "gatedFileCount": 7,
+      "notRunCount": 12,
+      "vitestPassed": 80,
+      "effectivePassed": 68,
+      "tests": [
+        "S3 Llm 模块 > Gate G3 连通性 > 华为云 GLM-5.1 非流式调用",
+        "S3 Llm 模块 > Gate G3 连通性 > 华为云 GLM-5.1 流式调用",
+        "S3 Llm 模块 > slmCaller > SLM 真实调用（华为云 GLM-5.1）",
+        "S9 · 真实 Agent 集成测试 > Round 1: Worker 编码任务 → LLM 真实调用 → 审核通过",
+        "S9 · 真实 Agent 集成测试 > Round 2: Worker 设计任务 → LLM 真实调用 → 审核通过",
+        "S9 · 真实 Agent 集成测试 > Round 3: Worker 分析任务 → 首次拒绝 → 重新提交 → 通过",
+        "S9 · 真实 Agent 集成测试 > 综合: 多 Agent 并行工作 + Token 守恒验证",
+        "E2E: LITIGATION 模式 — 司法仲裁 > [LLM] 3 个仲裁者独立裁决 → 多数一致",
+        "E2E: ASSEMBLY_LINE 模式 — SOP 流水线 > [LLM] 流水线节点依次调用 LLM",
+        "E2E: DIRECT 模式 — 简单任务直接执行 > [LLM] Director 真实调用 LLM → 输出非空 + Token 扣减",
+        "E2E: CONSORTIUM 模式 — 高难攻坚 > [LLM] 多 Partner 并行调用 → 各自提交审核",
+        "E2E: DELEGATION 模式 — 并行委派 > [LLM] Worker 真实调用 → 提交审核 → Reviewer 通过"
+      ],
+      "rule": "effectivePassed = vitest.passed - notRunCount；NOT-RUN 既不是失败，也绝不是通过（§2.2 铁律 1）"
+    },
+    "gapRegister": {
+      "executed": 29,
+      "staticAttested": 3,
+      "total": 42,
+      "gap": 27,
+      "declaredOnly": 15,
+      "byBlocker": {
+        "bench-unbuilt": 4,
+        "product-missing": 23,
+        "design-only": 15
+      },
+      "cells": [
+        "AG-BEN-RESUME",
+        "AG-SEC-POISON",
+        "AG-SEC-TOOLMISUSE",
+        "AGENT-ENV-L3REAL",
+        "AGENT-ENV-SUBMITGATE",
+        "MEM1-GAP-PARTITION",
+        "MEM1-GAP-RESTORE",
+        "MEMN-GAP-EVENTSUB",
+        "MEMN-SEC-MEMREF",
+        "MEMN-SEC-READAUTH",
+        "MEMN-SEC-VERSION",
+        "MM-DECL-MULTIMODAL",
+        "MM-DECL-SIGHTUSE",
+        "MM-GAP-EVENTSTABLE",
+        "MM-GAP-TRACE",
+        "MM-GAP-VISION",
+        "RET-ENV-EMBDOWN",
+        "RET-ENV-LATENCY",
+        "SPLIT-SEM-AUTH",
+        "SPLIT-SEM-BLOODLINE",
+        "SPLIT-SEM-CLOSURE",
+        "SPLIT-SEM-CONFLICTDOMAIN",
+        "SPLIT-SEM-DEPTH",
+        "SPLIT-SEM-INHERIT",
+        "SPLIT-SEM-MERGEKIND",
+        "SPLIT-SEM-ONEPERSTEP",
+        "SPLIT-SEM-PEER",
+        "SPLIT-SEM-SELFMERGE",
+        "SPLIT-SEM-SELFSPLIT",
+        "SPLIT-SEM-SIMILARITY",
+        "SPLIT-SEM-VISIBILITY",
+        "SUB-SEC-DEPTH",
+        "SUB-SEC-TOOLPERM",
+        "SUP-ENV-DEADLOCKWIRE",
+        "SUP-SEC-AUDITCHAIN",
+        "SUP-SEC-FREEZEPERSIST",
+        "SUP-SEC-FREEZEWALLET",
+        "TOOL-ENV-TIMEOUT",
+        "TOOL-SEC-EGRESS",
+        "TOOL-SEC-L4GATE",
+        "TOOL-SEC-RATE",
+        "TOOL-SEC-SANDBOX"
+      ]
+    },
+    "gaps": {
+      "declaredOnly": [
+        "SPLIT-SEM-BLOODLINE",
+        "SPLIT-SEM-INHERIT",
+        "SPLIT-SEM-DEPTH",
+        "SPLIT-SEM-AUTH",
+        "SPLIT-SEM-VISIBILITY",
+        "MM-DECL-MULTIMODAL",
+        "SPLIT-SEM-SELFSPLIT",
+        "SPLIT-SEM-SELFMERGE",
+        "SPLIT-SEM-SIMILARITY",
+        "SPLIT-SEM-CLOSURE",
+        "MM-DECL-SIGHTUSE",
+        "SPLIT-SEM-CONFLICTDOMAIN",
+        "SPLIT-SEM-PEER",
+        "SPLIT-SEM-ONEPERSTEP",
+        "SPLIT-SEM-MERGEKIND"
+      ],
+      "gap": [
+        "AG-SEC-TOOLMISUSE",
+        "AG-SEC-POISON",
+        "AG-BEN-RESUME",
+        "TOOL-SEC-L4GATE",
+        "TOOL-SEC-EGRESS",
+        "TOOL-SEC-SANDBOX",
+        "TOOL-SEC-RATE",
+        "TOOL-ENV-TIMEOUT",
+        "RET-ENV-EMBDOWN",
+        "RET-ENV-LATENCY",
+        "SUP-SEC-FREEZEPERSIST",
+        "SUP-SEC-FREEZEWALLET",
+        "SUP-SEC-AUDITCHAIN",
+        "SUP-ENV-DEADLOCKWIRE",
+        "MEM1-GAP-PARTITION",
+        "MEM1-GAP-RESTORE",
+        "AGENT-ENV-SUBMITGATE",
+        "SUB-SEC-DEPTH",
+        "SUB-SEC-TOOLPERM",
+        "MEMN-SEC-READAUTH",
+        "MEMN-SEC-MEMREF",
+        "MEMN-GAP-EVENTSUB",
+        "MM-GAP-VISION",
+        "MM-GAP-TRACE",
+        "MM-GAP-EVENTSTABLE",
+        "AGENT-ENV-L3REAL",
+        "MEMN-SEC-VERSION"
+      ],
+      "weakAnchors": [
+        "BEN-BOOT",
+        "BEN-LLM",
+        "BEN-WORKER",
+        "BEN-ORCH",
+        "BEN-GOV",
+        "BEN-API",
+        "ENV-401",
+        "ENV-429",
+        "ENV-DBFULL"
+      ]
+    },
     "sixDimensions": {
-      "correctness": 1.0,
-      "resilience": 0.95,
-      "efficiency": 0.85,
-      "observability": 0.90,
-      "governance": 0.95,
-      "maintainability": 0.88
+      "status": "measured-by-benchmark",
+      "note": "六维评分由 Benchmarks/scoringMatrix.json + Benchmarks/runner 产出（见 agentMetrics.avgScore 与 gradeDistribution）；本文件不再手写任何维度分数。"
     }
   }
 }

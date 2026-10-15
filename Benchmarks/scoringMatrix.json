@@ -1,0 +1,58 @@
+{
+  "version": "0.1.0",
+  "description": "打分矩阵（Benchmark 第二层）：只有通过实验矩阵准入的场景才进入本层，按维度加权给出 Agent 能力评分与等级。维度沿用项目既有六维（Docs/Agent/15），权重与阈值在此声明，运行器不内嵌评分常数。",
+  "inputContract": "本文件消费 Benchmarks/reports/*.json 里实验矩阵产出的观测值；未放行（admitted=false）的场景不打分。",
+  "gradeThresholds": [
+    { "grade": "A", "min": 0.90 },
+    { "grade": "B", "min": 0.80 },
+    { "grade": "C", "min": 0.70 },
+    { "grade": "D", "min": 0.60 },
+    { "grade": "E", "min": 0.00 }
+  ],
+  "dimensions": [
+    {
+      "id": "correctness",
+      "weight": 0.30,
+      "description": "行为是否正确达成任务：退出类别与期望一致、十步序列未被破坏、工具调用与结果成对",
+      "signals": ["exitReasonMatch", "stepOrderIntact", "toolPairingIntact"]
+    },
+    {
+      "id": "resilience",
+      "weight": 0.20,
+      "description": "注入故障后的自愈能力：模型侧错误 / 工具失败 / 超时不把回路打死，且退出类别如实",
+      "signals": ["faultInjected", "noFatalError", "exitReasonNotCollapsed"]
+    },
+    {
+      "id": "efficiency",
+      "weight": 0.20,
+      "description": "收敛效率与成本纪律：轮数接近下界、Token 未越预算、无空转",
+      "signals": ["iterationBudgetRatio", "tokenBudgetRatio", "noIdleSpinning"]
+    },
+    {
+      "id": "observability",
+      "weight": 0.15,
+      "description": "控制回路确实被触发（元监控计数非零）：StopRules 每轮评估、短路/审批/限流有留痕",
+      "signals": ["stopRulesEvaluated", "controlTriggerDiversity"]
+    },
+    {
+      "id": "governance",
+      "weight": 0.15,
+      "description": "治理链路在需要时介入：危险工具经审批门、冻结/仲裁事件可观测",
+      "signals": ["approvalGateInvokedWhenNeeded"]
+    },
+    {
+      "id": "maintainability",
+      "weight": 0.0,
+      "description": "⚠️ 无自动化测量手段（代码可维护性不由 Agent 行为实验产出），权重置 0 并如实标注，不写伪分数",
+      "signals": []
+    }
+  ],
+  "notes": [
+    "维度与权重是对 Docs/Agent/15 六维的**可测化**：maintainability 无测量手段 → 权重 0（不参与分母），而不是填一个手写分数。",
+    "**适用性（applicable）铁律**：场景没压到的维度既不给分也不占权重。例：不注入故障的场景，resilience 记 N/A；",
+    "不触及治理链路的场景，governance 记 N/A。否则「没测过的能力」会被算成「满分的能力」——与旧基线里手写的 0.85~1.0 是同一类伪分数，加权后还会互相掩盖。",
+    "总分 = Σ(适用的 分×权重) / Σ(适用的 权重)。报告里 N/A 维度以 `·` 标记，并在 reason 里写明为何不适用。",
+    "评分只在 admitted=true 时产出；未放行场景进诊断报告，不进评分分布（避免'没通过准入却出现在能力分布里'）。",
+    "阈值与权重属可调参数，任何调整须同步 Benchmarks/baselines/metrics.json 并重跑基线。"
+  ]
+}

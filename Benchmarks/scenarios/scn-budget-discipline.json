@@ -1,0 +1,91 @@
+{
+  "id": "scn-budget-discipline",
+  "title": "成本纪律：小预算下必须如实以预算耗尽退出",
+  "tags": [
+    "cost",
+    "convergence"
+  ],
+  "matrixCells": [
+    "AG-BEN-BUDGET",
+    "AG-SEC-BUDGETBYPASS",
+    "AG-ENV-LEDGER"
+  ],
+  "task": {
+    "description": "在极小预算下完成一项需要多次工具调用的分析",
+    "goal": "分析数据并汇报结论"
+  },
+  "agentRole": "worker",
+  "loop": {
+    "maxIterations": 8,
+    "tokenBudget": 700,
+    "timeoutMs": 60000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "bench.echo",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "tool_calls",
+        "calls": [
+          {
+            "name": "bench.echo",
+            "arguments": {
+              "text": "step-1"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "tool_calls",
+        "calls": [
+          {
+            "name": "bench.echo",
+            "arguments": {
+              "text": "step-2"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "tool_calls",
+        "calls": [
+          {
+            "name": "bench.echo",
+            "arguments": {
+              "text": "step-3"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "tool_calls",
+        "calls": [
+          {
+            "name": "bench.echo",
+            "arguments": {
+              "text": "step-4"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "text",
+        "content": "分析完成。"
+      }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "budget_exhausted",
+    "maxIterations": 8,
+    "forbidDiagnoses": [
+      "false_success"
+    ],
+    "ledgerClean": true
+  }
+}

@@ -11,11 +11,18 @@
  *  - 软销毁（`destroyed_at`），保留审计痕迹而不是直接删行。
  *
  * 注意：所有读写都按 `owner_user_id` 收敛（与项目其余个人数据一致）。
+ *
+ * 日志分级（REV-337）：本模块所有落库失败的信号统一走 `logDbFailure()`——
+ * **数据库未初始化是一种运行形态**（纯内存运行、单测 harness 常态），不是故障，
+ * 故按来源去重降为一条 `warn`；真故障（磁盘满、迁移未跑、约束冲突）仍为 `error`。
+ * 此前三种写法并存（逐条 error / 静默返回默认值），使真实落库故障与"根本没有库"
+ * 在 `Logs/business.log` 里长得一模一样，信号被彻底淹没。
  */
 
-import { getMainDb } from '../index.js';
-import { getActiveOwner } from '../../AccountScope/activeAccount.js';
-import { logger } from '../../Logging/logger.js';
+import { getMainDb } from "../index.js";
+import { getActiveOwner } from "../../AccountScope/activeAccount.js";
+import { logger } from "../../Logging/logger.js";
+import { logDbFailure } from "../dbFailureLog.js";
 
 /** Agent 行（`agents` 表） */
 export interface AgentRow {
@@ -59,8 +66,10 @@ export interface AgentPersistInput {
 
 /** 新增或更新一个 Agent（按 agent_id 幂等） */
 export function upsertAgent(input: AgentPersistInput): void {
-  const run = (parentAgentId: string | null) => getMainDb().prepare(
-    `INSERT INTO agents (
+  const run = (parentAgentId: string | null) =>
+    getMainDb()
+      .prepare(
+        `INSERT INTO agents (
        agent_id, trace_id, parent_agent_id, role, system_prompt, task_prompt,
        allowed_tools, denied_tools, token_budget, max_iterations, timeout_ms,
        trust_level, sandbox_enabled, status, failure_count, created_at, owner_user_id
@@ -76,23 +85,24 @@ export function upsertAgent(input: AgentPersistInput): void {
        max_iterations = COALESCE(excluded.max_iterations, agents.max_iterations),
        timeout_ms = COALESCE(excluded.timeout_ms, agents.timeout_ms),
        status = excluded.status`,
-  ).run(
-    input.agentId,
-    input.traceId,
-    parentAgentId,
-    input.role,
-    input.systemPrompt ?? '',
-    input.taskPrompt ?? null,
-    input.allowedTools ? JSON.stringify(input.allowedTools) : null,
-    input.deniedTools ? JSON.stringify(input.deniedTools) : null,
-    input.tokenBudget ?? null,
-    input.maxIterations ?? null,
-    input.timeoutMs ?? null,
-    input.trustLevel ?? 'L1',
-    input.status ?? 'creating',
-    input.createdAt ?? Date.now(),
-    getActiveOwner(),
-  );
+      )
+      .run(
+        input.agentId,
+        input.traceId,
+        parentAgentId,
+        input.role,
+        input.systemPrompt ?? "",
+        input.taskPrompt ?? null,
+        input.allowedTools ? JSON.stringify(input.allowedTools) : null,
+        input.deniedTools ? JSON.stringify(input.deniedTools) : null,
+        input.tokenBudget ?? null,
+        input.maxIterations ?? null,
+        input.timeoutMs ?? null,
+        input.trustLevel ?? "L1",
+        input.status ?? "creating",
+        input.createdAt ?? Date.now(),
+        getActiveOwner(),
+      );
 
   try {
     run(input.parentAgentId ?? null);
@@ -100,30 +110,38 @@ export function upsertAgent(input: AgentPersistInput): void {
     const message = e instanceof Error ? e.message : String(e);
     // `agents.parent_agent_id` 有外键约束：父 Agent 尚未登记时会 FK 失败。
     // 运行时**不能被持久化阻断**，故降级为"无父"写入并告警（父子关系缺失是可观测的、可后补）。
-    if (input.parentAgentId && message.includes('FOREIGN KEY')) {
+    if (input.parentAgentId && message.includes("FOREIGN KEY")) {
       try {
         run(null);
-        logger.warn('父 Agent 未登记，父子关系降级为无父写入', {
-          source: 'agentRepository/upsertAgent',
+        logger.warn("父 Agent 未登记，父子关系降级为无父写入", {
+          source: "agentRepository/upsertAgent",
           agentId: input.agentId,
           parentAgentId: input.parentAgentId,
         });
         return;
       } catch (e2) {
-        logger.error('Agent 落库失败（降级后仍失败）', {
-          source: 'agentRepository/upsertAgent',
-          agentId: input.agentId,
-          error: e2 instanceof Error ? e2.message : String(e2),
-        });
+        logDbFailure(
+          "Agent 落库失败（降级后仍失败）",
+          "agentRepository/upsertAgent",
+          {
+            agentId: input.agentId,
+          },
+          e2,
+          "仅内存注册，重启即消失",
+        );
         return;
       }
     }
     // 落库失败不应阻断 Agent 运行（内存注册表仍是权威运行时视图），但必须留痕
-    logger.error('Agent 落库失败', {
-      source: 'agentRepository/upsertAgent',
-      agentId: input.agentId,
-      error: message,
-    });
+    logDbFailure(
+      "Agent 落库失败",
+      "agentRepository/upsertAgent",
+      {
+        agentId: input.agentId,
+      },
+      e,
+      "仅内存注册，重启即消失",
+    );
   }
 }
 
@@ -142,22 +160,48 @@ export function updateAgentRow(
 ): void {
   const sets: string[] = [];
   const params: unknown[] = [];
-  if (updates.status !== undefined) { sets.push('status = ?'); params.push(updates.status); }
-  if (updates.failureCount !== undefined) { sets.push('failure_count = ?'); params.push(updates.failureCount); }
-  if (updates.destroyedAt !== undefined) { sets.push('destroyed_at = ?'); params.push(updates.destroyedAt); }
-  if (updates.taskPrompt !== undefined) { sets.push('task_prompt = ?'); params.push(updates.taskPrompt); }
-  if (updates.tokenBudget !== undefined) { sets.push('token_budget = ?'); params.push(updates.tokenBudget); }
-  if (updates.maxIterations !== undefined) { sets.push('max_iterations = ?'); params.push(updates.maxIterations); }
+  if (updates.status !== undefined) {
+    sets.push("status = ?");
+    params.push(updates.status);
+  }
+  if (updates.failureCount !== undefined) {
+    sets.push("failure_count = ?");
+    params.push(updates.failureCount);
+  }
+  if (updates.destroyedAt !== undefined) {
+    sets.push("destroyed_at = ?");
+    params.push(updates.destroyedAt);
+  }
+  if (updates.taskPrompt !== undefined) {
+    sets.push("task_prompt = ?");
+    params.push(updates.taskPrompt);
+  }
+  if (updates.tokenBudget !== undefined) {
+    sets.push("token_budget = ?");
+    params.push(updates.tokenBudget);
+  }
+  if (updates.maxIterations !== undefined) {
+    sets.push("max_iterations = ?");
+    params.push(updates.maxIterations);
+  }
   if (sets.length === 0) return;
   params.push(agentId, getActiveOwner());
   try {
-    getMainDb().prepare(`UPDATE agents SET ${sets.join(', ')} WHERE agent_id = ? AND owner_user_id = ?`).run(...params);
+    getMainDb()
+      .prepare(
+        `UPDATE agents SET ${sets.join(", ")} WHERE agent_id = ? AND owner_user_id = ?`,
+      )
+      .run(...params);
   } catch (e) {
-    logger.error('Agent 更新落库失败', {
-      source: 'agentRepository/updateAgentRow',
-      agentId,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    logDbFailure(
+      "Agent 更新落库失败",
+      "agentRepository/updateAgentRow",
+      {
+        agentId,
+      },
+      e,
+      "库里状态与内存状态漂移（审计行可能陈旧）",
+    );
   }
 }
 
@@ -165,26 +209,79 @@ export function updateAgentRow(
 export function loadAgents(includeDestroyed = true): AgentRow[] {
   try {
     const sql = includeDestroyed
-      ? 'SELECT * FROM agents WHERE owner_user_id = ? ORDER BY created_at ASC'
-      : 'SELECT * FROM agents WHERE owner_user_id = ? AND destroyed_at IS NULL ORDER BY created_at ASC';
+      ? "SELECT * FROM agents WHERE owner_user_id = ? ORDER BY created_at ASC"
+      : "SELECT * FROM agents WHERE owner_user_id = ? AND destroyed_at IS NULL ORDER BY created_at ASC";
     return getMainDb().prepare(sql).all(getActiveOwner()) as AgentRow[];
   } catch (e) {
-    logger.error('Agent 载入失败', {
-      source: 'agentRepository/loadAgents',
-      error: e instanceof Error ? e.message : String(e),
-    });
+    logDbFailure(
+      "Agent 载入失败",
+      "agentRepository/loadAgents",
+      {
+        includeDestroyed,
+      },
+      e,
+      '返回空列表（启动回灌会读成"库里没有 Agent"）',
+    );
     return [];
+  }
+}
+
+/**
+ * 历史用过的最大 Agent ID 序号（**跨账号、含已销毁行**）。
+ *
+ * 为什么需要：`agentFactory` 的 ID 计数器是进程内存量，重启即归零，于是会分配出与历史行
+ * **同名**的 ID。后果有两条，都不可接受：
+ *  - 未销毁的同名行已被回灌进内存 ⇒ `registerAgent` 直接返回 `Agent X 已注册`，
+ *    编排第一步就失败（取证实测：任务面板提交的任务 100% 失败，回执就是这句注册错误）；
+ *  - 已销毁的同名行不在内存 ⇒ 写透 upsert 按 `agent_id` 覆盖，**抹掉审计痕迹**。
+ *
+ * ID 是进程级全局的，所以这里**不按 owner 收敛**：按账号取最大值反而会让 A 账号
+ * 重启后复用 B 账号用过的序号。数据库不可用时返回 0（纯内存运行，无历史可撞）。
+ */
+export function maxAgentIdSeq(): number {
+  try {
+    const rows = getMainDb()
+      .prepare("SELECT agent_id FROM agents")
+      .all() as Array<{ agent_id: string }>;
+    let max = 0;
+    for (const row of rows) {
+      const seq = Number(/-(\d+)$/.exec(row.agent_id)?.[1] ?? 0);
+      if (Number.isFinite(seq) && seq > max) max = seq;
+    }
+    return max;
+  } catch (e) {
+    logDbFailure(
+      "Agent ID 序号载入失败",
+      "agentRepository/maxAgentIdSeq",
+      {
+        caller: "agentFactory 首次分配 ID 前",
+      },
+      e,
+      "按 0 处理，ID 可能复用",
+    );
+    return 0;
   }
 }
 
 /** 统计：某 trace 下存活（未销毁）的子 Agent 数 —— 用于招募上限保护 */
 export function countLiveAgentsByTrace(traceId: string): number {
   try {
-    const row = getMainDb().prepare(
-      'SELECT COUNT(*) AS n FROM agents WHERE owner_user_id = ? AND trace_id = ? AND destroyed_at IS NULL',
-    ).get(getActiveOwner(), traceId) as { n: number } | undefined;
+    const row = getMainDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM agents WHERE owner_user_id = ? AND trace_id = ? AND destroyed_at IS NULL",
+      )
+      .get(getActiveOwner(), traceId) as { n: number } | undefined;
     return row?.n ?? 0;
-  } catch {
+  } catch (e) {
+    logDbFailure(
+      "存活子 Agent 统计失败",
+      "agentRepository/countLiveAgentsByTrace",
+      {
+        traceId,
+      },
+      e,
+      "按 0 处理（招募上限保护失效）",
+    );
     return 0;
   }
 }
@@ -197,11 +294,23 @@ export function countLiveAgentsByTrace(traceId: string): number {
 /** 读取某 Agent 的父 Agent ID（hydrate 回填父子关系用） */
 export function parentOf(agentId: string): string | null {
   try {
-    const row = getMainDb().prepare(
-      'SELECT parent_agent_id FROM agents WHERE agent_id = ? AND owner_user_id = ?',
-    ).get(agentId, getActiveOwner()) as { parent_agent_id: string | null } | undefined;
+    const row = getMainDb()
+      .prepare(
+        "SELECT parent_agent_id FROM agents WHERE agent_id = ? AND owner_user_id = ?",
+      )
+      .get(agentId, getActiveOwner()) as
+      { parent_agent_id: string | null } | undefined;
     return row?.parent_agent_id ?? null;
-  } catch {
+  } catch (e) {
+    logDbFailure(
+      "Agent 父级关系读取失败",
+      "agentRepository/parentOf",
+      {
+        agentId,
+      },
+      e,
+      "返回 null（hydrate 不回灌父子关系）",
+    );
     return null;
   }
 }

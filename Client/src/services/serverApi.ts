@@ -30,7 +30,8 @@ export interface ServerError {
   details?: unknown;
 }
 
-export type ServerResult<T> = { ok: true; data: T } | { ok: false; error: ServerError };
+export type ServerResult<T> =
+  { ok: true; data: T } | { ok: false; error: ServerError };
 
 export interface ServerUser {
   id: string;
@@ -71,17 +72,19 @@ export interface AuthPayload {
 
 // ── 配置 ────────────────────────────────────────────────────────────
 
-export const DEFAULT_SERVER_URL = 'http://127.0.0.1:8787';
+export const DEFAULT_SERVER_URL = "http://127.0.0.1:8787";
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 let baseUrl = DEFAULT_SERVER_URL;
 
 /** 规范化服务端地址：补协议、去尾斜杠、去空白 */
 export function normalizeServerUrl(raw: string): string {
-  const trimmed = (raw ?? '').trim();
+  const trimmed = (raw ?? "").trim();
   if (!trimmed) return DEFAULT_SERVER_URL;
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-  return withScheme.replace(/\/+$/, '');
+  const withScheme = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  return withScheme.replace(/\/+$/, "");
 }
 
 export function setServerBaseUrl(url: string): string {
@@ -91,6 +94,39 @@ export function setServerBaseUrl(url: string): string {
 
 export function getServerBaseUrl(): string {
   return baseUrl;
+}
+
+// ── 主进程转发白名单（桌面端）───────────────────────────────────────
+//
+// `server-fetch` 通道同时服务两个目标：本机控制面（api.ts）与这里的账号服务端。
+// 主进程因此只放行"本机后端端口"或**渲染进程显式固定过的 origin**（REV-287）——
+// 未固定就等于把内网代理开放给渲染进程。固定按 baseUrl 缓存，地址变更时重新固定。
+
+let pinnedAccountOrigin: string | null | undefined;
+
+type PinResult = { ok: true } | { ok: false; message: string };
+
+async function pinAccountServerOrigin(): Promise<PinResult> {
+  const api = (
+    globalThis as {
+      electronAPI?: {
+        setAccountServerOrigin?: (
+          origin: string | null,
+        ) => Promise<{ ok: boolean; error?: string }>;
+      };
+    }
+  ).electronAPI;
+  if (typeof api?.setAccountServerOrigin !== "function") return { ok: true }; // 浏览器/测试态：不经主进程，无需固定
+  if (pinnedAccountOrigin === baseUrl) return { ok: true };
+  const res = await api.setAccountServerOrigin(baseUrl);
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: res.error ?? `账号服务端地址未被接受：${baseUrl}`,
+    };
+  }
+  pinnedAccountOrigin = baseUrl;
+  return { ok: true };
 }
 
 // ── 鉴权钩子（由 accountStore 注入）─────────────────────────────────
@@ -120,12 +156,12 @@ interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
 }
 
-function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+function buildUrl(path: string, query?: RequestOptions["query"]): string {
+  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
   if (!query) return url;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
-    if (v !== undefined && v !== '') params.set(k, String(v));
+    if (v !== undefined && v !== "") params.set(k, String(v));
   }
   const qs = params.toString();
   return qs ? `${url}?${qs}` : url;
@@ -133,20 +169,34 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 
 /** Electron 主进程转发通道（规避渲染进程 CORS；打包后 file:// 同样可用） */
 interface ElectronServerFetch {
-  serverFetch(req: { method: string; url: string; headers?: Record<string, string>; body?: string }): Promise<
-    { ok: true; status: number; body: string } | { ok: false; status: 0; error: string }
+  serverFetch(req: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }): Promise<
+    | { ok: true; status: number; body: string }
+    | { ok: false; status: 0; error: string }
   >;
 }
 
 function electronServerFetch(): ElectronServerFetch | null {
-  const api = (globalThis as { electronAPI?: Partial<ElectronServerFetch> }).electronAPI;
-  return typeof api?.serverFetch === 'function' ? (api as ElectronServerFetch) : null;
+  const api = (globalThis as { electronAPI?: Partial<ElectronServerFetch> })
+    .electronAPI;
+  return typeof api?.serverFetch === "function"
+    ? (api as ElectronServerFetch)
+    : null;
 }
 
 /** 统一传输层：Electron 走主进程；浏览器/测试走原生 fetch */
 async function transport(
   url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal },
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    signal: AbortSignal;
+  },
 ): Promise<{ status: number; text: string }> {
   const bridge = electronServerFetch();
   if (bridge) {
@@ -170,7 +220,7 @@ async function transport(
 
 /** 单次请求（不涉及令牌续期） */
 async function rawRequest<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: RequestOptions = {},
 ): Promise<ServerResult<T>> {
@@ -178,15 +228,29 @@ async function rawRequest<T>(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  const pin = await pinAccountServerOrigin();
+  if (!pin.ok) {
+    clearTimeout(timer);
+    return {
+      ok: false,
+      error: {
+        code: "SERVER_URL_REJECTED",
+        message: `${pin.message}（服务端地址：${baseUrl}）`,
+      },
+    };
+  }
+
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-  if (options.token) headers['Authorization'] = `Bearer ${options.token}`;
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  if (options.token) headers["Authorization"] = `Bearer ${options.token}`;
 
   try {
     const { status, text } = await transport(buildUrl(path, options.query), {
       method,
       headers,
-      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+      ...(options.body !== undefined
+        ? { body: JSON.stringify(options.body) }
+        : {}),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -198,18 +262,32 @@ async function rawRequest<T>(
       } catch {
         return {
           ok: false,
-          error: { code: 'BAD_RESPONSE', message: `服务端返回非 JSON（HTTP ${status}）`, status },
+          error: {
+            code: "BAD_RESPONSE",
+            message: `服务端返回非 JSON（HTTP ${status}）`,
+            status,
+          },
         };
       }
     }
 
     // 服务端失败约定：{ ok:false, error:{...} }
-    if (payload && typeof payload === 'object' && 'ok' in payload && (payload as { ok: boolean }).ok === false) {
-      const err = (payload as { error?: { code?: string; message?: string; details?: unknown } }).error ?? {};
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "ok" in payload &&
+      (payload as { ok: boolean }).ok === false
+    ) {
+      const err =
+        (
+          payload as {
+            error?: { code?: string; message?: string; details?: unknown };
+          }
+        ).error ?? {};
       return {
         ok: false,
         error: {
-          code: err.code ?? 'UNKNOWN',
+          code: err.code ?? "UNKNOWN",
           message: err.message ?? `请求失败（HTTP ${status}）`,
           status,
           details: err.details,
@@ -218,23 +296,31 @@ async function rawRequest<T>(
     }
 
     if (status < 200 || status >= 300) {
-      return { ok: false, error: { code: 'HTTP_ERROR', message: `HTTP ${status}`, status } };
+      return {
+        ok: false,
+        error: { code: "HTTP_ERROR", message: `HTTP ${status}`, status },
+      };
     }
 
     // 成功约定：{ ok:true, data } ；兼容无外壳的裸响应（如 /v1/backup/download）
-    if (payload && typeof payload === 'object' && 'ok' in payload && (payload as { ok: boolean }).ok === true) {
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "ok" in payload &&
+      (payload as { ok: boolean }).ok === true
+    ) {
       return { ok: true, data: (payload as unknown as { data: T }).data };
     }
     return { ok: true, data: payload as T };
   } catch (e) {
     clearTimeout(timer);
-    const aborted = e instanceof DOMException && e.name === 'AbortError';
+    const aborted = e instanceof DOMException && e.name === "AbortError";
     return {
       ok: false,
       error: aborted
-        ? { code: 'TIMEOUT', message: `请求超时（${timeoutMs}ms）` }
+        ? { code: "TIMEOUT", message: `请求超时（${timeoutMs}ms）` }
         : {
-            code: 'NETWORK',
+            code: "NETWORK",
             message: `无法连接服务端 ${baseUrl}（请确认已启动且地址正确；浏览器模式还需服务端 CORS_ORIGINS 允许本页来源）`,
           },
     };
@@ -243,7 +329,7 @@ async function rawRequest<T>(
 
 /** 无需鉴权的请求（注册/登录/刷新/健康检查） */
 export function serverRequest<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: RequestOptions = {},
 ): Promise<ServerResult<T>> {
@@ -251,12 +337,17 @@ export function serverRequest<T>(
 }
 
 /** 刷新令牌时应清除登录态的错误码 */
-const FATAL_AUTH_CODES = new Set(['TOKEN_REUSED', 'UNAUTHENTICATED', 'INVALID_CREDENTIALS', 'FORBIDDEN']);
+const FATAL_AUTH_CODES = new Set([
+  "TOKEN_REUSED",
+  "UNAUTHENTICATED",
+  "INVALID_CREDENTIALS",
+  "FORBIDDEN",
+]);
 
 /** 是否需要用刷新令牌续期（访问令牌过期/无效） */
 function needsRefresh(code: string, status?: number): boolean {
-  if (code === 'TOKEN_EXPIRED') return true;
-  if (code === 'UNAUTHENTICATED' && status === 401) return true;
+  if (code === "TOKEN_EXPIRED") return true;
+  if (code === "UNAUTHENTICATED" && status === 401) return true;
   return false;
 }
 
@@ -280,20 +371,29 @@ async function refreshOnce(): Promise<ServerTokens | null> {
  * 带鉴权的请求：自动附带访问令牌；遇到"令牌过期/无效"时刷新一次并重试。
  */
 export async function authedRequest<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: RequestOptions = {},
 ): Promise<ServerResult<T>> {
   const tokens = authHooks?.getTokens() ?? null;
   if (!tokens) {
-    return { ok: false, error: { code: 'NOT_LOGGED_IN', message: '尚未登录账号' } };
+    return {
+      ok: false,
+      error: { code: "NOT_LOGGED_IN", message: "尚未登录账号" },
+    };
   }
 
-  const first = await rawRequest<T>(method, path, { ...options, token: tokens.accessToken });
+  const first = await rawRequest<T>(method, path, {
+    ...options,
+    token: tokens.accessToken,
+  });
   if (first.ok) return first;
 
   if (!needsRefresh(first.error.code, first.error.status)) {
-    if (FATAL_AUTH_CODES.has(first.error.code) && first.error.code !== 'UNAUTHENTICATED') {
+    if (
+      FATAL_AUTH_CODES.has(first.error.code) &&
+      first.error.code !== "UNAUTHENTICATED"
+    ) {
       authHooks?.onAuthLost(first.error.code);
     }
     return first;
@@ -302,14 +402,21 @@ export async function authedRequest<T>(
   // 续期后重试一次
   const refreshed = await refreshOnce();
   if (!refreshed) {
-    authHooks?.onAuthLost('refresh_failed');
+    authHooks?.onAuthLost("refresh_failed");
     return {
       ok: false,
-      error: { code: 'SESSION_EXPIRED', message: '登录已过期，请重新登录', status: 401 },
+      error: {
+        code: "SESSION_EXPIRED",
+        message: "登录已过期，请重新登录",
+        status: 401,
+      },
     };
   }
 
-  const retry = await rawRequest<T>(method, path, { ...options, token: refreshed.accessToken });
+  const retry = await rawRequest<T>(method, path, {
+    ...options,
+    token: refreshed.accessToken,
+  });
   if (!retry.ok && FATAL_AUTH_CODES.has(retry.error.code)) {
     authHooks?.onAuthLost(retry.error.code);
   }
@@ -318,15 +425,29 @@ export async function authedRequest<T>(
 
 // ── 便捷方法 ────────────────────────────────────────────────────────
 
-export const serverGet = <T>(path: string, query?: RequestOptions['query'], token?: string | null) =>
+export const serverGet = <T>(
+  path: string,
+  query?: RequestOptions["query"],
+  token?: string | null,
+) =>
   token === undefined
-    ? authedRequest<T>('GET', path, { query })
-    : rawRequest<T>('GET', path, { query, token });
+    ? authedRequest<T>("GET", path, { query })
+    : rawRequest<T>("GET", path, { query, token });
 
-export const serverPost = <T>(path: string, body?: unknown, token?: string | null) =>
-  token === undefined ? authedRequest<T>('POST', path, { body }) : rawRequest<T>('POST', path, { body, token });
+export const serverPost = <T>(
+  path: string,
+  body?: unknown,
+  token?: string | null,
+) =>
+  token === undefined
+    ? authedRequest<T>("POST", path, { body })
+    : rawRequest<T>("POST", path, { body, token });
 
-export const serverPut = <T>(path: string, body?: unknown) => authedRequest<T>('PUT', path, { body });
-export const serverPatch = <T>(path: string, body?: unknown) => authedRequest<T>('PATCH', path, { body });
-export const serverDelete = <T>(path: string, query?: RequestOptions['query']) =>
-  authedRequest<T>('DELETE', path, { query });
+export const serverPut = <T>(path: string, body?: unknown) =>
+  authedRequest<T>("PUT", path, { body });
+export const serverPatch = <T>(path: string, body?: unknown) =>
+  authedRequest<T>("PATCH", path, { body });
+export const serverDelete = <T>(
+  path: string,
+  query?: RequestOptions["query"],
+) => authedRequest<T>("DELETE", path, { query });

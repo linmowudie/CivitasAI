@@ -33,6 +33,7 @@ export default function ModelProviderPanel() {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<ModelSpec[]>([]);
   const [formError, setFormError] = useState('');
+  const [routingNotice, setRoutingNotice] = useState('');
   /** 用户勾选要导入的模型（默认**空**：不自动全选） */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   /** 逐模型可用性校验结果 */
@@ -192,9 +193,15 @@ export default function ModelProviderPanel() {
     await removeProvider(name);
   }, [removeProvider]);
 
-  // 更新路由配置
+  // 更新路由配置（后端**先落盘再同步运行态**，失败或部分未接受都必须显示出来）
   const handleRoutingChange = useCallback(async (field: keyof RoutingConfig, value: any) => {
-    await updateRouting({ [field]: value } as Partial<RoutingConfig>);
+    const result = await updateRouting({ [field]: value } as Partial<RoutingConfig>);
+    if (!result.ok) {
+      setRoutingNotice(`路由未保存：${result.error ?? '后端拒绝写入'}`);
+      return;
+    }
+    const refused = [...(result.rejected ?? []), ...(result.invalid ?? []).map(i => `${i.path}（${i.reason}）`)];
+    setRoutingNotice(refused.length > 0 ? `部分路由未保存：${refused.join('、')}` : '');
   }, [updateRouting]);
 
   return (
@@ -447,6 +454,12 @@ export default function ModelProviderPanel() {
       {routingConfig && (
         <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-4">
           <h3 className="text-sm font-medium text-text-primary">路由配置</h3>
+          <p className="text-[11px] text-text-muted">
+            改动写入用户配置层（<code>Configs/local.json</code>）并同步到当前进程的路由表，重启后仍读到同一值。
+          </p>
+          {routingNotice && (
+            <p className="text-[11px] text-red-400">{routingNotice}</p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {([
               ['defaultModel', '默认模型'],

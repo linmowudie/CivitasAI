@@ -9,11 +9,12 @@
  * （Node fetch 无 CORS/来源限制）；浏览器与测试环境仍走原生 fetch。
  */
 
-import { useSystemStore } from '@/stores/systemStore';
+import { useSystemStore } from "@/stores/systemStore";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
-export type ApiErrorType = 'network' | 'timeout' | '4xx' | '5xx' | 'rate_limited' | 'unknown';
+export type ApiErrorType =
+  "network" | "timeout" | "4xx" | "5xx" | "rate_limited" | "unknown";
 
 export interface ApiError {
   type: ApiErrorType;
@@ -24,8 +25,7 @@ export interface ApiError {
 }
 
 export type ApiResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: ApiError };
+  { ok: true; data: T } | { ok: false; error: ApiError };
 
 // ── 配置 ────────────────────────────────────────────────────────────
 
@@ -36,14 +36,64 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 /** electronAPI 的 serverFetch 通道（preload 暴露；浏览器/测试环境为 undefined） */
 interface ElectronTransport {
   getServerPorts: () => Promise<{ httpPort: number } | null>;
-  serverFetch: (req: { method: string; url: string; headers?: Record<string, string>; body?: string }) =>
-    Promise<{ ok: true; status: number; body: string } | { ok: false; status: 0; error: string }>;
+  /** 本机控制面凭据（桌面态由主进程从后端取回后下发；打包态页面是 file://，用不了 HTTP 领取通道） */
+  getApiToken?: () => Promise<string | null>;
+  serverFetch: (req: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }) => Promise<
+    | { ok: true; status: number; body: string }
+    | { ok: false; status: 0; error: string }
+  >;
 }
 
 function electronTransport(): ElectronTransport | null {
-  const api = (globalThis as { window?: { electronAPI?: ElectronTransport } }).window?.electronAPI;
+  const api = (globalThis as { window?: { electronAPI?: ElectronTransport } })
+    .window?.electronAPI;
   if (!api) return null;
-  return typeof api.serverFetch === 'function' && typeof api.getServerPorts === 'function' ? api : null;
+  return typeof api.serverFetch === "function" &&
+    typeof api.getServerPorts === "function"
+    ? api
+    : null;
+}
+
+// ── 控制面凭据（/api 统一身份门，REV-133）───────────────────────────
+
+const API_TOKEN_HEADER = "X-Civitas-Api-Token";
+/** 后端令牌领取通道（仅回环同源可 POST；开发态由 Vite 代理到本机后端） */
+const API_TOKEN_BOOTSTRAP_PATH = "/internal/api-token";
+
+/** undefined=未取过，字符串=已取到。取失败**不缓存**，后端稍后就绪时下一次请求会自动补上 */
+let cachedApiToken: string | null | undefined;
+
+async function resolveApiToken(): Promise<string | null> {
+  if (cachedApiToken !== undefined) return cachedApiToken;
+
+  const transport = electronTransport();
+  if (transport?.getApiToken) {
+    try {
+      const token = await transport.getApiToken();
+      if (token) cachedApiToken = token;
+      return token;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const res = await fetch(API_TOKEN_BOOTSTRAP_PATH, { method: "POST" });
+    const json = (await res.json()) as {
+      ok?: boolean;
+      data?: { token?: string };
+    };
+    const token = res.ok && json.ok ? (json.data?.token ?? null) : null;
+    if (token) cachedApiToken = token;
+    return token;
+  } catch {
+    return null;
+  }
 }
 
 /** 后端基址缓存（undefined=未解析，null=不可用） */
@@ -58,7 +108,9 @@ async function resolveBackendBaseUrl(): Promise<string | null> {
   }
   try {
     const ports = await transport.getServerPorts();
-    cachedBaseUrl = ports?.httpPort ? `http://127.0.0.1:${ports.httpPort}` : null;
+    cachedBaseUrl = ports?.httpPort
+      ? `http://127.0.0.1:${ports.httpPort}`
+      : null;
   } catch {
     cachedBaseUrl = null;
   }
@@ -82,12 +134,16 @@ async function requestViaElectron(
   signal: AbortSignal,
 ): Promise<ApiResponseLike> {
   const transport = electronTransport();
-  if (!transport) throw new Error('Electron 传输通道不可用');
+  if (!transport) throw new Error("Electron 传输通道不可用");
 
   // 主进程 fetch 不支持 AbortSignal：这里用"超时后忽略结果"的方式保持调用方语义
   const raceAbort = new Promise<never>((_, reject) => {
-    if (signal.aborted) reject(new DOMException('Aborted', 'AbortError'));
-    signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    if (signal.aborted) reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener(
+      "abort",
+      () => reject(new DOMException("Aborted", "AbortError")),
+      { once: true },
+    );
   });
 
   const result = await Promise.race([
@@ -96,7 +152,7 @@ async function requestViaElectron(
   ]);
 
   if (!result.ok) {
-    throw new Error(result.error || '网络错误');
+    throw new Error(result.error || "网络错误");
   }
   return {
     status: result.status,
@@ -111,27 +167,49 @@ async function requestViaElectron(
 export async function api<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
     body?: unknown;
     timeoutMs?: number;
     /** 是否自动重试 429（默认 true，仅重试一次） */
     retryOnRateLimit?: boolean;
+    /** 401 时是否重新领取控制面凭据并重试一次（默认 true；后端重启会换令牌） */
+    retryOn401?: boolean;
   } = {},
 ): Promise<ApiResult<T>> {
-  const { method = 'GET', body, timeoutMs = DEFAULT_TIMEOUT_MS, retryOnRateLimit = true } = options;
+  const {
+    method = "GET",
+    body,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retryOnRateLimit = true,
+    retryOn401 = true,
+  } = options;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const reqHeaders = body ? { 'Content-Type': 'application/json' } : undefined;
+    // 控制面凭据只附在 /api 请求上（后端统一身份门，REV-133）；
+    // 两个传输分支都读这一份 headers，故只需在此处装配。
+    const token = path.startsWith("/api/") ? await resolveApiToken() : null;
+    const headerEntries: Record<string, string> = {};
+    if (body) headerEntries["Content-Type"] = "application/json";
+    if (token) headerEntries[API_TOKEN_HEADER] = token;
+    const reqHeaders =
+      Object.keys(headerEntries).length > 0 ? headerEntries : undefined;
     const reqBody = body ? JSON.stringify(body) : undefined;
 
     // 桌面端：相对 `/api/*` 经主进程转发（规避 file:// 与 CORS）
     let res: ApiResponseLike;
-    const baseUrl = path.startsWith('/') ? await resolveBackendBaseUrl() : null;
+    const baseUrl = path.startsWith("/") ? await resolveBackendBaseUrl() : null;
     if (baseUrl) {
-      res = await requestViaElectron(baseUrl, path, method, reqHeaders, reqBody, controller.signal);
+      res = await requestViaElectron(
+        baseUrl,
+        path,
+        method,
+        reqHeaders,
+        reqBody,
+        controller.signal,
+      );
     } else {
       const raw = await fetch(path, {
         method,
@@ -145,9 +223,12 @@ export async function api<T>(
         // 真实 Response 一定有 text()；测试里的轻量 mock 可能只提供 json()，
         // 这里两种都兼容，避免"mock 形状"决定业务成败
         text: async () => {
-          if (typeof raw.text === 'function') return raw.text();
-          const asJson = (raw as unknown as { json?: () => Promise<unknown> }).json;
-          return typeof asJson === 'function' ? JSON.stringify(await asJson()) : '';
+          if (typeof raw.text === "function") return raw.text();
+          const asJson = (raw as unknown as { json?: () => Promise<unknown> })
+            .json;
+          return typeof asJson === "function"
+            ? JSON.stringify(await asJson())
+            : "";
         },
         header: (name: string) => raw.headers?.get?.(name) ?? null,
       };
@@ -155,30 +236,45 @@ export async function api<T>(
 
     clearTimeout(timer);
 
+    // 401：凭据失效（后端重启会换进程内随机令牌）→ 丢弃缓存重新领取，只重试一次
+    if (res.status === 401 && retryOn401) {
+      cachedApiToken = undefined;
+      return api<T>(path, { ...options, retryOn401: false });
+    }
+
     // 429 限流处理——通知 UI + 自动等待 Retry-After 后重试一次
     if (res.status === 429 && retryOnRateLimit) {
-      const retryAfter = parseInt(res.header('Retry-After') ?? '5', 10);
+      const retryAfter = parseInt(res.header("Retry-After") ?? "5", 10);
       useSystemStore.getState().setRateLimited(retryAfter);
-      await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 30_000)));
+      await new Promise((r) =>
+        setTimeout(r, Math.min(retryAfter * 1000, 30_000)),
+      );
       // 重试一次（不再递归重试）
       return api<T>(path, { ...options, retryOnRateLimit: false });
     }
 
-    const json = JSON.parse(await res.text()) as { ok: boolean; data?: T; error?: string };
+    const json = JSON.parse(await res.text()) as {
+      ok: boolean;
+      data?: T;
+      error?: string;
+    };
 
     if (!res.ok || !json.ok) {
       const type: ApiErrorType =
-        res.status === 429 ? 'rate_limited'
-        : res.status >= 500 ? '5xx'
-        : res.status >= 400 ? '4xx'
-        : 'unknown';
+        res.status === 429
+          ? "rate_limited"
+          : res.status >= 500
+            ? "5xx"
+            : res.status >= 400
+              ? "4xx"
+              : "unknown";
       const error: ApiError = {
         type,
         message: json.error ?? `HTTP ${res.status}`,
         status: res.status,
       };
       if (res.status === 429) {
-        error.retryAfter = parseInt(res.header('Retry-After') ?? '5', 10);
+        error.retryAfter = parseInt(res.header("Retry-After") ?? "5", 10);
       }
       return { ok: false, error };
     }
@@ -186,17 +282,30 @@ export async function api<T>(
     return { ok: true, data: json.data as T };
   } catch (e) {
     clearTimeout(timer);
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      return { ok: false, error: { type: 'timeout', message: `请求超时 (${timeoutMs}ms)` } };
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return {
+        ok: false,
+        error: { type: "timeout", message: `请求超时 (${timeoutMs}ms)` },
+      };
     }
-    return { ok: false, error: { type: 'network', message: e instanceof Error ? e.message : '网络错误' } };
+    return {
+      ok: false,
+      error: {
+        type: "network",
+        message: e instanceof Error ? e.message : "网络错误",
+      },
+    };
   }
 }
 
 // ── 便捷方法 ────────────────────────────────────────────────────────
 
 export const apiGet = <T>(path: string) => api<T>(path);
-export const apiPost = <T>(path: string, body: unknown) => api<T>(path, { method: 'POST', body });
-export const apiPut = <T>(path: string, body: unknown) => api<T>(path, { method: 'PUT', body });
-export const apiPatch = <T>(path: string, body: unknown) => api<T>(path, { method: 'PATCH', body });
-export const apiDelete = <T>(path: string) => api<T>(path, { method: 'DELETE' });
+export const apiPost = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "POST", body });
+export const apiPut = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "PUT", body });
+export const apiPatch = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "PATCH", body });
+export const apiDelete = <T>(path: string) =>
+  api<T>(path, { method: "DELETE" });

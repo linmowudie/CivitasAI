@@ -5,38 +5,39 @@
  * 启动 ⑫ 步调用。
  */
 
-import type { Result } from '../Infra/types.js';
+import type { Result } from "../Infra/types.js";
 
-import type { ToolDefinition } from './Traits/toolSpec.js';
-import { registerTools } from './Registry/toolRegistry.js';
+import type { ToolDefinition } from "./Traits/toolSpec.js";
+import { registerTools } from "./Registry/toolRegistry.js";
 
 // Builtin/Read
-import { fileReader } from './Builtin/Read/fileReader.js';
-import { dirLister } from './Builtin/Read/dirLister.js';
-import { grepTool } from './Builtin/Read/grepTool.js';
+import { fileReader } from "./Builtin/Read/fileReader.js";
+import { dirLister } from "./Builtin/Read/dirLister.js";
+import { grepTool } from "./Builtin/Read/grepTool.js";
 
 // Builtin/Write
-import { fileWriter } from './Builtin/Write/fileWriter.js';
-import { fileEditor } from './Builtin/Write/fileEditor.js';
+import { fileWriter } from "./Builtin/Write/fileWriter.js";
+import { fileEditor } from "./Builtin/Write/fileEditor.js";
 
 // Builtin/Execute
-import { shellRunner } from './Builtin/Execute/shellRunner.js';
-import { codeSandbox } from './Builtin/Execute/codeSandbox.js';
+import { shellRunner } from "./Builtin/Execute/shellRunner.js";
+import { codeSandbox } from "./Builtin/Execute/codeSandbox.js";
 
 // Builtin/System（工具探索与统一派发：头部冻结 + 追加式工具）
-import { toolExecutor } from './Builtin/System/toolExecutor.js';
-import { toolSearcher } from './Builtin/System/toolSearcher.js';
+import { toolExecutor } from "./Builtin/System/toolExecutor.js";
+import { toolSearcher } from "./Builtin/System/toolSearcher.js";
 
 // Builtin/Plan（Agent 计划清单：多 agent 各自归属，无副作用）
-import { todoWriter } from './Builtin/Plan/todoWriter.js';
+import { todoWriter } from "./Builtin/Plan/todoWriter.js";
 
 // Builtin/Search
-import { webSearch } from './Builtin/Search/webSearch.js';
-import { vectorSearch } from './Builtin/Search/vectorSearch.js';
+import { webSearch } from "./Builtin/Search/webSearch.js";
+import { vectorSearch } from "./Builtin/Search/vectorSearch.js";
+import { memoryWrite } from "./Builtin/Memory/memoryWrite.js";
 
 // Custom
-import { agentRecruiter } from './Custom/agentRecruiter.js';
-import { submitForReview } from './Custom/submitForReview.js';
+import { agentRecruiter } from "./Custom/agentRecruiter.js";
+import { submitForReview } from "./Custom/submitForReview.js";
 
 /** 所有内置工具定义 */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
@@ -58,6 +59,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   // Search (SAFE)
   webSearch,
   vectorSearch,
+  memoryWrite,
   // Custom（编排类：招募 + 评审提交，均已实装）
   agentRecruiter,
   submitForReview,

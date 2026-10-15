@@ -9,7 +9,7 @@ interface ApprovalQueueProps {
 }
 
 export default function ApprovalQueue({ embedded = false }: ApprovalQueueProps = {}) {
-  const { approvals, hydrate, decide, decidingId, lastError } = useApprovalStore();
+  const { approvals, hydrate, decide, decidingId, lastError, listError } = useApprovalStore();
 
   useApprovalPolling();
 
@@ -28,7 +28,7 @@ export default function ApprovalQueue({ embedded = false }: ApprovalQueueProps =
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-text-secondary">
             {pending.length > 0
-              ? `${pending.length} 项待处理 · CRITICAL 级需双角色审批，超时默认拒绝`
+              ? `${pending.length} 项待处理 · CRITICAL 级需两位不同身份分别裁决，超时默认拒绝`
               : '暂无待处理审批 · 工具安全门拦截到危险工具时会在此出现'}
           </span>
           <button className="btn btn-ghost text-xs" onClick={() => { void hydrate(); }}>
@@ -40,7 +40,7 @@ export default function ApprovalQueue({ embedded = false }: ApprovalQueueProps =
           <div>
             <h1 className="text-xl font-bold text-text-primary">审批队列</h1>
             <p className="text-xs text-text-muted mt-0.5">
-              CRITICAL 级需双角色审批 · 超时默认拒绝
+              CRITICAL 级需两位不同身份分别裁决 · 超时默认拒绝
             </p>
           </div>
           <span className="badge badge-danger">
@@ -53,6 +53,12 @@ export default function ApprovalQueue({ embedded = false }: ApprovalQueueProps =
       {lastError && (
         <div className="rounded-lg border border-danger/40 bg-danger/10 text-danger text-xs px-3 py-2">
           决策提交失败：{lastError}
+        </div>
+      )}
+      {/* 读取失败必须与"没有审批"区分开，否则空列表会被当成正常状态 */}
+      {listError && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 text-warning text-xs px-3 py-2">
+          {listError}
         </div>
       )}
 

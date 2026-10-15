@@ -1,0 +1,32 @@
+{
+  "id": "scn-convergence-basic",
+  "title": "基础收敛：读一次资料后给出结论",
+  "tags": ["convergence", "tool-use"],
+  "matrixCells": ["AG-BEN-CONVERGE", "AG-BEN-TOOLPAIR"],
+  "task": {
+    "description": "读取 src/notes.txt 并总结构建步骤",
+    "goal": "读取 src/notes.txt，然后用一句话总结构建步骤"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 4, "tokenBudget": 100000, "timeoutMs": 60000, "stream": false },
+  "tools": [{ "name": "bench.read", "behavior": "ok" }],
+  "model": {
+    "script": [
+      {
+        "kind": "tool_calls",
+        "calls": [{ "name": "bench.read", "arguments": { "path": "src/notes.txt" } }]
+      },
+      {
+        "kind": "text",
+        "content": "构建步骤为：安装依赖 → 跑测试 → 打包。任务完成。"
+      }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 3,
+    "mustCallTools": ["bench.read"],
+    "minToolResults": 1
+  }
+}

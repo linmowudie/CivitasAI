@@ -1,15 +1,18 @@
 /**
  * SystemConfig —— 标准设置面板（替换原 JSON 片段只读视图）
  *
- * 交互模型对齐业界最佳实践：
+ * 交互模型：
  *   - 左侧分组导航（每组显示「已修改」计数）+ 全局搜索
  *   - 右侧按 section 分块，每个配置键渲染为语义化控件：
  *     toggle / slider(区间+默认刻度) / select / segmented / number / tags
- *   - 「默认值 vs 用户值」：用户值覆盖默认，修改项高亮 + 单项重置；顶部支持整组/全部重置
- *   - 导出合并后的 JSON（不落后端，避免直接改写受保护配置文件）
- *   - 热重载策略标签 + 待生效计数 + 云端同步状态
+ *   - 「默认值 vs 当前值」：修改项高亮 + 单项重置（重置 = 请后端删除用户覆盖）
+ *   - 顶部支持整组/全部重置、导出合并 JSON（便于核对与迁移）
  *
- * 数据来源：schema 默认值（Docs/Agent/14 参数总典） + GET /api/configs/:name 文件当前值 + 本地覆盖层。
+ * 生效口径（REV-265/266）：**界面不自行宣称生效**。
+ *   - 取值来自 `GET /api/configs/effective`：`running`=后端进程在用，`onDisk`=重启后会读到
+ *   - 每项的「已生效 / 待重启生效 / 待提交 / 后端不接受 / 写入被拒」由这两份视图比对得出
+ *   - 写入走 `PUT /api/configs/user`，白名单与启动校验器试跑都在后端
+ *   - 策略标签表示**什么时候提交**给后端，不表示什么时候生效
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -17,7 +20,7 @@ import {
   RefreshCw, Cpu, GitBranch, Wallet, ShieldCheck, Scale, Database,
   HardDrive, History, Copy, Loader2, ChevronRight, Cloud, CloudOff, Zap,
 } from 'lucide-react';
-import { useConfigStore, DEFAULT_MARK } from '@/stores/configStore';
+import { useConfigStore, deriveFieldState, isPathAccepted, DEFAULT_MARK, type FieldEffectKind } from '@/stores/configStore';
 import { useHotReloadStore } from '@/stores/hotReloadStore';
 import { CONFIG_GROUPS, CONFIG_SCHEMA, ALL_FIELDS } from '@/config/configSchema';
 import type { FieldDef, ReloadStrategy } from '@/config/schemaTypes';
@@ -29,12 +32,23 @@ const ICONS: Record<string, typeof Settings> = {
   Database, HardDrive, History, Lock,
 };
 
-/** 热重载策略标签配置 */
+/** 提交时机标签：说明「什么时候把改动写给后端」，不说明「什么时候生效」 */
 const STRATEGY_LABELS: Record<ReloadStrategy, { label: string; color: string }> = {
-  immediate: { label: '即时', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  afterReply: { label: '回复后', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  onNavigate: { label: '离开时', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  onRestart: { label: '需重启', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  immediate: { label: '即时提交', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  afterReply: { label: '回复后提交', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  onNavigate: { label: '离开时提交', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  onRestart: { label: '即时提交·重启生效', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+};
+
+/** 生效态标签：全部由后端 running/onDisk 视图推导，界面不自造 */
+const EFFECT_LABELS: Record<FieldEffectKind, { label: string; color: string }> = {
+  live: { label: '已生效', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  queued: { label: '待提交', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  saving: { label: '提交中', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  'pending-restart': { label: '待重启生效', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  'not-accepted': { label: '不可写', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  rejected: { label: '写入被拒', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  'backend-offline': { label: '仅本机未提交', color: 'bg-neutral-500/20 text-neutral-400 border-neutral-500/30' },
 };
 
 /** ── 单个配置行 ───────────────────────────────── */
@@ -43,11 +57,30 @@ function FieldRow({ field }: { field: FieldDef }) {
   const modified = useConfigStore(s => s.isModified(field.key));
   const setValue = useConfigStore(s => s.setValue);
   const resetField = useConfigStore(s => s.resetField);
+  const dismissPending = useHotReloadStore(s => s.dismissPending);
+
+  // 生效态输入**逐项订阅原始值**：返回对象的 selector 每次都是新引用，会让面板反复重渲染
+  const hasDesired = useConfigStore(s => field.key in s.overrides);
+  const desired = useConfigStore(s => s.overrides[field.key]);
+  const running = useConfigStore(s => s.loaded[field.key]);
+  const disk = useConfigStore(s => s.disk[field.key]);
+  const pendingRestart = useConfigStore(s => s.restartPending.some(p => p.path === field.path));
+  const willBe = useConfigStore(s => s.restartPending.find(p => p.path === field.path)?.onDisk);
+  const saving = useConfigStore(s => s.saving[field.key] === true);
+  const error = useConfigStore(s => s.writeErrors[field.key]);
+  const policy = useConfigStore(s => s.policy);
+  const backendReachable = useConfigStore(s => s.backendReachable);
   const [copied, setCopied] = useState(false);
+
+  const state = deriveFieldState({
+    path: field.path, hasDesired, desired, running, disk,
+    pendingRestart, saving, error, policy, backendReachable,
+  });
 
   const disabled = Boolean(field.locked);
   const strategy = field.reloadStrategy ?? 'afterReply';
   const strategyInfo = STRATEGY_LABELS[strategy];
+  const effectInfo = EFFECT_LABELS[state.kind];
 
   return (
     <div className={`setting-row${modified ? ' modified' : ''}${disabled ? ' locked' : ''}`}>
@@ -56,6 +89,7 @@ function FieldRow({ field }: { field: FieldDef }) {
           <span className="setting-label">{field.label}</span>
           {modified && <span className="setting-badge-modified">已修改</span>}
           {disabled && <span className="setting-badge-locked"><Lock size={10} /> 锁定</span>}
+          <span className={`setting-badge-strategy ${effectInfo.color}`}>{effectInfo.label}</span>
           <span className={`setting-badge-strategy ${strategyInfo.color}`}>
             {strategyInfo.label}
           </span>
@@ -71,9 +105,37 @@ function FieldRow({ field }: { field: FieldDef }) {
             默认：{formatValue(field, field.default as FieldValue)}
           </p>
         )}
-        {strategy === 'onRestart' && modified && (
+        {/* 生效态说明一律来自后端视图，不在前端猜 */}
+        {state.kind === 'queued' && (
           <p className="setting-restart-hint">
-            <AlertTriangle size={11} className="inline text-red-400" /> 此项修改需重启服务后生效
+            <Zap size={11} className="inline" /> 尚未提交给后端：到达「{strategyInfo.label}」时机时才写入
+            <button type="button" className="setting-reset" onClick={() => dismissPending(field.key)}>
+              <X size={11} /> 撤销这项待提交
+            </button>
+          </p>
+        )}
+        {state.kind === 'saving' && <p className="setting-restart-hint"><Loader2 size={11} className="inline animate-spin" /> 正在写入后端用户配置层…</p>}
+        {state.kind === 'pending-restart' && (
+          <p className="setting-restart-hint">
+            <AlertTriangle size={11} className="inline text-red-400" /> 已写入配置文件，后端进程仍在用旧值；
+            重启后将读到 {formatValue(field, (willBe ?? field.default) as FieldValue)}
+          </p>
+        )}
+        {state.kind === 'not-accepted' && (
+          <p className="setting-restart-hint">
+            <AlertTriangle size={11} className="inline text-red-400" />
+            该键不在后端可写白名单内（启动锁定/安全红线项），改动只记录在界面，<b>不会生效</b>
+          </p>
+        )}
+        {state.kind === 'rejected' && (
+          <p className="setting-restart-hint">
+            <X size={11} className="inline text-red-400" /> 后端拒绝写入：{state.reason}
+          </p>
+        )}
+        {state.kind === 'backend-offline' && (
+          <p className="setting-restart-hint">
+            <AlertTriangle size={11} className="inline text-red-400" />
+            后端不可达（读不到 /api/configs/effective），改动只留在本机，<b>不会生效</b>
           </p>
         )}
       </div>
@@ -131,16 +193,15 @@ export default function SystemConfig() {
   const resetAll = useConfigStore(s => s.resetAll);
   const exportMerged = useConfigStore(s => s.exportMerged);
   const dirty = useConfigStore(s => s.dirty);
-  // 订阅 overrides / loaded 引用，任何修改/重置/重载都触发本组件重渲染，使计数实时
+  const backendReachable = useConfigStore(s => s.backendReachable);
+  // 订阅 overrides 引用 + 后端视图引用：修改/重置/刷新都会重渲染，计数才不会滞后
   const overrides = useConfigStore(s => s.overrides);
-  const loaded = useConfigStore(s => s.loaded);
   const isModified = useConfigStore(s => s.isModified);
+  const restartPending = useConfigStore(s => s.restartPending);
+  const policy = useConfigStore(s => s.policy);
 
-  // 热重载状态
-  const pendingCount = useHotReloadStore(s => s.pendingCount);
-  const restartCount = useHotReloadStore(s => s.restartCount);
+  // 提交时机队列（数组本身，不代表生效状态）
   const pending = useHotReloadStore(s => s.pending);
-  const restartRequired = useHotReloadStore(s => s.restartRequired);
 
   useEffect(() => {
     if (!hydrated.current) { hydrated.current = true; hydrate(); }
@@ -164,11 +225,16 @@ export default function SystemConfig() {
   const groupModified = groupFields.filter(f => isModified(f.key)).length;
   const totalModified = ALL_FIELDS.filter(f => isModified(f.key)).length;
 
-  // 待生效统计
-  const afterReplyCount = pendingCount('afterReply');
-  const onNavigateCount = pendingCount('onNavigate');
-  const totalPending = afterReplyCount + onNavigateCount;
-  const totalRestart = restartCount();
+  // 状态统计：待提交（本地队列）/ 待重启生效（后端 running≠onDisk）/ 后端不接受（白名单）
+  const totalQueued = pending.length;
+  const afterReplyQueued = pending.filter(p => p.strategy === 'afterReply').length;
+  const onNavigateQueued = pending.filter(p => p.strategy === 'onNavigate').length;
+  const totalRestartPending = restartPending.length;
+  const totalNotAccepted = policy
+    ? ALL_FIELDS.filter(f => !f.locked && !isPathAccepted(policy, f.path)).length
+    : 0;
+  /** 首帧 hydrate 尚未完成时不下「后端不可达」的结论 */
+  const backendOffline = !backendReachable && !loading && loadedAt !== null;
 
   // 按 section 聚合当前组字段（保持声明顺序）
   const sections = useMemo(() => {
@@ -194,26 +260,37 @@ export default function SystemConfig() {
           <div>
             <h1 className="text-lg font-bold text-text-primary">系统配置</h1>
             <p className="text-[11px] text-text-muted">
-              标准设置面板 · 默认值 vs 用户值 · 核心行为参数
-              {loading ? ' · 加载中…' : loadedAt ? ` · 已同步文件 ${new Date(loadedAt).toLocaleTimeString()}` : ''}
+              标准设置面板 · 取值来自后端运行态视图
+              {loading ? ' · 加载中…' : backendReachable
+                ? ` · 已读取后端生效态 ${loadedAt ? new Date(loadedAt).toLocaleTimeString() : ''}`
+                : backendOffline ? ' · 后端不可达（改动不会生效）' : ''}
             </p>
           </div>
         </div>
         <div className="config-header-right">
-          {/* 待生效状态指示 */}
-          {(totalPending > 0 || totalRestart > 0) && (
+          {/* 状态指示：全部由后端视图 / 提交队列得出，不宣称未确认的生效 */}
+          {(backendOffline || totalQueued > 0 || totalRestartPending > 0 || totalNotAccepted > 0) && (
             <div className="config-reload-status">
-              {totalPending > 0 && (
-                <span className="config-status-badge config-status-pending">
-                  <Zap size={11} />
-                  {totalPending} 项待生效
-                  {afterReplyCount > 0 && ` (${afterReplyCount} 回复后`}
-                  {onNavigateCount > 0 && `${afterReplyCount > 0 ? ', ' : ' ('}${onNavigateCount} 离开时)`}
+              {backendOffline && (
+                <span className="config-status-badge config-status-restart">
+                  <AlertTriangle size={11} /> 后端不可达 · 改动仅存本机
                 </span>
               )}
-              {totalRestart > 0 && (
+              {totalQueued > 0 && (
+                <span className="config-status-badge config-status-pending">
+                  <Zap size={11} />
+                  {totalQueued} 项待提交
+                  {` (${afterReplyQueued} 回复后, ${onNavigateQueued} 离开时)`}
+                </span>
+              )}
+              {totalRestartPending > 0 && (
                 <span className="config-status-badge config-status-restart">
-                  <AlertTriangle size={11} /> {totalRestart} 项需重启
+                  <AlertTriangle size={11} /> {totalRestartPending} 项已落盘、重启后生效
+                </span>
+              )}
+              {totalNotAccepted > 0 && (
+                <span className="config-status-badge config-status-dirty">
+                  <Lock size={11} /> {totalNotAccepted} 项后端不接受
                 </span>
               )}
             </div>
@@ -317,7 +394,8 @@ export default function SystemConfig() {
               {group.l0 && (
                 <div className="config-l0-banner">
                   <Lock size={13} />
-                  <span>本组为 <b>L0 启动锁定</b>：修改需重启服务生效，运行期热更新会被拒绝并记 CONFIG_RELOAD_FAILED。</span>
+                  <span>本组为 <b>L0 启动锁定</b>：后端可写白名单<b>不包含</b>这些键，界面改动不会落盘；
+                  如需变更请受控编辑 <code>Configs/</code> 后重启（运行期热更新会被拒绝并记 CONFIG_RELOAD_FAILED）。</span>
                 </div>
               )}
 
@@ -334,11 +412,12 @@ export default function SystemConfig() {
         <div className="config-modal-mask" onClick={() => setExportOpen(false)}>
           <div className="config-modal" onClick={e => e.stopPropagation()}>
             <div className="config-modal-head">
-              <h3 className="text-sm font-semibold text-text-primary">导出合并配置（默认值 + 用户覆盖）</h3>
+              <h3 className="text-sm font-semibold text-text-primary">导出合并配置（后端当前值 + 本地期望值）</h3>
               <button type="button" onClick={() => setExportOpen(false)}><X size={16} /></button>
             </div>
             <p className="text-[11px] text-text-muted mb-2">
-              按源文件重建的嵌套 JSON。为避免直接改写受保护配置文件，请核对后手动应用到 Configs/。
+              按源文件重建的嵌套 JSON，仅作核对与迁移用。白名单内的键已由 <code>PUT /api/configs/user</code> 写入用户配置层
+              （<code>{'<DATA_ROOT>'}/Configs/local.json</code>）；本视图含白名单外的项，那些只会出现在这里，不会落盘。
             </p>
             <pre className="config-export-pre">{exportJson}</pre>
             <div className="config-modal-foot">
@@ -364,12 +443,15 @@ export default function SystemConfig() {
       {/* 底部提示 */}
       <footer className="config-footer">
         <span className="text-[11px] text-text-muted">
-          取值优先级：用户覆盖 &gt; 配置文件当前值 &gt; 出厂默认 · 当前 {totalModified} 项偏离默认
+          取值优先级：本地期望值 &gt; 后端运行态值 &gt; 出厂默认 · 当前 {totalModified} 项偏离默认
           {(() => {
             const real = Object.values(overrides).filter(v => v !== DEFAULT_MARK).length;
             return real > 0 ? `（其中 ${real} 项用户自定义）` : '';
           })()}
-          · 控件与区间依据 Docs/Agent/14 参数总典 + 业界设置面板最佳实践
+          {totalRestartPending > 0 && ` · ${totalRestartPending} 项已落盘待重启`}
+          {backendOffline && ' · 后端不可达，改动不落盘'}
+          <br />
+          后端只在启动时读取配置：写入成功后必须重启进程才会进入运行态，界面对此逐项标注，不做「已生效」的推断。
         </span>
       </footer>
     </div>

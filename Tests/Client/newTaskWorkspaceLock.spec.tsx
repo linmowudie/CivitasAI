@@ -138,10 +138,19 @@ describe('NewTaskSetup · 三个入口可用', () => {
   it('切换模型 / 工作模式写入 store', () => {
     render(<NewTaskSetup sessionId={SESSION_ID} />);
     fireEvent.change(screen.getByLabelText('选择模型'), { target: { value: 'openai/gpt-4o' } });
-    fireEvent.change(screen.getByLabelText('选择工作模式'), { target: { value: 'LITIGATION' } });
+    fireEvent.change(screen.getByLabelText('选择工作模式'), { target: { value: 'CONSORTIUM' } });
 
     expect(useChatStore.getState().selectedModel).toBe('openai/gpt-4o');
-    expect(useChatStore.getState().selectedWorkingMode).toBe('LITIGATION');
+    expect(useChatStore.getState().selectedWorkingMode).toBe('CONSORTIUM');
+  });
+
+  it('工作模式只列编排器可执行的四项（S12 未实现的 LITIGATION/REGULATION 不是选项）', () => {
+    render(<NewTaskSetup sessionId={SESSION_ID} />);
+    const values = Array.from(
+      screen.getByLabelText('选择工作模式').querySelectorAll('option'),
+    ).map(o => o.value);
+
+    expect(values).toEqual(['DIRECT', 'DELEGATION', 'ASSEMBLY_LINE', 'CONSORTIUM']);
   });
 
   it('后端拒绝时显示真实原因（不再统一显示"更新失败"）', async () => {

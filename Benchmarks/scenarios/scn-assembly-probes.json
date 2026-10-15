@@ -1,0 +1,65 @@
+{
+  "id": "scn-assembly-probes",
+  "title": "真实调用探针：FORBIDDEN 注册被拒 + 状态机非法转换被拒 + ID 只增不复用 + 记忆沉淀双闸门",
+  "tags": [
+    "assembly",
+    "real-call"
+  ],
+  "matrixCells": [
+    "TOOL-BEN-SCHEMA",
+    "AGENT-BEN-STATE",
+    "MEMN-BEN-CONSOLIDATE",
+    "AGENT-SEC-IDREUSE",
+    "SUP-ENV-HUMANGATE",
+    "RET-SEC-SOURCE"
+  ],
+  "task": {
+    "description": "装配期/纯函数级判定点的真实调用验证（不依赖本次循环状态）",
+    "goal": "确认状态机与记忆写侧的公共 API 真的按契约返回"
+  },
+  "agentRole": "worker",
+  "assertProbes": [
+    "TOOL-FORBIDDEN-REGISTER",
+    "AGENT-ILLEGAL-TRANSITION",
+    "MEM-CONSOLIDATE-GATE",
+    "AGENT-ID-MONOTONIC",
+    "SUP-HUMANGATE-PENDING",
+    "RET-SOURCE-PINNED"
+  ],
+  "loop": {
+    "maxIterations": 1,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "bench.echo",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "探针场景：无需工具调用。"
+      }
+    ],
+    "defaultReply": "探针场景：无需工具调用。"
+  },
+  "expect": {
+    "exitReasonOneOf": [
+      "success",
+      "max_iterations"
+    ],
+    "assertProbesMustPass": [
+      "TOOL-FORBIDDEN-REGISTER",
+      "AGENT-ILLEGAL-TRANSITION",
+      "MEM-CONSOLIDATE-GATE",
+      "AGENT-ID-MONOTONIC",
+      "SUP-HUMANGATE-PENDING",
+      "RET-SOURCE-PINNED"
+    ]
+  },
+  "_note_retrieval": "RET-SOURCE-PINNED 需要检索数据根就绪（harness 已用临时数据根）"
+}

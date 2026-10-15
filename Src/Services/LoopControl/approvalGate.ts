@@ -8,15 +8,23 @@
  * 超时默认拒绝（禁止默认通过）。
  */
 
-import type { Result } from '../../Infra/types.js';
-import { getActiveOwner } from '../AccountScope/activeAccount.js';
-import { ok, err } from '../../Infra/types.js';
+import type { Result } from "../../Infra/types.js";
+import { getActiveOwner } from "../AccountScope/activeAccount.js";
+import { ok, err } from "../../Infra/types.js";
 
-import type { PendingApproval, ApprovalDecider } from './loopState.js';
-import type { ApprovalKind, RiskLevel, DecisionPolicy } from './types.js';
-import { persistApprovalCreated, persistApprovalUpdated, listPersistedApprovals } from './approvalPersistence.js';
+import type { PendingApproval, ApprovalDecider } from "./loopState.js";
+import type { ApprovalKind, RiskLevel, DecisionPolicy } from "./types.js";
+import {
+  persistApprovalCreated,
+  persistApprovalUpdated,
+  listPersistedApprovals,
+} from "./approvalPersistence.js";
 // 治理层守卫（2026-10-04）：裁决审批属治理动作，仅 L0 / 人类所有者可执行
-import { parseDecidedByRole } from '../Governance/governanceGuard.js';
+import { parseDecidedByRole } from "../Governance/governanceGuard.js";
+// 超时事件广播（2026-10-08，修复 REV-321）：`loop:approval_timeout_rejected` 此前只在前端分支里存在，
+// 后端从不发出 → 超时拒绝要等审批栏 30s 轮询才可见。
+import { publish, createEvent } from "../EventBus/eventBus.js";
+import { EventType } from "../EventBus/eventTypes.js";
 
 // ── 创建审批请求 ────────────────────────────────────────────────────
 
@@ -29,7 +37,7 @@ export interface CreateApprovalInput {
   payload: unknown;
   riskLevel: RiskLevel;
   timeoutSec?: number;
-  defaultOnTimeout?: 'reject' | 'abort_loop';
+  defaultOnTimeout?: "reject" | "abort_loop";
   deciders: ApprovalDecider[];
   decisionPolicy?: DecisionPolicy;
   /** 法定人数：需要多少个不同角色（且不同身份）通过才放行（2026-10-04） */
@@ -49,19 +57,20 @@ export function createApproval(
   defaultTimeoutSec: number = 60,
 ): Result<PendingApproval> {
   if (input.deciders.length === 0) {
-    return err('审批请求至少需要一个审批人');
+    return err("审批请求至少需要一个审批人");
   }
 
   // CRITICAL 级强制 unanimous
-  const policy: DecisionPolicy = input.riskLevel === 'CRITICAL'
-    ? 'unanimous'
-    : (input.decisionPolicy ?? 'majority');
+  const policy: DecisionPolicy =
+    input.riskLevel === "CRITICAL"
+      ? "unanimous"
+      : (input.decisionPolicy ?? "majority");
 
   // CRITICAL 级至少需要 2 个不同角色
-  if (input.riskLevel === 'CRITICAL') {
-    const roles = new Set(input.deciders.map(d => d.role));
+  if (input.riskLevel === "CRITICAL") {
+    const roles = new Set(input.deciders.map((d) => d.role));
     if (roles.size < 2) {
-      return err('CRITICAL 级审批至少需要 2 个不同角色的审批人');
+      return err("CRITICAL 级审批至少需要 2 个不同角色的审批人");
     }
   }
 
@@ -79,12 +88,14 @@ export function createApproval(
     payload: input.payload,
     riskLevel: input.riskLevel,
     timeoutSec,
-    defaultOnTimeout: input.defaultOnTimeout ?? 'reject',
+    defaultOnTimeout: input.defaultOnTimeout ?? "reject",
     deciders: input.deciders,
     decisionPolicy: policy,
     // 法定人数：显式给定时用它；否则由决定时按"角色数 ≥3 → 任意两方，否则全部"推导
-    ...(input.requiredApprovals !== undefined ? { requiredApprovals: input.requiredApprovals } : {}),
-    status: 'PENDING',
+    ...(input.requiredApprovals !== undefined
+      ? { requiredApprovals: input.requiredApprovals }
+      : {}),
+    status: "PENDING",
   };
 
   return ok(approval);
@@ -108,16 +119,43 @@ const approvalQueue: Map<string, PendingApproval> = new Map();
  * 审批等待者：工具安全门发起审批后会**阻塞**在这里，
  * 直到人工决策 / 自动审批 / 超时 / 中断才被唤醒。
  */
-const approvalWaiters = new Map<string, (approval: PendingApproval | null) => void>();
+const approvalWaiters = new Map<
+  string,
+  (approval: PendingApproval | null) => void
+>();
 
 /** 状态落定（非 PENDING）时唤醒等待者 */
 function notifyWaiter(approval: PendingApproval): void {
-  if (approval.status === 'PENDING') return;
+  if (approval.status === "PENDING") return;
   const waiter = approvalWaiters.get(approval.approvalId);
   if (waiter) {
     approvalWaiters.delete(approval.approvalId);
     waiter({ ...approval });
   }
+}
+
+/**
+ * 超时（默认拒绝）落定后广播，让所有客户端立刻把审批卡改成「超时已拒绝」。
+ *
+ * 没有这一步时前端只能靠审批栏 30s 轮询感知（`useApprovalPolling`），
+ * 用户会看到审批卡滞留数十秒仍显示「审查中」。
+ */
+function publishApprovalTimeout(approval: PendingApproval): void {
+  publish(
+    createEvent({
+      eventType: EventType.APPROVAL_TIMEOUT_REJECTED,
+      source: "LoopControl/approvalGate",
+      payload: {
+        approvalId: approval.approvalId,
+        toolCallId: approval.toolCallId,
+        sessionId: approval.sessionId,
+        loopId: approval.loopId,
+        status: approval.status,
+        timeoutSec: approval.timeoutSec,
+        reason: approval.decisionReason,
+      },
+    }),
+  );
 }
 
 /**
@@ -135,7 +173,7 @@ export function waitForApprovalDecision(
 ): Promise<PendingApproval | null> {
   const approval = approvalQueue.get(approvalId);
   if (!approval) return Promise.resolve(null);
-  if (approval.status !== 'PENDING') return Promise.resolve({ ...approval });
+  if (approval.status !== "PENDING") return Promise.resolve({ ...approval });
 
   const timeoutMs = options.timeoutMs ?? approval.timeoutSec * 1000;
 
@@ -148,7 +186,7 @@ export function waitForApprovalDecision(
       settled = true;
       if (timer) clearTimeout(timer);
       approvalWaiters.delete(approvalId);
-      options.signal?.removeEventListener('abort', onAbort);
+      options.signal?.removeEventListener("abort", onAbort);
       resolve(result);
     };
 
@@ -156,11 +194,13 @@ export function waitForApprovalDecision(
 
     timer = setTimeout(() => {
       const current = approvalQueue.get(approvalId);
-      if (current && current.status === 'PENDING') {
-        current.status = 'TIMEOUT';
+      if (current && current.status === "PENDING") {
+        current.status = "TIMEOUT";
         current.decidedAt = Date.now();
         current.decisionReason = `超时 (${current.timeoutSec}s)`;
+        current.quorumBlocked = undefined;
         persistApprovalUpdated(current);
+        publishApprovalTimeout(current);
       }
       finish(current ? { ...current } : null);
     }, timeoutMs);
@@ -168,8 +208,11 @@ export function waitForApprovalDecision(
     approvalWaiters.set(approvalId, finish);
 
     if (options.signal) {
-      if (options.signal.aborted) { onAbort(); return; }
-      options.signal.addEventListener('abort', onAbort, { once: true });
+      if (options.signal.aborted) {
+        onAbort();
+        return;
+      }
+      options.signal.addEventListener("abort", onAbort, { once: true });
     }
   });
 }
@@ -179,7 +222,10 @@ export function waitForApprovalDecision(
  */
 export function registerApproval(approval: PendingApproval): void {
   // 打上当前属主（账号隔离）：审批队列是内存态，必须按账号过滤
-  const owned: PendingApproval = { ...approval, owner: approval.owner ?? getActiveOwner() };
+  const owned: PendingApproval = {
+    ...approval,
+    owner: approval.owner ?? getActiveOwner(),
+  };
   approvalQueue.set(owned.approvalId, owned);
   // 落库（FE-004，fail-safe）：重启后仍可回溯；失败不影响内存队列
   persistApprovalCreated(owned);
@@ -195,7 +241,12 @@ export function registerApproval(approval: PendingApproval): void {
 export function decideApproval(input: DecideInput): Result<PendingApproval> {
   const approval = approvalQueue.get(input.approvalId);
   if (!approval) return err(`审批 ${input.approvalId} 不存在`);
-  if (approval.status !== 'PENDING') {
+  // 跨属主裁决是**双人控制的定义**，不是越权：CRITICAL 要求两位不同操作者分别裁决，
+  // 而单机部署下"另一位操作者"只能体现为另一个登录账号（或已注册治理 Agent）。
+  // 真实验证（2026-10-08）表明此处若按 `getActiveOwner()` 硬拒，法定人数在人类路径下
+  // 永远无法达成 —— 与 REV-264 同型死锁。读取侧仍按属主过滤；
+  // 写侧的访问控制（谁有权裁决）归 P0-2 鉴权中间件，身份伪造由下方法定人数判定拦截。
+  if (approval.status !== "PENDING") {
     return err(`审批 ${input.approvalId} 已决 (${approval.status})`);
   }
 
@@ -205,25 +256,64 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
   //   - **法定人数**：`requiredApprovals`（默认 2，即"任意两方"），且不同角色须由不同身份满足。
   //   此前 `decidedBy` 完全由调用方自报且不校验角色 —— 任何角色都能以 `auditor:xxx` 名义裁决。
   const actorRole = parseDecidedByRole(input.decidedBy);
-  const allowedRoles = approval.deciders.map(d => d.role as string);
+  const allowedRoles = approval.deciders.map((d) => d.role as string);
   // 兼容单审批人路径：只有一名审批人时，允许直接以"身份"提交（历史上前端即如此），
   // 否则按 `role:identity` 解析并要求角色在决策池内（多审批人 = 治理/双人控制场景，必须显式角色）。
-  const effectiveRole = allowedRoles.length === 1
-    ? (allowedRoles.includes(actorRole) ? actorRole : allowedRoles[0]!)
-    : actorRole;
+  const effectiveRole =
+    allowedRoles.length === 1
+      ? allowedRoles.includes(actorRole)
+        ? actorRole
+        : allowedRoles[0]!
+      : actorRole;
   // ★ 系统角色只可**拒绝**（fail-safe：超时/异常自动拒绝），**绝不能自动通过**。
   //   通过必须来自治理授权（或 forceApprove 的白名单自动审批路径，带 autoApproved 标记）。
-  const isSystemActor = actorRole === 'system' || actorRole === 'system-timeout' || actorRole === 'timeout';
+  const isSystemActor =
+    actorRole === "system" ||
+    actorRole === "system-timeout" ||
+    actorRole === "timeout";
   if (isSystemActor && input.approve) {
-    return err('裁决被拒绝：系统角色不得自动通过审批（只能自动拒绝）');
+    return err("裁决被拒绝：系统角色不得自动通过审批（只能自动拒绝）");
   }
   if (!isSystemActor && !allowedRoles.includes(effectiveRole)) {
-    return err(`裁决被拒绝：角色 ${actorRole} 不在本审批的决策池中（${allowedRoles.join(' / ')}）`);
+    return err(
+      `裁决被拒绝：角色 ${actorRole} 不在本审批的决策池中（${allowedRoles.join(" / ")}）`,
+    );
   }
 
   // 记录决定（去重：同一身份只计一次）
   if (!approval.decidedBy) approval.decidedBy = [];
   const identity = input.decidedBy;
+
+  const requiredRoles = approval.deciders.map((d) => d.role as string);
+  const required =
+    approval.requiredApprovals ??
+    (requiredRoles.length >= 3 ? 2 : requiredRoles.length);
+
+  // ★ 法定人数判定前置（2026-10-08，修复 REV-264）：
+  //   旧行为是"先记账再判状态"，同一身份换角色重复提交时 matched 恒为 1，
+  //   接口仍返回 200 + PENDING → 前端把它当"还差一个角色"继续补齐，
+  //   结果 CRITICAL 审批永久 PENDING 直至超时默认拒绝，而用户完全看不出原因。
+  //   现在：一次投票必须**新增**一个由不同身份满足的角色，否则当场明确拒绝。
+  if (
+    input.approve &&
+    approval.decisionPolicy === "unanimous" &&
+    !isSystemActor
+  ) {
+    const pending = approval.decidedBy;
+    const before = countDistinctRoleMatches(requiredRoles, pending);
+    const after = countDistinctRoleMatches(requiredRoles, [
+      ...pending,
+      identity,
+    ]);
+    if (after === before) {
+      return err(
+        `裁决未计入：身份 ${identity} 已在本审批中行使过投票权。` +
+          `双人控制要求 ${required} 位不同身份分别满足角色（当前已满足 ${before} 位）` +
+          `——请由另一位操作者（不同账号或已注册 Agent）裁决，或改用策略白名单自动审批通道`,
+      );
+    }
+  }
+
   if (!approval.decidedBy.includes(identity)) {
     approval.decidedBy.push(identity);
   }
@@ -231,23 +321,35 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
   approval.decisionReason = input.reason;
 
   // 根据策略判定结果
-  if (approval.decisionPolicy === 'unanimous') {
+  if (approval.decisionPolicy === "unanimous") {
     if (!input.approve) {
-      approval.status = 'REJECTED';
+      approval.status = "REJECTED";
+      approval.quorumBlocked = undefined;
     } else {
       // ★ 法定人数判定（2026-10-04，按层级相对规则）：
       //   "任意两方"= 达到 requiredApprovals（默认 2）且**不同角色由不同身份满足**；
       //   旧行为"全部审批人角色都要通过"仅在未指定法定人数时作为兜底。
-      const requiredRoles = approval.deciders.map(d => d.role as string);
-      const required = approval.requiredApprovals
-        ?? (requiredRoles.length >= 3 ? 2 : requiredRoles.length);
-      if (countDistinctRoleMatches(requiredRoles, approval.decidedBy) >= required) {
-        approval.status = 'APPROVED';
+      const matched = countDistinctRoleMatches(
+        requiredRoles,
+        approval.decidedBy,
+      );
+      if (matched >= required) {
+        approval.status = "APPROVED";
+        approval.quorumBlocked = undefined;
+      } else {
+        // 未达法定人数：把缺口如实回传，调用方不再靠"状态没变"自行猜测
+        approval.quorumBlocked = {
+          required,
+          matched,
+          remainingIdentities: required - matched,
+          reason: `已记录本身份的裁决，仍需 ${required - matched} 位不同身份的审批人`,
+        };
       }
     }
   } else {
     // majority: 简单多数
-    approval.status = input.approve ? 'APPROVED' : 'REJECTED';
+    approval.status = input.approve ? "APPROVED" : "REJECTED";
+    approval.quorumBlocked = undefined;
   }
 
   // 状态落库（FE-004，fail-safe）→ 唤醒阻塞中的工具执行
@@ -262,16 +364,20 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
  *
  * 用途：`unanimous` 仍需全部满足；而"任意两方"（L2 自治域规则）只需要匹配数 ≥ 法定人数。
  */
-export function countDistinctRoleMatches(requiredRoles: string[], decidedBy: string[]): number {
+export function countDistinctRoleMatches(
+  requiredRoles: string[],
+  decidedBy: string[],
+): number {
   if (requiredRoles.length === 0) return 0;
 
   const rolesByIdentity = new Map<string, Set<string>>();
   for (const entry of decidedBy) {
-    const sep = entry.indexOf(':');
+    const sep = entry.indexOf(":");
     const role = sep > 0 ? entry.slice(0, sep) : entry;
     const identity = sep > 0 ? entry.slice(sep + 1) : entry;
     if (!requiredRoles.includes(role)) continue;
-    if (!rolesByIdentity.has(identity)) rolesByIdentity.set(identity, new Set());
+    if (!rolesByIdentity.has(identity))
+      rolesByIdentity.set(identity, new Set());
     rolesByIdentity.get(identity)!.add(role);
   }
 
@@ -314,7 +420,9 @@ export function rolesSatisfiedByDistinctIdentities(
   decidedBy: string[],
 ): boolean {
   if (requiredRoles.length === 0) return false;
-  return countDistinctRoleMatches(requiredRoles, decidedBy) >= requiredRoles.length;
+  return (
+    countDistinctRoleMatches(requiredRoles, decidedBy) >= requiredRoles.length
+  );
 }
 
 /**
@@ -330,11 +438,11 @@ export function forceApprove(
 ): Result<PendingApproval> {
   const approval = approvalQueue.get(approvalId);
   if (!approval) return err(`审批 ${approvalId} 不存在`);
-  if (approval.status !== 'PENDING') {
+  if (approval.status !== "PENDING") {
     return err(`审批 ${approvalId} 已决 (${approval.status})`);
   }
 
-  approval.status = 'APPROVED';
+  approval.status = "APPROVED";
   approval.decidedAt = Date.now();
   approval.decidedBy = [...(approval.decidedBy ?? []), decidedBy];
   approval.decisionReason = reason;
@@ -348,18 +456,22 @@ export function forceApprove(
 /**
  * 检查超时审批——扫描 PENDING 状态的审批
  */
-export function checkTimeoutApprovals(now: number = Date.now()): PendingApproval[] {
+export function checkTimeoutApprovals(
+  now: number = Date.now(),
+): PendingApproval[] {
   const timedOut: PendingApproval[] = [];
 
   for (const [, approval] of approvalQueue) {
-    if (approval.status !== 'PENDING') continue;
+    if (approval.status !== "PENDING") continue;
     const expiresAt = approval.requestedAt + approval.timeoutSec * 1000;
     if (now >= expiresAt) {
       // 超时 → 默认拒绝（禁止默认通过）
-      approval.status = 'TIMEOUT';
+      approval.status = "TIMEOUT";
       approval.decidedAt = now;
       approval.decisionReason = `超时 (${approval.timeoutSec}s)`;
+      approval.quorumBlocked = undefined;
       persistApprovalUpdated(approval);
+      publishApprovalTimeout(approval);
       notifyWaiter(approval);
       timedOut.push(approval);
     }
@@ -374,23 +486,34 @@ export function checkTimeoutApprovals(now: number = Date.now()): PendingApproval
 export function getApproval(approvalId: string): PendingApproval | undefined {
   const approval = approvalQueue.get(approvalId);
   if (!approval) return undefined;
-  // 账号隔离：非当前属主的审批对外不可见
-  return (approval.owner ?? 'local') === getActiveOwner() ? approval : undefined;
+  // 待裁决审批是**治理工单**，不是账号私有数据：第二操作者必须读得到它才能投出第二票。
+  // 已决条目（含 payload 与裁决人）仍按属主隔离，跨账号历史不外泄。
+  if (approval.status === "PENDING") return approval;
+  return (approval.owner ?? "local") === getActiveOwner()
+    ? approval
+    : undefined;
 }
 
 /**
  * 获取 Loop 的所有审批请求
  */
 export function getApprovalsByLoop(loopId: string): PendingApproval[] {
-  return [...approvalQueue.values()].filter(a => a.loopId === loopId);
+  return [...approvalQueue.values()].filter((a) => a.loopId === loopId);
 }
 
 /**
  * 获取所有待审批
+ *
+ * 不按属主过滤（2026-10-08 真实验证后的口径修正）：PENDING 审批是治理工单，
+ * CRITICAL 的第二票**必须**由另一位操作者（另一登录账号 / 已注册治理 Agent）投出；
+ * 若只返回本账号发起的审批，第二操作者永远看不到待自己裁决的条目，
+ * 双人控制就又回到"永久 PENDING 直到超时默认拒绝"的死锁（REV-264 同型）。
+ * 已决条目仍按属主隔离（见 getRecentApprovals）。
  */
 export function getPendingApprovals(): PendingApproval[] {
-  const owner = getActiveOwner();
-  return [...approvalQueue.values()].filter(a => a.status === 'PENDING' && (a.owner ?? 'local') === owner);
+  return [...approvalQueue.values()]
+    .filter((a) => a.status === "PENDING")
+    .sort((a, b) => a.requestedAt - b.requestedAt);
 }
 
 /**
@@ -407,7 +530,7 @@ export function getRecentApprovals(limit = 100): PendingApproval[] {
     merged.set(row.approvalId, row);
   }
   for (const approval of approvalQueue.values()) {
-    if ((approval.owner ?? 'local') === owner) {
+    if ((approval.owner ?? "local") === owner) {
       merged.set(approval.approvalId, { ...approval });
     }
   }

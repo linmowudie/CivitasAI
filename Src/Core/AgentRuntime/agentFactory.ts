@@ -6,22 +6,50 @@
  * Worker 不可自行宣告完成（必须走 submitForReview）。
  */
 
-import { createWallet } from '../../Services/TokenEconomy/walletManager.js';
-import { getRolePrompt } from '../../Services/Prompts/promptRegistry.js';
-import { getPlaybook } from '../../Services/Prompts/skillsAssets.js';
-import { denyReasonForAgentRole } from '../../Infra/Roles/roleVocabulary.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { createWallet } from "../../Services/TokenEconomy/walletManager.js";
+import { getRolePrompt } from "../../Services/Prompts/promptRegistry.js";
+import { getPlaybook } from "../../Services/Prompts/skillsAssets.js";
+import { denyReasonForAgentRole } from "../../Infra/Roles/roleVocabulary.js";
+import { maxAgentIdSeq } from "../../Infra/Db/Repositories/agentRepository.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
 
-import { registerAgent, updateAgent } from './agentRegistry.js';
-import type { AgentInstance, AgentRole, CreateAgentParams } from './types.js';
+import { registerAgent, updateAgent, hasAgent } from "./agentRegistry.js";
+import type { AgentInstance, AgentRole, CreateAgentParams } from "./types.js";
 
 // ── 内部计数 ────────────────────────────────────────────────────────
 
 let agentCounter = 0;
 
+/** 计数器是否已按库中历史对齐过（每进程一次） */
+let counterAlignedWithStore = false;
+
 /** 附加任务执行 Playbook 的执行级角色（FE-071：worker/partner/assembly_node） */
-const EXECUTION_ROLES_WITH_PLAYBOOK = new Set(['worker', 'partner', 'assembly_node']);
+const EXECUTION_ROLES_WITH_PLAYBOOK = new Set([
+  "worker",
+  "partner",
+  "assembly_node",
+]);
+
+/**
+ * 分配 Agent ID：`agent-<role>-<序号>`，序号**只增不复用**。
+ *
+ * 修复前的裸计数器在进程重启后归零，会分配出与历史行同名的 ID：
+ *  - 未销毁的行已被 `hydrateAgents()` 回灌进内存 ⇒ `registerAgent` 返回 `Agent X 已注册`，
+ *    编排第一步就失败（取证实测：任务面板提交的 DIRECT / DELEGATION 任务 100% 失败）；
+ *  - 已销毁的行不在内存 ⇒ 写透 upsert 按 `agent_id` 覆盖 ⇒ **审计痕迹被抹掉**。
+ * 与 `memory_id` / 共享工作区 ID 的既有做法一致：启动后首次分配时对齐库中最大序号。
+ */
+function nextAgentId(role: AgentRole): string {
+  if (!counterAlignedWithStore) {
+    counterAlignedWithStore = true;
+    agentCounter = Math.max(agentCounter, maxAgentIdSeq());
+  }
+  let id = `agent-${role}-${++agentCounter}`;
+  // 库写透失败等异常路径下，内存里可能已有尚未落库的实例——继续避让，别把失败留给调用方
+  while (hasAgent(id)) id = `agent-${role}-${++agentCounter}`;
+  return id;
+}
 
 // ── 创建 Agent ──────────────────────────────────────────────────────
 
@@ -38,10 +66,13 @@ export function createAgent(
   // ★ 角色赋权守卫（G-11，2026-10-04）：
   //   治理角色（regulator / regulatory_authority / auditor / arbitrator）**不得被赋权**给 Agent。
   //   修复前仅招募工具有此限制，工厂层无校验 ⇒ 任意调用方可伪造 L0 身份。
-  const denied = denyReasonForAgentRole(params.role, options.allowGovernance ?? false);
+  const denied = denyReasonForAgentRole(
+    params.role,
+    options.allowGovernance ?? false,
+  );
   if (denied) return err(denied);
 
-  const agentId = `agent-${params.role}-${++agentCounter}`;
+  const agentId = nextAgentId(params.role);
   const now = Date.now();
 
   // FE-052：装载角色提示词——显式传入优先；缺省从 promptRegistry 按角色查询
@@ -49,21 +80,25 @@ export function createAgent(
   const basePrompt = params.systemPrompt ?? getRolePrompt(String(params.role));
   // FE-071：执行级角色附加任务执行 Playbook（Skills/playbooks/*；未装载时退化）
   const playbook = EXECUTION_ROLES_WITH_PLAYBOOK.has(String(params.role))
-    ? getPlaybook('taskExecution')
+    ? getPlaybook("taskExecution")
     : null;
   const systemPrompt = playbook
-    ? `${basePrompt ? `${basePrompt}
+    ? `${
+        basePrompt
+          ? `${basePrompt}
 
 ---
 
-` : ''}${playbook}`
+`
+          : ""
+      }${playbook}`
     : basePrompt;
 
   // 创建 Agent 实例（初始状态 creating）
   const agent: AgentInstance = {
     agentId,
     role: params.role,
-    status: 'creating',
+    status: "creating",
     traceId,
     model: params.model,
     systemPrompt,
@@ -87,9 +122,9 @@ export function createAgent(
   // 钱包创建失败不阻断（降级模式）
 
   // 初始化完成 → ready（同步更新注册表）
-  agent.status = 'ready';
+  agent.status = "ready";
   agent.updatedAt = Date.now();
-  updateAgent(agentId, { status: 'ready', walletId: agent.walletId });
+  updateAgent(agentId, { status: "ready", walletId: agent.walletId });
 
   return ok({ ...agent });
 }
@@ -103,8 +138,12 @@ export function createAgentBatch(
 ): Result<AgentInstance[]> {
   const agents: AgentInstance[] = [];
   for (let i = 0; i < params.count; i++) {
-    const result = createAgent({ role: params.role, model: params.model }, traceId);
-    if (!result.ok) return err(`批量创建第 ${i + 1} 个 Agent 失败: ${result.error}`);
+    const result = createAgent(
+      { role: params.role, model: params.model },
+      traceId,
+    );
+    if (!result.ok)
+      return err(`批量创建第 ${i + 1} 个 Agent 失败: ${result.error}`);
     agents.push(result.value);
   }
   return ok(agents);
@@ -114,4 +153,5 @@ export function createAgentBatch(
 
 export function resetAgentFactory(): void {
   agentCounter = 0;
+  counterAlignedWithStore = false;
 }

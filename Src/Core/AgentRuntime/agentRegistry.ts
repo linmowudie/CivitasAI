@@ -5,13 +5,16 @@
  * 管理所有 Agent 实例的生命周期，提供 CRUD + 查询。
  */
 
-import type { Result } from '../../Infra/types.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { denyReasonForAgentRole, isGovernanceActor } from '../../Infra/Roles/roleVocabulary.js';
-import { ok, err } from '../../Infra/types.js';
-import * as agentRepository from '../../Infra/Db/Repositories/agentRepository.js';
+import type { Result } from "../../Infra/types.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import {
+  denyReasonForAgentRole,
+  isGovernanceActor,
+} from "../../Infra/Roles/roleVocabulary.js";
+import { ok, err } from "../../Infra/types.js";
+import * as agentRepository from "../../Infra/Db/Repositories/agentRepository.js";
 
-import type { AgentInstance, AgentStatus, AgentRole } from './types.js';
+import type { AgentInstance, AgentStatus, AgentRole } from "./types.js";
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -42,24 +45,35 @@ export interface AgentLifecycleHooks {
 let lifecycleHooks: AgentLifecycleHooks | null = null;
 
 /** 装配/卸载生命周期钩子（传 null 卸载） */
-export function setAgentLifecycleHooks(hooks: AgentLifecycleHooks | null): void {
+export function setAgentLifecycleHooks(
+  hooks: AgentLifecycleHooks | null,
+): void {
   lifecycleHooks = hooks;
 }
 
-function notifyLifecycle(kind: keyof AgentLifecycleHooks, arg: AgentInstance | string): void {
+function notifyLifecycle(
+  kind: keyof AgentLifecycleHooks,
+  arg: AgentInstance | string,
+): void {
   try {
     const fn = lifecycleHooks?.[kind] as ((a: never) => void) | undefined;
     fn?.(arg as never);
-  } catch { /* fail-safe：同步逻辑不得影响注册表 */ }
+  } catch {
+    /* fail-safe：同步逻辑不得影响注册表 */
+  }
 }
 
 export function setAgentParent(agentId: string, parentAgentId: string): void {
   // §18 #3：同时写入正式字段（父角色可从注册表取得）
   const parent = agents.get(parentAgentId);
   const child = agents.get(agentId);
-  if (child) child.father = { agentId: parentAgentId, role: parent?.role ?? child.father?.role ?? 'prime_director' };
+  if (child)
+    child.father = {
+      agentId: parentAgentId,
+      role: parent?.role ?? child.father?.role ?? "prime_director",
+    };
   parentAgentIds.set(agentId, parentAgentId);
-  if (child) notifyLifecycle('onParentChanged', child);
+  if (child) notifyLifecycle("onParentChanged", child);
 }
 
 /** 读取父 Agent ID */
@@ -78,10 +92,10 @@ export function getAgentParent(agentId: string): string | undefined {
 function rowToAgentInstance(row: agentRepository.AgentRow): AgentInstance {
   return {
     agentId: row.agent_id,
-    role: row.role as AgentInstance['role'],
-    status: row.status as AgentInstance['status'],
+    role: row.role as AgentInstance["role"],
+    status: row.status as AgentInstance["status"],
     traceId: row.trace_id,
-    model: 'restored',
+    model: "restored",
     createdAt: Number(row.created_at),
     updatedAt: Number(row.created_at),
     consecutiveFailures: Number(row.failure_count ?? 0),
@@ -105,20 +119,28 @@ export function hydrateAgents(): number {
     // ★ G-11（2026-10-04）：回灌是**只读恢复**路径，不因角色异常中断恢复；
     //   但治理角色 Agent **不应由招募/执行层产生** → 若库中出现，视为可疑并告警（供审计追溯）。
     if (isGovernanceActor(row.role)) {
-      logger.warn('回灌发现治理角色 Agent（可疑：治理身份不应由招募/执行层产生）', {
-        source: 'agentRegistry/hydrateAgents',
-        agentId: row.agent_id,
-        role: row.role,
-      });
+      logger.warn(
+        "回灌发现治理角色 Agent（可疑：治理身份不应由招募/执行层产生）",
+        {
+          source: "agentRegistry/hydrateAgents",
+          agentId: row.agent_id,
+          role: row.role,
+        },
+      );
     }
-    const status = (row.status === 'running' || row.status === 'creating' ? 'suspended' : row.status) as AgentStatus;
+    const status = (
+      row.status === "running" || row.status === "creating"
+        ? "suspended"
+        : row.status
+    ) as AgentStatus;
     if (!agents.has(row.agent_id)) {
       agents.set(row.agent_id, { ...rowToAgentInstance(row), status });
       restored++;
     }
     const parent = agentRepository.parentOf(row.agent_id);
     if (parent) parentAgentIds.set(row.agent_id, parent);
-    if (status !== row.status) agentRepository.updateAgentRow(row.agent_id, { status });
+    if (status !== row.status)
+      agentRepository.updateAgentRow(row.agent_id, { status });
   }
   return restored;
 }
@@ -132,7 +154,10 @@ export function registerAgent(
 ): Result<void> {
   // ★ 防御纵深（G-11）：注册表是**所有** Agent 进入运行时的唯一入口，此处再校验一次角色赋权，
   //   防止有人绕过 agentFactory 直接注册伪造实例（如从 IPC/测试构造 AgentInstance）。
-  const denied = denyReasonForAgentRole(String(agent.role), options.allowGovernance ?? false);
+  const denied = denyReasonForAgentRole(
+    String(agent.role),
+    options.allowGovernance ?? false,
+  );
   if (denied) return err(denied);
 
   if (agents.has(agent.agentId)) {
@@ -143,7 +168,7 @@ export function registerAgent(
   // 修复前只存内存 → 进程重启后招募出的 Agent 全部消失，且无法按账号隔离（多 Agent 不可持久）。
   agentRepository.upsertAgent({
     agentId: agent.agentId,
-    traceId: agent.traceId ?? '',
+    traceId: agent.traceId ?? "",
     parentAgentId: parentAgentIds.get(agent.agentId) ?? null,
     role: String(agent.role),
     // FE-052：角色提示词随实体落库（覆盖所有创建路径：工厂→注册表→写透）
@@ -151,7 +176,7 @@ export function registerAgent(
     status: agent.status,
     createdAt: agent.createdAt,
   });
-  notifyLifecycle('onRegistered', agent);
+  notifyLifecycle("onRegistered", agent);
   return ok(undefined);
 }
 
@@ -162,20 +187,27 @@ export function getAgent(agentId: string): AgentInstance | undefined {
   return agent ? { ...agent } : undefined;
 }
 
+/** ID 是否已被占用（含启动期回灌进来的历史实例）——供工厂分配 ID 时避让 */
+export function hasAgent(agentId: string): boolean {
+  return agents.has(agentId);
+}
+
 export function getAllAgents(): AgentInstance[] {
-  return [...agents.values()].map(a => ({ ...a }));
+  return [...agents.values()].map((a) => ({ ...a }));
 }
 
 export function getAgentsByStatus(status: AgentStatus): AgentInstance[] {
-  return getAllAgents().filter(a => a.status === status);
+  return getAllAgents().filter((a) => a.status === status);
 }
 
 export function getAgentsByRole(role: AgentRole): AgentInstance[] {
-  return getAllAgents().filter(a => a.role === role);
+  return getAllAgents().filter((a) => a.role === role);
 }
 
 export function getReadyWorkers(): AgentInstance[] {
-  return getAllAgents().filter(a => a.role === 'worker' && a.status === 'ready');
+  return getAllAgents().filter(
+    (a) => a.role === "worker" && a.status === "ready",
+  );
 }
 
 // ── 更新 ────────────────────────────────────────────────────────────
@@ -191,18 +223,23 @@ export function updateAgentStatus(
   agent.updatedAt = Date.now();
   // 写透状态变更（审计与重启恢复都依赖库里的状态）
   agentRepository.updateAgentRow(agentId, { status });
-  notifyLifecycle('onStatusChanged', agent);
+  notifyLifecycle("onStatusChanged", agent);
   return ok({ ...agent });
 }
 
-export function updateAgent(agentId: string, updates: Partial<AgentInstance>): Result<AgentInstance> {
+export function updateAgent(
+  agentId: string,
+  updates: Partial<AgentInstance>,
+): Result<AgentInstance> {
   const agent = agents.get(agentId);
   if (!agent) return err(`Agent ${agentId} 不存在`);
 
   Object.assign(agent, updates, { updatedAt: Date.now() });
   agentRepository.updateAgentRow(agentId, {
     ...(updates.status ? { status: updates.status } : {}),
-    ...(updates.consecutiveFailures !== undefined ? { failureCount: updates.consecutiveFailures } : {}),
+    ...(updates.consecutiveFailures !== undefined
+      ? { failureCount: updates.consecutiveFailures }
+      : {}),
   });
   return ok({ ...agent });
 }
@@ -214,7 +251,7 @@ export function unregisterAgent(agentId: string): Result<void> {
   agents.delete(agentId);
   // 软销毁：保留审计痕迹（设计上 Agent 销毁需可追溯，不做物理删除）
   agentRepository.updateAgentRow(agentId, { destroyedAt: Date.now() });
-  notifyLifecycle('onUnregistered', agentId);
+  notifyLifecycle("onUnregistered", agentId);
   return ok(undefined);
 }
 
@@ -240,8 +277,12 @@ export function getAgentCount(): number {
 
 export function getStatusSummary(): Record<AgentStatus, number> {
   const summary: Record<AgentStatus, number> = {
-    creating: 0, ready: 0, running: 0,
-    suspended: 0, expelled: 0, destroyed: 0,
+    creating: 0,
+    ready: 0,
+    running: 0,
+    suspended: 0,
+    expelled: 0,
+    destroyed: 0,
   };
   for (const agent of agents.values()) {
     summary[agent.status]++;

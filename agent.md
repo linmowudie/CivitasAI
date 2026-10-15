@@ -4,7 +4,7 @@
 > 项目**设计**（五层架构、十步主循环、治理闭环、Token 经济…）一律以 `Docs/` 为准，
 > 索引见 [`Docs/README.md`](Docs/README.md)；本文不重复设计内容。
 >
-> 最后更新：2026-10-08。**计数类数字（测试数、警告数）会漂移**，以命令实际输出为准。
+> 最后更新：2026-10-11。**计数类数字（测试数、警告数）会漂移**，以命令实际输出为准。
 
 ---
 
@@ -33,6 +33,7 @@ npm run lint            # ESLint（**只覆盖 Src/**）
 | `Client/` | 前端（React 19 + Vite + Zustand），**独立 package** | 有独立 `tsconfig.json`；Vite 端口 5173 |
 | `electron/` | Electron 主进程 + preload（TS） | 打包为 **CJS**（`dist/main/electron/*.cjs`） |
 | `Tests/` | Vitest 用例（按被测分层的同名目录） | 见 §4；`tsconfig.json` **不包含** Tests |
+| `Server/` | 账号/数据服务（**独立部署的 Java 服务**：Java 21 + Spring Boot 3.3.5，Maven 工程；2026-10-14 由 TS/Fastify 等价重写，对外 HTTP 契约不变） | `mvn spring-boot:run` / `mvn test` / `--migrate` 迁移；端口 **8787**；根 `npm run server:*` 为 Maven 包装脚本 |
 | `Configs/` | 运行配置 JSON（`modelRouter.json` = 供应商/密钥引用/路由） | 用户可编辑 → 校验失败必须报错，不能静默跳过 |
 | `Prompts/` `Skills/` | 角色提示词与技能资产（`.md`/`.json`） | 装载失败要告警（"加了资产却不生效"最难查） |
 | `Scripts/` | 构建/打包/校验脚本（`build.cjs`、`package.cjs`…） | `build.cjs` = esbuild 打包（详见 §6） |
@@ -107,6 +108,35 @@ Interface → Core → Services → Tools → Infra     （只允许向下依赖
 - 面向用户的文案用中文；日志 message 中文 + 结构化 `data`（`logger.warn('…', { source, error, … })`）；
 - 只改必要范围：**不要顺手重排格式**（仓库无 `.prettierrc`，prettier 默认规则会把整文件重排，见 §9.5）；
 - 时间戳在日志里是 **UTC**（本地时间 = +8）。
+
+### 3.4 同名同功能文档按版本号区分（**不要原地覆盖**）
+
+> **同类型、同功能的文档写入时，必须按版本号区分，不得覆盖旧版。**
+
+版本号 = **来源 + datetime stamp**：
+
+```
+<来源>-<yyyyMMddTHHmmss>
+```
+
+| 部分 | 含义 | 示例 |
+|---|---|---|
+| `来源` | 产出方 / 输入来源的短标识（小写） | `qodercn`（Qoder CN）、`qoder`、`claude`、`codex`、`human`、`dsh` |
+| `datetime stamp` | 产出时刻（本地时间，`Asia/Shanghai`），日期与时间用 `T` 连接 | `20261011T234339` |
+
+示例（首个为已存在的真实文件）：
+
+```
+Docs/Agent/15-实验矩阵与评估/检验方案与实验矩阵扩展-qodercn-20261011T234339.md
+Docs/Agent/17-控制论审查/core_audit-qodercn-20261011T212538.md
+Prompts/versions/mainLoop-qodercn-20261011T234628.json
+```
+
+约定：
+- **不覆盖**：同功能旧文档保留原位；新版另存为带**新**版本号的文件，需要时在文首标注「本文取代 `<旧文件名>`」；
+- 同一秒内产出多份时追加 `-2`、`-3` 序号；
+- 版本号只标识**产出批次**，不表示语义变更级别——语义/设计变更仍要走 `Docs/CHANGELOG.md`（设计）与根 `CHANGELOG.md`（工程）登记（§12.6）；
+- 该约定**只对新增文档生效**；已归档的历史快照（`Docs/99-审查记录/`、`CHANGELOG`、各 `*-差别清单.md`）**不回改名**，与 `Docs/README.md` 的「历史快照不回改」口径一致。
 
 ---
 
@@ -287,6 +317,7 @@ node -e "const D=require('better-sqlite3');const d=new D('Data/db/civitas_main.d
   拒绝用空列表覆盖已有凭据（`Src/Infra/Security/secretWriteGuard.ts`）。
 - ❌ **不要**在 `catch` 里什么都不做且不留理由（政策测试会红）。
 - ❌ **不要**把 `Src/` 的改动当成已生效——后端跑的是 `dist/main`（见 §6）。
+- ❌ **不要**原地覆盖同类型同功能的文档——按版本号另存新文件（`来源-yyyyMMddTHHmmss`，见 §3.4）。
 - ❌ **不要**提交 `Data/`、`Logs/`、`.tmp/`、`client/dist`、证书私钥（已 gitignore，别强行 `-f`）。
 
 ---

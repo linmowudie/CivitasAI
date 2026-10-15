@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import type { ComponentSubgroup } from '../types';
 import type { ToolCallEntry } from '@/stores/chatStore';
-import { useApprovalStore } from '@/stores/approvalStore';
+import { useApprovalStore, getApprovalProgress } from '@/stores/approvalStore';
 import { ToolGlyph } from './ToolGlyph';
 import {
   classifyToolVisual,
@@ -256,8 +256,17 @@ interface InlineApprovalProps {
 function InlineApproval({ approvalId, approvalStatus }: InlineApprovalProps) {
   const approval = useApprovalStore((s) => s.approvals.find((a) => a.approvalId === approvalId));
   const decide = useApprovalStore((s) => s.decide);
+  const lastError = useApprovalStore((s) => s.lastError);
+  const lastErrorId = useApprovalStore((s) => s.lastErrorId);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // 倒计时按秒刷新（REV-255）：此前只在渲染时算一次，卡片可长期停在"剩余 60s"
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!approval || approval.status !== 'PENDING') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [approval?.status, approval?.requestedAt]);
 
   /**
    * 状态来源（两条路互补，任一到达即可正确显示）：
@@ -279,11 +288,11 @@ function InlineApproval({ approvalId, approvalStatus }: InlineApprovalProps) {
     ?? approvalStatus
     ?? fromRecord;
 
+  const progress = approval ? getApprovalProgress(approval) : null;
+
   const handle = async (approve: boolean) => {
     setSubmitting(true);
-    setError(null);
-    const ok = await decide(approvalId, approve, 'human-operator');
-    if (!ok) setError('提交失败，请重试（可能触发接口限流，稍后再试）');
+    await decide(approvalId, approve, 'human-operator');
     setSubmitting(false);
   };
 
@@ -315,9 +324,16 @@ function InlineApproval({ approvalId, approvalStatus }: InlineApprovalProps) {
         <Loader2 size={12} className="text-warning animate-spin" />
         <span className="text-warning">L0 级权限审查中…</span>
         <span className="text-text-muted">
-          {approval ? `剩余 ${Math.max(0, Math.ceil((approval.requestedAt + approval.timeoutSec * 1000 - Date.now()) / 1000))}s · 超时默认拒绝` : '等待确认'}
+          {approval ? `剩余 ${Math.max(0, Math.ceil((approval.requestedAt + approval.timeoutSec * 1000 - now) / 1000))}s · 超时默认拒绝` : '等待确认'}
         </span>
       </div>
+      {progress && (
+        <div className={styles.approvalActions}>
+          <span className="text-text-muted">
+            {`双人控制 ${progress.approvedCount}/${progress.requiredCount}（需不同身份分别裁决，尚缺：${progress.remainingRoles.join(' + ') || '—'}）`}
+          </span>
+        </div>
+      )}
       <div className={styles.approvalActions}>
         <span className="text-text-muted">确认后放行执行：</span>
         <button
@@ -335,7 +351,15 @@ function InlineApproval({ approvalId, approvalStatus }: InlineApprovalProps) {
           <X size={12} />拒绝
         </button>
       </div>
-      {error && <div className={styles.errorText}>{error}</div>}
+      {lastErrorId === approvalId && lastError && (
+        <div className={styles.errorText}>{lastError}</div>
+      )}
+      {approval?.quorumBlocked && (
+        <div className={styles.errorText}>
+          {approval.quorumBlocked.reason}（{approval.quorumBlocked.matched}/{approval.quorumBlocked.required}）
+          · 需由另一账号或已注册治理 Agent 裁决
+        </div>
+      )}
     </div>
   );
 }

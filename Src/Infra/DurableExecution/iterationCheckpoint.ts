@@ -11,12 +11,18 @@
  * 并定期裁剪旧快照，避免长任务把表写爆。
  *
  * 边界：仅"写快照"，不负责恢复决策（恢复由 `recoveryScanner` / `recoveryExecutor` 负责）。
+ *
+ * 日志分级（REV-337）：本模块的写点在**每轮迭代**触发，失败信号统一走
+ * `Db/dbFailureLog.ts` 的 `logDbFailure()`——数据库未初始化（纯内存运行形态）按来源
+ * 降为一条 `warn`，库已就绪却写失败仍为逐条 `error`。
  */
 
-import { createCheckpoint, pruneCheckpoints } from './checkpointStore.js';
-import { ensureLoopRow, touchLoop } from '../Db/Repositories/loopRepository.js';
-import type { EffectRecord } from './schemas/EffectRecord.js';
-import { logger } from '../Logging/logger.js';
+import { ensureLoopRow, touchLoop } from "../Db/Repositories/loopRepository.js";
+import { logger } from "../Logging/logger.js";
+import { logDbFailure } from "../Db/dbFailureLog.js";
+
+import type { EffectRecord } from "./schemas/EffectRecord.js";
+import { createCheckpoint, pruneCheckpoints } from "./checkpointStore.js";
 
 /** 保留最近多少份快照（长任务防膨胀） */
 export const CHECKPOINT_KEEP_LAST = 20;
@@ -36,7 +42,7 @@ export interface IterationCheckpointInput {
   /** 本轮工具调用名列表（作为 stateSnapshot 的一部分，便于恢复时理解进度） */
   toolNames?: string[];
   /** 尚未完成/结果未知的副作用（来自 EffectJournal，恢复时需要续跑或裁决） */
-  pendingEffects?: Array<Pick<EffectRecord, 'effectId'>>;
+  pendingEffects?: Array<Pick<EffectRecord, "effectId">>;
   /** 下一步提示（如"继续执行第 N 轮"） */
   nextStepHint?: string;
 }
@@ -46,18 +52,20 @@ export interface IterationCheckpointInput {
  *
  * @returns 是否写入成功（失败不抛错：恢复能力降级不应打断正常执行，但必须有日志留痕）
  */
-export function writeIterationCheckpoint(input: IterationCheckpointInput): boolean {
+export function writeIterationCheckpoint(
+  input: IterationCheckpointInput,
+): boolean {
   try {
     // ★ 先补齐 loops 行（2026-10-04）：`loop_checkpoints.loop_id` 有外键指向 `loops`，
     //   而 `loops` 此前从无 INSERT → 快照写入必然 FK 失败。这里幂等补齐，保证父行存在。
-    ensureLoopRow({ loopId: input.loopId, phase: 'running' });
+    ensureLoopRow({ loopId: input.loopId, phase: "running" });
 
     const result = createCheckpoint({
       loopId: input.loopId,
       iteration: input.iteration,
       stateSnapshot: {
         iteration: input.iteration,
-        phase: 'iteration_complete',
+        phase: "iteration_complete",
         completedSteps: input.completedSteps,
         failedAttempts: input.failedAttempts,
         decision: input.decision,
@@ -70,19 +78,23 @@ export function writeIterationCheckpoint(input: IterationCheckpointInput): boole
     });
 
     if (!result.ok) {
-      logger.error('迭代快照写入失败（崩溃恢复能力降级）', {
-        source: 'iterationCheckpoint/writeIterationCheckpoint',
-        loopId: input.loopId,
-        iteration: input.iteration,
-        error: result.error,
-      });
+      logDbFailure(
+        "迭代快照写入失败（崩溃恢复能力降级）",
+        "iterationCheckpoint/writeIterationCheckpoint",
+        {
+          loopId: input.loopId,
+          iteration: input.iteration,
+        },
+        result.error,
+        "本轮无快照（恢复回退到上一轮）",
+      );
       return false;
     }
 
     // 同步 loops 进度（恢复扫描据此判断"跑到第几轮、最近快照是谁"）
     touchLoop(input.loopId, {
       iteration: input.iteration,
-      phase: 'running',
+      phase: "running",
       lastCheckpointId: result.value.checkpointId,
     });
 
@@ -90,8 +102,8 @@ export function writeIterationCheckpoint(input: IterationCheckpointInput): boole
     if (input.iteration % PRUNE_EVERY === 0) {
       const pruned = pruneCheckpoints(input.loopId, CHECKPOINT_KEEP_LAST);
       if (pruned.ok && pruned.value > 0) {
-        logger.info('迭代快照已裁剪旧记录', {
-          source: 'iterationCheckpoint/writeIterationCheckpoint',
+        logger.info("迭代快照已裁剪旧记录", {
+          source: "iterationCheckpoint/writeIterationCheckpoint",
           loopId: input.loopId,
           removed: pruned.value,
         });
@@ -99,12 +111,16 @@ export function writeIterationCheckpoint(input: IterationCheckpointInput): boole
     }
     return true;
   } catch (e) {
-    logger.error('迭代快照写入异常（崩溃恢复能力降级）', {
-      source: 'iterationCheckpoint/writeIterationCheckpoint',
-      loopId: input.loopId,
-      iteration: input.iteration,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    logDbFailure(
+      "迭代快照写入异常（崩溃恢复能力降级）",
+      "iterationCheckpoint/writeIterationCheckpoint#exception",
+      {
+        loopId: input.loopId,
+        iteration: input.iteration,
+      },
+      e,
+      "本轮无快照（恢复回退到上一轮）",
+    );
     return false;
   }
 }

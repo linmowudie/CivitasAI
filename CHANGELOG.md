@@ -8,6 +8,332 @@
 
 ---
 
+## [2026-10-14] 新增代码量统计脚本 `Scripts/countLoc.py`
+
+> 代码规模统计工具：默认只统计**核心业务代码**（`Src` + `Client/src` + `Server/src/main/java`），`--all` 统计全量（含 Tests/Scripts/Benchmarks）；注释识别带词法状态机（字符串/模板串内的注释符不计入、支持跨行块注释、行首 BOM 按空白处理）。
+
+### 新增
+
+- **`Scripts/countLoc.py`**：按语言与模块汇总「代码 / 注释 / 空白 / 总行」；支持 `[目录...]` 自定义范围、`--all`、`--top N`、`--json`、`--files`。
+- **npm 接线**：`npm run count:loc`（核心业务代码）/ `npm run count:loc:all`（全量）；`Scripts/README.md` 同步登记。
+
+### 口径（2026-10-14 首测）
+
+- **核心业务代码**：499 文件 / 代码 56,831 行（TypeScript 48,898 + Java 6,614 + CSS 1,319）——剔除测试（`Tests/`、`Server/src/test`、`*.spec/*.test`）、脚本工具/基准/Electron 壳/根目录配置。
+- **全量**：742 文件 / 代码 94,815 行。
+
+---
+
+## [2026-10-14] Server 重写为 Java（Spring Boot 3.3.5 + Maven）：对外契约不变，138 项测试全绿
+
+> `Server/`（账号/数据服务，原 Fastify 5 + TypeScript + PostgreSQL，:8787）等价重写为 **Java 21 + Spring Boot 3.3.5 独立 Maven 工程**（分支 `rewrite/server-java`）。
+> 直接替换 `Server/` 目录：旧 TS 实现从工作树清除（仅存 git 历史，可随时 `git show` 找回）；`Client/`、`Src/` 及桌面端零改动。
+> 用户约束全程执行：Java 类名大驼峰、方法/字段/变量小驼峰；对外 HTTP 契约、错误码、环境变量名、迁移 SQL 均逐字保持。
+
+### 重写范围与契约保持
+
+- **40 条路由**对位移植（auth/me/settings/stats/memories/tasks/backup/a2a + healthz/readyz）；统一 `{ok,data}` / `{ok,error{code,message,details?}}` 信封与 **14 个错误码**不变；`RATE_LIMITED` 附 `Retry-After`、安全响应头、CORS、双限流（IP + 用户）语义不变。
+- **凭据体系跨语言互认**：JWT 走 jjwt（jose↔jjwt 签名与密钥互通）、密码 Argon2id 走 BouncyCastle（PHC 哈希与 `@node-rs/argon2` 互认，预热向量冒烟通过）；刷新令牌轮换/整族吊销/session 回查（SV-002）/验证码加固/CD 设备绑定（`off`/`warn`/`strict`）语义不变。
+- **迁移 SQL 字节不动**（001–006），`MigrationRunner` + `MigrationCli`（`--migrate` / `--migrate-status` / `--dry-run`，Spring 启动前拦截）保留前进式迁移与 checksum 漂移锁；环境变量名不变（含 `NODE_ENV`）。
+- 依赖逐项对位：pg→HikariCP+JdbcTemplate、jose→jjwt、@node-rs/argon2→BouncyCastle、setInterval→@Scheduled/TokenSweeper、Fastify 钩子链→Filter/Interceptor 链、vitest+inject→JUnit 5/MockMvc。
+
+### 行为偏差（显式登记，全量复核见服务端缺陷清单）
+
+- **SV-015 写限流真实生效**（修复型）：TS 版写限流挂在实例级 `preHandler`、执行早于路由鉴权钩子 → `request.auth` 恒空，写桶从未被消耗（死代码）；Java 版 `WriteRateLimitInterceptor` 排在 `AuthInterceptor` 之后按用户真实生效，超限 429「写入过于频繁，请稍后再试」。新增 `PlatformBasicsTest.SV015_…` 用例取证（写限流=2 时第 3 次写 429，未鉴权请求仍 401 不占桶）。
+- **TokenSweeper 初版漏接线**（重写引入、自查修复）：验证期抽查发现过期刷新令牌清理未落库（`purged=0`），补 `application/TokenSweeper.java`（6h 定时 + 守护线程 + `DisposableBean`）后真实重启实测 `purged=1 olderThanDays=60`；`AuthIntegrationTest` 的 `SV004_purgeInactive…` 覆盖仓储侧。
+- **SV-006 改善**：平台测试临时库清理移入 `finally`（TS 版在 try 尾部），异常路径不再漏清理。
+
+### 测试与取证（证据留档 `.tmp/`，gitignored）
+
+- `mvn -B test`：**15 个测试类 / 138 项全绿**（单元 42 + 集成 96；`BUILD SUCCESS`）——对照 TS 基线 12 spec / 126 项，语义对位 + 净增 12（`DbBindingTest` 8 项 Java 专有：`$1`→`?` 占位符翻译等；`PlatformBasicsTest` +2 含 SV-015 用例；`ConfigLoaderTest` +3），逐项勾稽见重写计划 §13.7。
+- `Server/scripts/verify-e2e.ps1` 九段真实 HTTP 全链路全绿（注册→数据→备份→重装登录→清空→恢复→令牌重用检测→校验与隔离→响应头）。
+- 前端零改动连通冒烟通过：未改动的 `Client/src/services/serverApi.ts` 真实驱动走通注册→读写→备份→令牌自动续期重试（`refreshCalls=1`）。
+- 真实 Agent 三轮调用 4/4 绿（`Tests/AgentRuntime/realAgent.spec.ts` Round1/2/3 + 并行守恒）。
+
+### 工程面
+
+- 根 `package.json` 的 6 条 `server:*` 脚本改写为 **Maven 包装**（脚本名不变，避免下游引用断裂）；`Server/README.md` 重写为 Maven 口径（含旧 npm 命令对照表 §8）。
+- 旧 TS 实现从工作树清除：`Server/src/*.ts`、`Server/test/`、`package.json`、`package-lock.json`、`tsconfig.json`、`vitest.config.ts`、`node_modules/`；`Server/` 现为 `pom.xml` + `src/main|test/java` + `migrations/` + `scripts/verify-e2e.ps1`。
+- `Docs/Server/` 设计文档、缺陷清单、使用/运维文档同步校准，见 [Docs/CHANGELOG.md](Docs/CHANGELOG.md)。
+
+---
+
+## [2026-10-09] 派发执行驱动 + 终态链路贯通（P1-8）：任务终于由产品自己跑完，而不是等人去点"执行"
+
+> §16.11 收口时留下的欠账：验收口径 ④「成功任务落终态」与 ⑤「编排结束回收 Agent」在 `:3000` 真实进程**不可达**，因为派发出去根本没人执行。本批收 REV-338 / 339 / 340 / 341 / 344 / 345(①) / 346 / 347 八条。
+> 取证口径仍是 §16.4：**脚本只提交一次 `POST /api/tasks`，之后只轮询**——绝不再手工 `/api/agents/:id/execute`，否则"驱动"这件事就没有被证明。三轮实跑逐条对账见 `Docs/Dev/三端模块代码审查-Bug登记.md` §16.12。
+
+### 后台执行驱动（新增 `Src/Core/Decision/orchestrator/taskDriver.ts`，REV-338）
+
+- `task:assigned` 此前**全库零订阅者**：编排只负责拆解与招募，Worker 的 Loop 从来没有被谁启动过。新增 **FIFO 串行执行队列**（不并行，保证 ASSEMBLY_LINE 的顺序语义，也不会让多个 Worker 同时抢同一份预算），每条出队即调 `executeAssignedTask`。导出 `initTaskDriver()` / `resetTaskDriver()` / `drainTaskDriver()`（后者供用例等队列排空）。
+- 三条防重复约束：① 只消费**带 `assignmentId`** 的事件（`AgentRuntime/assignTask` 是第二个发布方，载荷只有 `agentId/taskId`，不判就把同一指派跑两遍）；② 按 `assignmentId` 幂等去重；③ 执行参数（`instruction`/`maxIterations`/`tokenBudget`/`timeLimitMs`）一律从载荷取。
+- **装配点唯一在组合根** `Src/main.ts` ⑫.7，Core 侧不自接线——否则任何直调 `receiveTask` 的单测都会启动真实 Loop（分层约束：Services 不得反向 import Core，驱动住在 Core）。
+
+### 失败侧终于能收尾（REV-339 + REV-340）
+
+- `task:failed` 此前**零发布者**（只有枚举、两处订阅和测试自发布），于是一个子任务失败就会让 `allAssignmentsTerminal` 永不为真、`finalizeOrchestration` 永不触发、整任务停在 `running`。补齐三处：`agentRuntime.reviewSubmission` **拒绝**分支（与通过侧对称，此前只 `consecutiveFailures++`）、`agentExecutor.executeAssignedTask` 的 Loop 不可恢复失败、同函数在"循环结束未提交评审"时（真实进程里最常见的终态来源，`reason` 带 `exitReason`/迭代数/末轮输出摘要）。`progressTracker` 的 `TASK_FAILED` 处理同时落 `status='failed'`（原只 `failures++`，而聚合判的是 completed/failed）。
+- `finalizeOrchestration` **无需改动即接受部分失败**——聚合出 `_summary{total,success,failed,partial}` 并把 `tasks` 落 `failed`，实测在真实进程里成立（三轮都是失败收尾路径）。
+- `executeAssignedTask` 改为沿用 `agent.traceId`（无 trace 才新建），使执行、评审、回收共用一个追踪键；此前每轮 `/execute` 都在一个与编排计划无关的 `trace-exec-*` 下留痕，`releaseRunAgents` 永远收不到它（第四类幽灵行）。**历史 8 行孤儿不手工删除**（口径同 REV-336）。
+- **未收口**：评审被拒后的**自动重派/重跑**仍未实现（只落终态、不重试），与"Agent 被驱逐"的发布者一并留待后续批。
+
+### 工具消息装配：被上游拒绝不能再当成成功返回（REV-341）
+
+- 实际剥离点有**四处**（不止评审时登记的 `runIteration.ts:988` 一处）——ContextAssembly 映射、`modelInput.messages` 映射、跨轮历史追加的 assistant/tool 两条、以及 `openaiProvider` 的请求体序列化（`WireMessage` 此前只有 `role`/`content`）。现全部保留 `tool_calls` / `tool_call_id`，配对不再断裂（此前"凡发生过一次工具调用的非流式 Loop，第二轮必被提供方判 `Invalid messages at index 2/3`"，6 次调用 6 次复现，三轮取证里已归零）。
+- `contextCompression` 补**边界对齐**：保留段不得以孤立 `role:'tool'` 开头，否则压缩完照样被拒。
+- 非流式 `callModel` 失败不再把 `ERROR: …(400)` 当作 final answer 返回，而是短路成 `exitReason:'risk'` + `shortCircuitReason`——**执行入口回 200 而错误文本藏在 `output` 里**这种"失败伪装成成功"的口径被改掉。回归：`Tests/Core/toolMessageAssembly.spec.ts`(6)。
+
+### 子任务台账三格对齐（REV-344 / 345① / 346 / 347）
+
+- **失败侧也写台账**（REV-344）：新增 `markSubtaskFailed(subtaskId, reason)`，带终态幂等护栏（已 completed/failed/cancelled 的行不改写、不重复累加 `failure_count`）；`handleAssignmentTerminal` 只对 `source !== 'AgentRuntime/reviewSubmission'` 的事件调用它——拒绝侧台账由评审工具自己写，事件流这侧不重复。**双计风险是自查发现的**（`reviewSubmission` 在 `performReview` 内发布，早于工具写台账），护栏与来源判定必须同时存在，缺一个就双计。
+- **任务书的预算、迭代数与时限真的进 Loop**（REV-345① / 346）：三个派发点载荷补 `instruction`/`maxIterations`/`tokenBudget`/`timeLimitMs`，驱动透传给 `executeAssignedTask`，后者用它们覆盖 `createLoopConfig` 的三个字段。此前 `subtasks.token_budget=15000`/`timeout_ms=150000` 只是**落库装饰**，运行时读的是 `DEFAULT_LOOP_CONFIG`（100000 / 60000）——实测单任务跑出 42 万 token、子任务实耗 605s。时限越界时**钳到** `LOOP_LIMITS.minTimeoutMs..maxTimeoutMs` 并 `logger.warn` 留痕，不静默丢弃（口径同 REV-328"写了不生效"）。
+- **`started_at` 不再恒 NULL**（REV-347）：仓储里 `'in_progress'` 是 `started_at` 的唯一写面，而全库没有任何位置写过这个状态 → 耗时无从计算、"排队中"与"执行中"在数据上长得一样。新增 `markSubtaskStarted()`，由驱动在**队列头部**（真正开跑那一刻）调用而不是派发时刻——串行队列的排队时间不得算进执行时间；行不存在则 no-op（不污染子任务表），已终态不被复活。
+- **准确口径（不夸大）**：① 的含义是"**预算现在会被执行**"，不是"花费会被控制在预算内"。`budget_exhausted` 与超时都只在**迭代边界**判定，第三轮里单轮 `tokensConsumed` 仍是 **417106 / 417196**（一次调用约 20.8 万 token，15000 的预算一轮就爆 28 倍）。用量统计与"任务书 vs `loopDefaults` vs `LOOP_LIMITS` 硬上限"的优先级归 **P1-5**（REV-345 的 ②③）。
+
+### 真实进程三轮取证（发现 → 修复 → 复验，不是重复跑三次）
+
+`task-0408ef78` → `task-0cbf6b76` → `task-f1d3d3e6`，输出留档 `.tmp/p18-driver-evidence.out` / `-2.out` / `-3.out`。第一轮证明"一次提交后无人工驱动、Worker 由产品自己跑完、`tasks` 落终态、3 个 Agent 被回收"，同时暴露台账只写成功侧与预算丢失（→ REV-344/345）；第二轮补齐台账后发现 `agent-worker-37` 跑了 **605s**（时限未透传）且两行 `started_at IS NULL`，而那 605s 与两次 300s 的人工审批阻塞**逐秒对齐**（→ REV-346/347/**348**）；第三轮整任务 75s 收尾、`elapsed_sec 36.476 / 35.606`、两个 Worker 均以 `budget_exhausted` 止损、`全库running无destroyed = []`、新增 `trace-exec-*` 行为 **0**。
+**仍未取证的两项如实保留**：`GET /api/reviews` 三轮都是 0 条、"成功任务落 `completed`"这一半没跑到——Worker 都在预算耗尽时停在 `agent.submit_review` 之前，这是 REV-345② 的领地而非本批装配缺口。**REV-348 未修**（后台任务遇到 CRITICAL 人工审批 = 整条串行队列挂死，需产品口径）。
+
+### 回归证据
+
+三个 `tsc`（根 / `Client/tsconfig.json` / `typecheck:electron`）0 输出；`Tests/Decision/taskDriverChain.spec.ts` 10/10 + `Tests/Core/toolMessageAssembly.spec.ts` 6/6；全量 `vitest run Tests` **162 文件 / 1888 用例，1 failed / 1887 passed**（唯一失败是 `realAgent` Round 3 的第二次模型调用超 60s 墙钟被预算制中止，属同日**已登记的 REV-326**；单独复跑该文件时 Round 1/2/3 三条全绿、Round 3 用时 84.9s，即脱离整文件并发上下文后通过——与本批改动无因果，不为凑绿灯放宽断言）；`eslint Src/` **0 error / 319 warning**（基线 323，只对本批改动的三个文件就地 `--fix` 掉 `import/order`，未做全局修复；`--fix` 后复跑根 `tsc` 与上述两条定向用例 16/16 确认无破坏）。三轮真实进程取证期间 `Configs/local.json` 始终 `<ABSENT>`、端口只绑回环、收尾按监听 PID 停止且 `端口监听PID: 0`。
+
+---
+
+## [2026-10-09] 配置写路径配对 + 任务/Agent 终态权威（P1-7）：把"能写进去"和"算不算完成"交回后端事实源
+
+> §16.3 修复期新增的一批，收 REV-330 / 331 / 333(成功侧) / 334 / 336 五条。两半的共同主题是
+> **界面不能替后端宣布事实**：前半是"写进去的值不能把控制门锁死"，后半是"派发出去不等于跑完"。
+> 取证口径见 §16.11（真实进程 + 真实重启 + 真实库行，不以单测通过收口）。
+
+### P1-7a 配置写路径（`Src/Infra/Config/userConfigWriter.ts`）
+
+- **新增两条写前配对规则**（单看一个键都合法，合起来才致命）：
+  - `remoteAccessPairingReason()`（REV-330）：合批候选树里 `server.allowRemoteAccess=true` **且** `server.host` 为非回环、而 `server.apiToken` 短于 16 字符（凭据属 `NEVER_WRITABLE`，界面永不可写）时拒绝，回执文案直接给出出路（"请先设置 server.apiToken"）。此前一次保存 = 下次重启后 `/api/*` 全 401 且界面无法自救——`ApiToken` 通道按 `bootstrapEnabled = !remoteEnabled` 随非回环绑定一起关闭。回环口径与 `Interface/WebServer/bindPolicy.ts` 的 `LOOPBACK_HOSTS` 同源（Infra 不能反向依赖 Interface，两侧同步）。
+  - `validateShape()`（REV-331）：基线里是**对象段**的路径不接受标量/数组整体覆写——这类写会绕过按路径逐键的类型校验（读到标量便整段跳过），表现为"写进去了但那一整块配置失效"。改为与基线同路径比对后点名拒绝并引导逐子键写入。
+- **口径修正（收窄同日 P0-4 的表述）**：P0-4 写的"候选值整体过启动校验器，校验不过**整批拒绝**"只对 `validateAllConfigs` 那层**跨字段硬约束**成立；`rejected`（白名单外）、单键取值非法、形态与配对不过的 `invalid` **都是逐路径判定**——同批合法的键照常 `applied`，被点名的键单独剔除。本批两条配对规则按此实现并实测确认（一批五键 → `applied` 一条 + `invalid` 三条），两种粒度不可混写，否则读者会以为一次误写能把整张设置面板打回。
+- **反向取证**（避免规则过度拦截）：只传 `{server.host:'127.0.0.1', allowRemoteAccess:true}` **放行**；每次启动日志均为回环 `HTTP:3000`，**开发机没有因此开过任何非回环监听**。
+
+### P1-7b 任务/Agent 终态权威（`taskApi.ts` + `orchestrator.ts` + `Client/src/views/TaskPanel.tsx`）
+
+- **终态权威收归 `tasks` 表**（REV-333/334）：`finalizeOrchestration` 成为唯一终态写入点，由 `handleAssignmentTerminal` 在 `allAssignmentsTerminal(plan)` 时触发；`submitTask` 只派发并把结构化派发回执 `{status:'dispatched', routingMode, assignmentCount}` 写进行里。内存 `tasks` Map 降格为**进程内派发缓存**，读侧（`GET /api/tasks`、`/api/tasks/:taskId`、`?status=`）先 `withAuthoritativeState` 映射再过滤；DB 不可用时如实保留内存视图而不是假装已同步。
+- **编排收尾回收 Agent**（REV-336）：`releaseRunAgents()` 对本次编排的每个 `agent_id` 走 `unregisterAgent`（软销毁写 `destroyed_at`），此前 `agents` 表每轮编排都留下 `status=running / destroyed_at IS NULL` 的幽灵行，`hydrateAgents()` 下次启动把它们回灌成"活跃 Agent"。
+- **前端不再把裸 JSON 甩给用户**：`describeTaskResult` 把 `dispatched` / 待人工 / 失败 / 成功四类回执翻译成任务卡文案，派发态显示"已派发"而不是"已完成"。
+- ID 空间统一口径：`subtask_id = assignmentId = agent.lastTaskId = review.taskId`，DIRECT 为 `assignmentId = taskId`。
+
+### 真实进程复验暴露的三处链路缺口（新增登记，本批不顺手改）
+
+连续 6 次真实 `/api/agents/:agentId/execute`（指令明确要求"第一步就调用 `agent.submit_review`"）全部 200、`exitReason: success|max_iterations`，但 `GET /api/reviews` 为 `[]`、任务停在 `running`。由此登记：**REV-338**（高，`TASK_ASSIGNED` 无订阅者 ⇒ 编排只派发不驱动执行，评审只能由 LLM 工具调用进入）、**REV-339**（高，`TASK_FAILED` 无发布者 ⇒ 失败永不收尾）、**REV-341**（高，`runIteration.ts:986-995` 助手消息从不带 `tool_calls` 却以 `role:'tool'` 追加工具结果，被上游判 `ModelArts.81001 Invalid messages…`，而执行入口把这行错误文本当成功返回）；另有 **REV-340**（中，`trace-exec-*` 与编排 traceId 漂移、reviewer 孤儿行）、**REV-342**（中，`agents` 行与内存状态漂移）。**因此 ④「成功任务落终态」与 ⑤「不留幽灵行」只做到代码 + 真实库路径取证，端到端在真实进程不可达**——本批如实登记为不可达而非标记已验证，这三条缺口是复验的前置条件。
+
+### 首版取证脚本的假重启（自伤，已记录）
+
+第一版用 `child.kill('SIGINT')` 停进程，而 `spawn(..., {shell:true})` 下信号只打到 shell，`tsx` 子进程仍在监听 → 第二次启动 `[FATAL] listen EADDRINUSE 127.0.0.1:3000`，后续相位全跑在旧进程上，"重启后仍可登录"这一维度在第一版里是**假取证**。修正版改为 PID 级 `hardStop()`（`netstat -ano -p tcp` 取监听 PID + `Stop-Process -Force`，等端口释放）+ 每次启动独立日志 + 断言本次日志出现 `服务已启动`。教训：**以"重启"为观察窗的取证，必须先证明旧进程真的死了。**
+
+### 回归证据
+
+全量 `vitest run Tests` **160 文件 / 1872 用例全绿**（165.67s；P0-4 收口基线 157/1852）；本批新增 `Tests/Interface/taskTerminalAuthority.spec.ts`(8) + `Tests/Client/taskPanelResultLabel.spec.tsx`(3) 单独跑 11/11；三个 `tsc`（根 / Client / electron）干净；`eslint Src/` **0 error / 323 warning**（与 P0-4 逐条相同，未新增）；`realAgent.spec.ts` **4/4**（163.65s，Round3 含一次审核拒绝→重新提交→通过）。**全量绿灯不等于链路可用**：该 harness 在内存里直连评审端口，绕开了只在真实 HTTP 链路暴露的缺口。取证的 `Configs/local.json` 只含业务阈值与 `127.0.0.1`、**无凭据**，收尾已删除；端口 3000 已释放；本轮新增的 2 条 `running` 任务行与 2 条未销毁 `agents` 行**未手工删除**（删库不可逆且抹掉审计痕迹，见 REV-336）。
+
+---
+
+## [2026-10-09] 设置真实生效（P0-4）：153 个控件与 4 种工作方式从"传而不消"到写-读闭环
+
+> 三端代码审查（`Docs/Dev/三端模块代码审查-Bug登记.md` §16.10）收口的第四条 P0，也是体验层覆盖面最广的一条假象：
+> 设置面板 `PUT` 出去的值只进了前端 `loaded` 状态，后端读的仍是 `Configs/default.json` 的出厂值；
+> 对话框选的工作方式没有任何消费者。153 个可调控件 + 6 种模式（其中 2 种编排器根本未实现）逐项显示"已保存"，
+> 而对运行时的影响是零。收口口径不是"单测通过"，而是**改一项阈值 → 重启后后端读到新值**（§16.4）。
+
+### 写路径（后端）
+
+- 新增 `Src/Infra/Config/userConfigWriter.ts`：`ALLOWED_PREFIXES` 白名单 25 条（5 个精确键 `server.httpPort`/`server.host`/`server.allowRemoteAccess`/`server.corsOrigins`/`system.logLevel` + 20 个段前缀 `ui.`、`routing.`、`supervision.`…），`NEVER_WRITABLE` 12 条红线挡住"改了就能绕过门禁"的项（`server.apiToken` 控制面凭据、`supervision.approvalDefaultOnTimeout` 超时默认拒绝、`supervision.criticalApprovalRoles` CRITICAL 双人法定人数、`durable.recovery.*`、`eventBus.store` 等）。**本批没有放松任何一条 CRITICAL 审批控制。**
+- 写入策略：读现有 `Configs/local.json` → 深度合并白名单内的键 → **候选值整体过一遍启动校验器** `validateAllConfigs`（跨字段硬约束：预算档位次序、上下文配比合计、角色覆盖键集）→ 原子写。校验不过**整批拒绝**，不做"界面写成功、下次启动直接崩"的半提交。
+- 回执是诚实的：`applied` / `removed` / `rejected` / `invalid` / `statuses` / `restartPendingCount` 六个字段分开，白名单外的键如实回 `rejected`，取值非法回 `invalid`，前端必须提示而不是静默丢弃。
+- 新增 `GET /api/configs/effective`：一次返回 `running`（进程当前读到的）/ `onDisk`（磁盘上的）/ `restartPending`（二者不一致的项）三态 + `runningLoaded`。**"设置项显示成已生效"这件事从此需要一个后端事实源**，而不是前端本地状态。
+- `resetField` 的语义实测后定为**删除该键**（文件回到 `{}`，UI 显示"待重启生效"），不是"把出厂值写回 `local.json`"——后者会把文件写脏，且永远回不到"未配置"状态。
+- `ipc-update-routing` 改为先落盘后应用，Electron 形态与浏览器形态走同一条写路径。
+
+### 读路径（前端）
+
+- 新增 `Client/src/config/uiSettings.ts` 作为 `ui.*` 的唯一读取入口：键名归一化（`default::ui.<name>`）、优先级 **本地期望 > 后端运行态 > schema 出厂默认**、消费端 `uiNumber` / `useUiNumber` 两个出口。首稿在读不到时抛异常，会让整个设置面板白屏；改为 warn-once + 回落默认值。
+- `Client/src/config/configSchema.ts` 的说明文案对齐**消费端真实语义**（见下方 REV-335），避免面板承诺实现里没有的行为。
+
+### 未接线控件的处置：要么实装，要么移除
+
+- **实装**：消息复制（含非安全上下文下的 `execCommand` 回落）、`AgentMonitor` 的状态筛选与搜索（此前是纯装饰的 `<select>`/`<input>`）、全部 `ui.*` 消费点。
+- **移除**：`Composer` 附件入口、`MessageActions` 的赞/踩与"重新生成"。移除的理由随代码注释公布，"重新生成"标注了重新上线的前置条件（需要 `DELETE /api/messages/:id`，否则无法截断历史）。
+
+### 工作方式接到编排器
+
+- `Client/src/components/Chat/workingModeLabels.ts` 成为跨端单一事实源（`WORKING_MODE_LABELS` / `WORKING_MODE_OPTIONS` / `isWorkingMode`），`LITIGATION` / `REGULATION` 因编排器 `executeRouteMode` 未实现（S12）从下拉中移除——**界面不提供后端做不到的选项**；一致性由一条后端 spec 直接 import 该前端文件做机器校验。
+- `POST /api/tasks` 新增 `routingMode`：`SUBMITTABLE_MODES` 在 HTTP 边界校验，不可执行模式回 `400` 且文案给出可选集；`receiveTask({ forcedMode })` → `forceRoute`，落库日志区分「路由决策由复杂度评估决定」与「由用户指定工作方式强制决定」。
+- 对话流里选非 DIRECT 工作方式的口径按用户确认的方案实现：**提交后台任务并回执**（`ipcBridge.yieldToOrchestrator`），而不是在聊天窗口假装同步跑完。
+
+### 真实运行推翻的八条静态判断（择要）
+
+- **REV-332（高）**：真实后端里 `POST /api/tasks` 的**每一条任务都失败**（`Agent agent-prime_director-N 已注册`），而**全部单测绿灯**。根因是 `agentFactory` 的 ID 计数器进程级归零，而 `main.ts:320` `hydrateAgents()` 会把库中未销毁的同名行回灌进注册表。修复：`nextAgentId()` 首次分配前用 `maxAgentIdSeq()`（跨账号、含已销毁行）顶高计数器并逐个避让——同时堵住另一半更严重的后果：已销毁行不在内存时，写透 `upsertAgent` 的 `ON CONFLICT(agent_id) DO UPDATE` 会**覆盖历史审计行**。
+- **REV-335（中，本轮唯一由既有测试拦下的自伤回归）**：把事件缓冲接到 `ui.maxEventBufferSize` 时按字面当成硬上限，接线前的「1000 触发 / 保留 500」两级批量裁剪被改成「500 硬上限」，**有效容量无声砍半**。全量跑报 `expected length 1000 but got 500` 才暴露。修复后配置值定义为"超限时保留的条数"、触发点仍是 2 倍（默认下与接线前逐条等价），并补一条 `overrides=60` 的用例证明该值**真的被读**。
+- 其余：`system.logLevel` 只做到"重启后读到新值"（不含热更）、日志追加是异步的（取证脚本需要观察窗）、`Sessions` 没有 `working_mode` 列（按"删字段"口径收口，不再声称会话级持久化）、编排同步跑在 HTTP 请求的微任务里 ⇒ **派发≠完成**（登记 REV-334，归 P1-1）。
+
+### 回归证据
+
+两个 `tsc` 与 `typecheck:electron` 干净；`Tests/Client` 25 文件 / 208 用例全绿；P0-4 定向五文件 54 用例 + 收口批 10 用例；全量 `vitest run Tests` **157 文件 / 1852 用例全绿**（64.01s）；`eslint Src/` **0 error / 323 warning**（基线 314，增量经 `git show HEAD:` 比对确认非本批新引入）；`Tests/AgentRuntime/realAgent.spec.ts` **4/4 通过**（157.69s，Round3 含一次审核拒绝→重新提交→通过）。三相位真实重启循环实测：4 个阈值 `restartPendingCount:4` → 重启后 `running==onDisk`；端口 3000→3005 后旧端口 `ECONNREFUSED`；重置后 `removed:[4 键]` 且文件回到 `{}`。取证脚本 `.tmp/p04-*.mjs` 与临时 `Configs/local.json` 均未含凭据，用后删除。
+
+### 残留（已归批，不在本工单顺手改）
+
+REV-328（事件/IPC 契约漂移）→ P1-4；**P1-7（§16.3 修复期新增批：配置写路径配对校验 + 任务/Agent 终态权威）**收 REV-334（派发即标终态）、REV-333 成功侧终态、REV-336（`agents` 幽灵行）、REV-331（`validateShape` 不与基线比较形态）、REV-330（远程访问自我锁门）；REV-337（库未初始化时按 error 逐条打落库失败，真实故障信号被噪声淹没）→ P1-3（错误与日志呈现口径）。原六批拟于评审期，未预期"P0-4 接线后才暴露"的这两族缺陷，故新增一批而非把它们塞进语义不合的旧桶。Settings 实际点按、AgentMonitor 筛选、TaskPanel 下拉的 Electron GUI 冒烟仍需人工。
+
+---
+
+## [2026-10-09] 发布门禁与泄漏面（P0-3）：打包链从"四重假绿灯"变为八步实拦
+
+> 三端代码审查（`Docs/Dev/三端模块代码审查-Bug登记.md` §16.9）收口的第三条 P0。
+> 此前的"产物校验通过"是三件事叠出来的错觉：`verifyPackage` 只看 `dist/**`、`verifyClientDist` 只量入口字节数、
+> 旧产物仅告警不入失败、UI 探针从不自动跑；签名侧同理（`$badTrust` 是死变量 + 无 `forceCodeSigning` + CI 无 windows job）。
+> 后果是仓库里躺着一个 **233,042 字节的 NSIS 空壳安装包**（装完即无主程序）却全程绿灯，
+> 而 `Configs/local.json`（API Key）与 312 个 `.map`（含原始 TS 全文）是两条真实的外泄面。
+
+### 门禁（`Scripts/package.cjs` 现为八步，任一失败即非 0 退出）
+
+- **1 预检**：Node / 图标 / electron-builder 可解析 / 必需文件 / **泄漏排除护栏自检**（先证明 `build.files` 里那些 `!` 规则存在，才有资格说"已被挡住"）/ `publish:null` / `forceCodeSigning` / **签名凭据自动发现**（`CSC_LINK` → 否则 `npm run sign:setup` 产出的本机自签，密码只注入子进程不落日志）。
+- **2 静态门禁（新增）**：`typecheck` + `typecheck:electron` + `vitest run`（排除需真实密钥的 `realAgent`），位置在**所有构建与 electron-builder 之前**。
+- **5/7 校验**：`verifyPackage`、重写后的 `verifyClientDist`（逐条断言，只在自己通过时打 ✅）、**新增 `verifyRelease`**。
+- **7 产物核验**：存在性 / 体积下限 / SHA256 / 核验期间被改写 / **`latest.yml` 与安装包 sha512 一致性**。
+- **8 打包态探针（新增，默认执行）**：拉起包内后端，断言端点与渲染 DOM；`--no-probe` 才跳过，且跳过时明说"包内后端从未被真实拉起过"。
+- `--check` 不再只看 `dist/`：同时核验现有 `release/` 产物；`electron:build` 收敛到同一条链（不再有绕过 `verifyPackage` 的发布路径），新增 `package:verify`。
+
+### 新增 `Scripts/verifyRelease.cjs`（内容级发布包校验）
+
+主程序 exe 体积下限 → asar 内四个入口 → 包内 `index.html` 引用的每个资源逐个存在且非空 → 不含 `.map` → **asar 与 `resources/app` 明文目录双扫凭据/私钥** → `app.asar.unpacked` 必须含 better-sqlite3 的 `.node` → 不产出未经配置的 `app-update.yml`。
+
+### 泄漏面与更新链
+
+- `build.files` 增 `!Configs/local.json`、`!.env`、`!.env.*`、`!**/*.pfx`、`!**/*.p12`；`extraResources` 的 `Configs` 过滤掉 `local.json`。
+- `Client/vite.config.ts`：`sourcemap: mode!=='production'`（production 下 `dist/renderer` 的 `.map` 实测 **312 → 0**）。
+- `httpServer.ts`：`.map` 请求在静态托管与 SPA 兜底**之前**拒绝（404 JSON + `logger.warn`）——放在兜底之后会被洗成"200 + index.html"。
+- `build.publish: null`：根因校正——`app-update.yml` 并非陈旧产物，electron-builder 会**从 git remote 推断** publish 配置，故每次打包都重新生成；项目本就无 `electron-updater`。
+- `Scripts/verifySign.ps1`：三档判定（篡改/链坏 **无条件失败**、未签名在 `-Require` 下失败、链不可信在 `-RequireTrusted` 下失败），`HashMismatch` 不再绿灯通过。
+- `setupSelfSignedCert.ps1`：默认证书主体改为 `CN=CivitasAI (Self-Signed)`（主体会进 `publisherName`，属随包外泄的个人信息）。
+
+### 实测取证（正反向各一遍）
+
+- 撤护栏造假 `Configs/local.json` 重打 → 假凭据**确实**同时进 asar（1158→1159 条目）与 `resources/app/Configs`，`verifyRelease` 两处同时报错 exit 1；恢复护栏后重建 → ✅ 无泄漏。
+- 移开自签配置 → `❌ 未配置代码签名证书` exit 1；`--allow-unsigned` → 显式告警 exit 0；证书齐备时 `verifySign -Require` 三件产物 **3/3 `Valid`**（带时间戳，证书至 2031-10-06）。
+- 真实重打 NSIS（3 分 31 秒，exit 0）：安装包 **233,042 B → 110,252,504 B（105.1 MB）**，`verifyRelease` 八项全过；遗留 `latest.yml` 仍写着坏包的 sha512 → 新核验以 `kpP1tYZa… ≠ hLzndWLh…` 拦下。
+- 打包态探针对新 `win-unpacked` 连跑两轮 exit 0：**26 个 GET 端点全 200**、`POST /api/sessions → 201`、DOM 非空白（root 2 子节点、1400x868）、`Logs/business.log` 零 ERROR/WARN。
+- 六个刻意构造的坏 `dist/renderer`（chunk 缺失 / 0 字节 / 注入 `.map` / 大写 `.MAP` / 入口 1 字节 / 无资源引用）→ `verifyClientDist` 全部 exit 1；干净产物 exit 0。
+- 回归：`typecheck` 与 `typecheck:electron` 干净、**149 文件 / 1783 用例全通过**、`eslint Src/` 0 error / 314 warning、`realAgent` 单跑 4/4。
+
+### 已知未收口（勿当作已完成）
+
+一次"不带 `--skip-tests`、含第 8 步探针"的完整链式 `npm run package` 与双击安装包的 **Electron GUI 冒烟仍需人工**；CI 仍无 windows/打包/签名 job（REV-289）；`pfxPassword` 明文落盘（REV-288）、`asarUnpack` 无裁剪与"不新鲜改 fail"（REV-309）未做；修复期新发现 REV-327（打包态 Chromium 缓存搬移被拒，legacy `%APPDATA%\civitas-ai` 与现路径并存）。
+
+## [2026-10-08] 接入层身份与默认绑定（P0-2）：控制面从"同网段任意机器可读写"收敛为本机显式授权
+
+> 三端代码审查（`Docs/Dev/三端模块代码审查-Bug登记.md` §16.8）收口的第二条 P0：
+> 随包默认 `server.host="0.0.0.0"` 且 `/api/*` **无任何鉴权中间件**——同网段任意机器可直接读会话、改配置、
+> 代答审批（配合身份自报即等于远程点"批准"），而接入层长期只有限流。本批把"是否对外开放"变成一个必须显式声明的决定。
+
+### 口径（最终，经真实运行验证纠正）
+
+1. **非回环绑定需显式授权**：`server.allowRemoteAccess=true` 才允许 `0.0.0.0`/局域网地址，否则回退 `127.0.0.1`；两种情况都告警，**不静默改用户的配置意图**。
+2. **控制面凭据与治理凭据分道**：本机控制面凭据走 `X-Civitas-Api-Token`（`Bearer` 同时仍接受），
+   *原口径写的是"未携带有效 Bearer 一律 401"，但 `Authorization` 已被审批侧治理身份验真占用（G-09 方案 B），两种语义不同的凭据共用一头会互相覆盖*。
+3. **门是 fail-closed 的**：凭据未初始化时 `/api/*` 一律拒绝；随机凭据只在进程内存（`randomBytes(32)`，不落盘、UI 写路径不可达）。
+4. **桌面态与浏览器态取凭据的路径不同**：打包渲染层是 `file://`，只能由主进程经 IPC 下发；HTTP bootstrap 只服务本机浏览器/开发态。
+
+### 服务端
+
+- **`Src/Interface/WebServer/bindPolicy.ts`（新增）**：`resolveBindHost()` 统一裁决监听地址，回退/放行各写一条告警（放行时点名"等同暴露控制面"）。
+- **`Src/Interface/WebServer/apiToken.ts`（新增）**：`initApiToken`/`isApiAuthorized`/`rejectUnauthorizedRequest`/`handleTokenBootstrap`；
+  401 载荷直接告知如何取得凭据（用 `req.headers.host`），拒绝留痕区分"没带"与"带错"（`credentialPresent`）。
+- **`httpServer.ts`**：`/api/*` 在进路由表前先过限流再过鉴权门；CORS `Allow-Headers` 补 `X-Civitas-Api-Token`；
+  新增 `POST /internal/api-token`（刻意在 `/api/` 之外）——要求 POST + 回环 `socket.remoteAddress` + 回环 `Origin`（有则校验）+ 仅非远程形态可用，响应剥掉 `Access-Control-Allow-Origin` 并带 `Cache-Control: no-store`。
+- **`main.ts`**：`startServer()` 返回 `{httpPort, apiToken}`；顺序改为**先 `initApiToken` 再 `startHttpServer`**；启动日志带 `apiTokenSource`/`apiTokenBootstrap`。
+- **`configValidator.ts`**：`server.apiToken` 可选，非空须 ≥16 字符（"过短的凭据可被枚举，等于没有门"）；**不**加入 `userConfigWriter.ALLOWED_PREFIXES`。
+- **`Configs/default.json`**：`host: 127.0.0.1` + `allowRemoteAccess: false`。
+
+### 桌面端
+
+- **`electron/urlPolicy.ts`（新增）**：外部链接 scheme 白名单（`https:`/`mailto:`）与 `server-fetch` 目标白名单共用一份口径；
+  `normalizeAccountOrigin` 拒非 https 的回环外地址、拒 path、防 `account.example.com.evil.example.com` 后缀陷阱。
+- **`electron/main.ts`**：`setWindowOpenHandler` 与 `open-external` 改调同一 `isSafeExternalUrl`（此前一条有 `^https?:` 校验、一条把任意 URL 直接交给 `shell.openExternal`）；
+  `server-fetch` 逐请求校验 + `redirect:'manual'` **逐跳复检**（≤5 跳，堵掉"合法源 302 → 169.254.169.254"）；
+  新增 `set-account-server-origin`（渲染层显式钉住账号源，清空即撤销）与 `get-api-token`；`startServer()` 的凭据只存主进程内存。
+- **`electron/preload.ts`**：暴露 `getApiToken` / `setAccountServerOrigin`。
+
+### 客户端
+
+- **`services/api.ts`**：`/api/*` 自动附凭据（桌面走 IPC、否则 POST bootstrap）；凭据获取失败**不缓存**，401 时单次重取并重试一次（按 HTTP 状态判定，不递归）；两种传输共用同一处头装配。
+- **`services/serverApi.ts`**：调用账号服务器前先 `set-account-server-origin` 钉住来源，被拒即 `SERVER_URL_REJECTED` 并带原文（不静默发请求）。
+- **`Client/vite.config.ts`**：`/api` 代理目标由 `localhost` 改 `127.0.0.1`（避免解析到 `::1` 而后端只绑 v4），并新增 `/internal/api-token` 代理——**漏了这条的症状是开发态全站 401，与"鉴权坏了"无法区分**（需同步进运维文档的变更清单）。
+
+### 验证
+
+起真实后端（`tsx` self-boot：HTTP:3000 + SQLite + 事件总线）按三种形态实测，17 项断言全过：
+无凭据/错凭据 → `401`；专用头 → `200`；`Bearer` → `200`；`PUT /api/account/active-user` 无凭据 `401`／有凭据 `200`（合法路径未打断）；
+非 `/api/` 路径不受门影响；跨站 `Origin` 的 bootstrap → `403` 且响应**无** `Access-Control-Allow-Origin`；GET bootstrap → `403`；
+默认形态下本机局域网地址 `10.44.81.114:3000` **不可达**，强制 `0.0.0.0`+远程形态后同址可达但仍 `401`、bootstrap 关闭并引导改用配置；
+`Logs/business.log` 留有「控制面鉴权门已启用」「控制面请求被拒绝（缺少有效凭据）」。
+新增 `Tests/Interface/bindPolicyAndApiToken.spec.ts`(16)、`desktopUrlPolicy.spec.ts`(17)、`Tests/Client/api-credential.spec.ts`(7)，
+并让既有 `httpServerHeaderPassthrough.spec.ts` 携带凭据（它正是"头能否到达处理器"的证据）；
+后端 `tsc --noEmit`、`typecheck:electron`、`Client` `tsc --noEmit` 干净；全量 `vitest run` **148/149 文件 / 1782/1783 用例**。
+
+**回归轮顺手发现并修掉一条测试基建缺陷（REV-325）**：真实模型用例的退避重试没有墙钟预算（4×60s+30s ≈ 270s > 用例超时），
+用例在 `await` 中途被强杀后，**迟到的续体**在下一个用例 `fullReset()` 之后继续写运行时全局状态，
+把 `getPendingReviewCount()` 从 2 改成 3——表象是"另一个用例的业务断言失败"，单独跑却是绿的。
+现改为预算制（剩余预算放不下"退避+一次最坏尝试"即中止并回传真实原因，实测日志 `请求已取消`）并按不变式上调用例超时。
+另登记 **REV-326**：`modelRouter.json` 的 60s 墙钟只压住非流式内部调用（L3 Judge／上下文压缩／摘要），真实运行中长回答确实会超；主链路流式无此上限，故未随本批处理。
+
+### 遗留边界（本批未收口，已在 §16.8 列明）
+
+路由级角色授权（REV-133 残留）、身份自报（REV-134 根因）、`open-path` 目录白名单（REV-149）、
+进程级异常兜底（REV-132/158/236 → P1-1）、CSP（REV-163）、WS `:3001` 面、Electron GUI 冒烟需人工（§16.4）。
+
+---
+
+## [2026-10-08] 审批链路贯通（P0-1）：CRITICAL 双人控制从"永远不通过"变为可完成且可审计
+
+> 三端代码审查（`Docs/Dev/三端模块代码审查-Bug登记.md` §16.7）收口的第一条 P0：
+> **双人控制在人类操作者下永远无法达成**——后端法定人数按「不同身份」判定，前端却按「角色去重」显示 2/2，
+> 用户看到"已全通过却被系统拒绝"的死循环，最终超时默认拒绝；叠加每 token 一次 `/api/agents` 触发 429，
+> 表象就是"点了批准没反应"。
+
+### 口径（最终，经真实运行验证纠正）
+
+1. **一次点击 = 一票**：客户端提交仍未被覆盖的那个角色（`getSubmitRole` 用二分图匹配试探），不再在 PENDING 时循环补齐角色。
+2. **同身份不可叠加投票**：后端当场 409 并给出原因与缺口（"双人控制要求 2 位不同身份…当前已满足 1 位"），不再返回 `200 + PENDING` 让前端猜。
+3. **待裁决审批是治理工单**：跨登录账号可见可裁（第二票按定义必须来自另一位操作者），已决条目仍按属主隔离；
+   *先按"非当前属主一律拒绝"实现过，真实验证显示它把双人控制唯一合法路径封死，故纠正*。
+4. **红线未放宽**：CRITICAL 仍需两位不同身份（另一账号 / 已注册治理 Agent / 策略白名单 `autoApproved`），系统角色只能拒绝。
+
+### 服务端
+
+- **`approvalGate.ts`**：`decideApproval` 前置法定人数判定 + 409 缺口文案；新增 `quorumBlocked`（`required/matched/remainingIdentities/reason`）随审批回传；
+  超时新增 `publishApprovalTimeout()`，定时器与巡检两条路径都广播 `loop:approval_timeout_rejected`（含 `toolCallId`）。
+- **`main.ts` ⑰.3**：接上 **5s 审批超时巡检**——`checkTimeoutApprovals` 此前全仓无运行期调用方，
+  loop 被中断后审批永久停在 PENDING，既不解阻塞也不发事件（僵尸"审查中"卡）。
+- **`agentRuntime.ts`**：`submitForReview`/`reviewSubmission` 事件统一为审批形载荷（`approvalId=reviewId`、`decidedBy=reviewer:<agentId>`），`pendingReviews` 打 `owner` 戳，新增 `listReviews()`。
+- **`approvalApi.ts`**：新增 **只读** `GET /api/reviews`，把 Maker-Checker 评审投影为审批行（此前无任何读取面，评审在 UI 完全不可见）。
+  **有意不提供决策端点**：接入层尚无鉴权中间件，任何写路径等于再开一条可自报身份的匿名通道（归 P0-2）。
+- **`aiEventStore.ts`**：`PERSIST_PREFIXES` 补 `loop:`，`loop:approval_*` 得以落库。
+
+### 客户端
+
+- **`approvalStore.ts`**：法定人数改为与后端同源的**身份**口径（Kuhn 匹配镜像）；`decide()` 一次一票、失败写 `lastError`；
+  `hydrate()` 同时拉 `/api/approvals?status=all` 与 `/api/reviews` 合并；读取失败单独记 `listError`，不被轮询抹掉点击失败。
+- **`ToolGroup.tsx` / `ApprovalCard.tsx` / `ApprovalQueue.tsx`**：显示「双人控制 n/N（尚缺：X）」与后端缺口原文；
+  倒计时 1s tick（此前"剩余 Ns"冻结）；评审条目渲染为「等待 Reviewer Agent 裁决」只读徽标；超时事件即时切卡，不等 30s 轮询。
+- **`agentStore.ts`**：花名册刷新改 `ROSTER_EVENTS` 白名单 + 1s 尾部合并，逐 token 的 `agent:stream_chunk` 不再发 `GET /api/agents`。
+
+### 验证
+
+起真实后端（HTTP:3000 + SQLite + 事件总线）打真实 HTTP：A 投票 → `PENDING/quorumBlocked{1/2}`；同身份再投 → `409`；
+切账号 B 投第二票 → `APPROVED`，`decidedBy:['user:local','prime_director:account-b']`；B 读 A 已决详情 → `404`；
+超时（有/无等待者两条路径）均广播并落库；`loop:approval_*` 与 `tool_call_id` 均可回读。
+全量 `vitest run` **146 文件 / 1741 用例通过**（含新增 `Tests/LoopControl/approvalQuorum.spec.ts`、4 轮真实模型调用），
+前后端 `tsc --noEmit` 干净，`eslint Src/` 0 error。
+
+---
+
 ## [2026-10-07] 模型导入重设计：逐个校验可用性 + 用户勾选导入（不再全量导入）
 
 > 用户实测发现：**部分模型不可用**（`/models` 只代表"账号可见"，未开通/无权限的模型也在列表里）。

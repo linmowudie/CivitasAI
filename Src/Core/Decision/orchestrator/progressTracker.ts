@@ -5,10 +5,10 @@
  * 监控各 Agent 的执行状态，检测超时/停滞/循环/连续失败。
  */
 
-import type { AgentProgress, TaskAssignment } from '../types.js';
-import { EventType } from '../../../Services/EventBus/eventTypes.js';
-import { subscribe } from '../../../Services/EventBus/eventBus.js';
-import type { Subscription } from '../../../Services/EventBus/eventTypes.js';
+import type { AgentProgress, TaskAssignment } from "../types.js";
+import { EventType } from "../../../Services/EventBus/eventTypes.js";
+import { subscribe } from "../../../Services/EventBus/eventBus.js";
+import type { Subscription } from "../../../Services/EventBus/eventTypes.js";
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -19,10 +19,10 @@ let initialized = false;
 // ── 异常检测阈值 ────────────────────────────────────────────────────
 
 export const TRACKER_THRESHOLDS = {
-  stagnationTimeoutMs: 5 * 60 * 1000,   // 5 分钟无进展 → 停滞
-  loopSimilarityThreshold: 0.85,         // 连续 3 次输出相似度 > 此值 → 循环
-  loopConsecutiveCount: 3,               // 连续循环次数
-  consecutiveFailureLimit: 3,            // 连续失败上限 → 开除
+  stagnationTimeoutMs: 5 * 60 * 1000, // 5 分钟无进展 → 停滞
+  loopSimilarityThreshold: 0.85, // 连续 3 次输出相似度 > 此值 → 循环
+  loopConsecutiveCount: 3, // 连续循环次数
+  consecutiveFailureLimit: 3, // 连续失败上限 → 开除
 };
 
 // ── 初始化 ──────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ export function initProgressTracker(): void {
       const assignmentId = event.payload.assignmentId as string;
       const agentId = event.payload.agentId as string;
       if (assignmentId && agentId) {
-        updateProgress(assignmentId, agentId, { status: 'in_progress' });
+        updateProgress(assignmentId, agentId, { status: "in_progress" });
       }
     }),
     subscribe(EventType.TASK_PROGRESS, (event) => {
@@ -50,10 +50,25 @@ export function initProgressTracker(): void {
         }
       }
     }),
+    /**
+     * P1-10：把已有的 `AGENT_ITERATION_COMPLETE` 也接成进展信号源。
+     * 该事件在交互链路上每轮迭代都会发布（`ipcBridge`），携带 assignmentId 时即可续命；
+     * 这样"进展"不再依赖单一发布方（`TASK_PROGRESS` 由 `agentExecutor` 发布，
+     * `AGENT_ITERATION_COMPLETE` 由交互链路发布）。
+     */
+    subscribe(EventType.AGENT_ITERATION_COMPLETE, (event) => {
+      const assignmentId = event.payload.assignmentId as string | undefined;
+      if (!assignmentId) return;
+      const progress = progressMap.get(assignmentId);
+      if (!progress) return;
+      progress.currentIteration++;
+      progress.lastProgressAt = Date.now();
+      progress.tokensUsed += (event.payload.tokensConsumed as number) ?? 0;
+    }),
     subscribe(EventType.TASK_COMPLETED, (event) => {
       const assignmentId = event.payload.assignmentId as string;
       if (assignmentId) {
-        updateProgress(assignmentId, null, { status: 'completed' });
+        updateProgress(assignmentId, null, { status: "completed" });
       }
     }),
     subscribe(EventType.TASK_FAILED, (event) => {
@@ -61,7 +76,10 @@ export function initProgressTracker(): void {
       if (assignmentId) {
         const progress = progressMap.get(assignmentId);
         if (progress) {
+          // REV-339：失败必须落 status，否则 `allAssignmentsTerminal`（completed/failed）
+          // 永远等不到失败侧，编排无法收尾。
           progress.failures++;
+          progress.status = "failed";
           progress.lastProgressAt = Date.now();
         }
       }
@@ -76,8 +94,8 @@ export function initProgressTracker(): void {
 export function registerAssignment(assignment: TaskAssignment): void {
   const progress: AgentProgress = {
     assignmentId: assignment.assignmentId,
-    agentId: assignment.assignedAgentId ?? '',
-    status: 'pending',
+    agentId: assignment.assignedAgentId ?? "",
+    status: "pending",
     currentIteration: 0,
     tokensUsed: 0,
     lastProgressAt: Date.now(),
@@ -106,7 +124,7 @@ export function getProgress(assignmentId: string): AgentProgress | undefined {
 }
 
 export function getAllProgress(): AgentProgress[] {
-  return [...progressMap.values()].map(p => ({ ...p }));
+  return [...progressMap.values()].map((p) => ({ ...p }));
 }
 
 // ── 异常检测（Docs/Agent/03 §6.2）────────────────────────────────────────
@@ -114,8 +132,13 @@ export function getAllProgress(): AgentProgress[] {
 export interface AnomalyReport {
   assignmentId: string;
   agentId: string;
-  anomalyType: 'timeout' | 'stagnation' | 'loop' | 'consecutive_failures' | 'token_exhausted';
-  severity: 'warning' | 'critical';
+  anomalyType:
+    | "timeout"
+    | "stagnation"
+    | "loop"
+    | "consecutive_failures"
+    | "token_exhausted";
+  severity: "warning" | "critical";
   detail: string;
 }
 
@@ -127,14 +150,14 @@ export function checkTimeouts(timeLimitMs: number): AnomalyReport[] {
   const anomalies: AnomalyReport[] = [];
 
   for (const p of progressMap.values()) {
-    if (p.status !== 'in_progress') continue;
+    if (p.status !== "in_progress") continue;
     // 简化：用 lastProgressAt 和注册时间差估算
     if (now - p.lastProgressAt > timeLimitMs) {
       anomalies.push({
         assignmentId: p.assignmentId,
         agentId: p.agentId,
-        anomalyType: 'timeout',
-        severity: 'critical',
+        anomalyType: "timeout",
+        severity: "critical",
         detail: `超过时间限制 ${timeLimitMs}ms`,
       });
     }
@@ -150,13 +173,13 @@ export function checkStagnation(): AnomalyReport[] {
   const anomalies: AnomalyReport[] = [];
 
   for (const p of progressMap.values()) {
-    if (p.status !== 'in_progress') continue;
+    if (p.status !== "in_progress") continue;
     if (now - p.lastProgressAt > TRACKER_THRESHOLDS.stagnationTimeoutMs) {
       anomalies.push({
         assignmentId: p.assignmentId,
         agentId: p.agentId,
-        anomalyType: 'stagnation',
-        severity: 'warning',
+        anomalyType: "stagnation",
+        severity: "warning",
         detail: `超过 ${TRACKER_THRESHOLDS.stagnationTimeoutMs}ms 无进展`,
       });
     }
@@ -175,8 +198,8 @@ export function checkConsecutiveFailures(): AnomalyReport[] {
       anomalies.push({
         assignmentId: p.assignmentId,
         agentId: p.agentId,
-        anomalyType: 'consecutive_failures',
-        severity: 'critical',
+        anomalyType: "consecutive_failures",
+        severity: "critical",
         detail: `连续失败 ${p.failures} 次，达到上限 ${TRACKER_THRESHOLDS.consecutiveFailureLimit}`,
       });
     }

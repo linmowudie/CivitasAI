@@ -1,0 +1,6 @@
+# 采集过程中的临时产物（脚本每次运行都会重建/清理）——不入库。
+# 需要入库的是：
+#   metrics.json   —— Agent 能力 + 矩阵覆盖 + NOT-RUN 的基线
+#   notRun.json    —— 缺凭据 NOT-RUN 清单与有效通过数（§2.2 铁律 1 的产物）
+notRun.raw.jsonl
+.vitest-notrun.json

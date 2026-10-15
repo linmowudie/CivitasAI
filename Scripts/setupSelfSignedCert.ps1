@@ -49,8 +49,11 @@
 #>
 [CmdletBinding()]
 param(
-    # 发布者显示名（默认与当前仓库已签发的证书一致；改这里会更换发布者，需重新打包并重装根证书）
-    [string]$Subject = 'CN=Ma Hongyu (Self-Signed)',
+    # 发布者显示名。默认用**项目名**而非个人姓名：该值会写进 signing.env.json 并被
+    # electron-builder 用作 publisherName，随产物分发到所有用户机器上。
+    # 已用旧主体（如 'CN=Ma Hongyu (Self-Signed)'）签发过的机器：要么显式传 -Subject 复用，
+    # 要么加 -Force 重新签发并重装根证书（换主体=换发布者，需重新打包）。
+    [string]$Subject = 'CN=CivitasAI (Self-Signed)',
     [string]$OutDir = '',
     [int]$Years = 5,
     [string]$PfxPassword = '',

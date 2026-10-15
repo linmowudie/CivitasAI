@@ -4,13 +4,13 @@
  * 双子容器设计：
  * - 上容器: 可展开/收起的文本输入区（收起 36px，展开 120-240px）
  * - 下容器: 操作按钮行
- *   - 左侧: 展开/收起切换 + 辅助按钮（📎🖼）
+ *   - 左侧: 展开/收起切换 + 模型/工作方式选择器
  *   - 右侧: 紫色圆角发送按钮（background: accent, 32x32, "↑"）
  *
  * F2.5：Esc 取消编辑、prefers-reduced-motion。
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Paperclip, Image, Bot, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, Bot, Zap } from 'lucide-react';
 import type { WorkingMode } from '@/stores/chatStore';
 import { WORKING_MODE_OPTIONS } from './workingModeLabels';
 
@@ -112,19 +112,7 @@ export default function Composer({
               {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </button>
 
-            <button
-              className="flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-700 transition-colors"
-              title="附件"
-            >
-              <Paperclip size={14} />
-            </button>
-
-            <button
-              className="flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-700 transition-colors"
-              title="图片"
-            >
-              <Image size={14} />
-            </button>
+            {/* 附件/图片入口已移除：三端均无上传通道（REST/IPC/消息表都没有），按钮点了不响应 */}
 
             {/* 模型选择器 */}
             {!hideSelectors && availableModels.length > 0 && onSelectModel && (

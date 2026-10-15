@@ -7,6 +7,7 @@
 | `experimentMatrix.cjs` | 实验矩阵守门：校验 `Benchmarks/experimentMatrix.json` 四条覆盖规则 | `node Scripts/experimentMatrix.cjs` |
 | `rubricRecalibrate.ts` | 评分标准重校准（Docs/Agent/13 §S14，更新 `Skills/rubrics/`） | `tsx Scripts/rubricRecalibrate.ts` |
 | `traceAnalysis.ts` | Trace 回放分析（Docs/Agent/13 §S14） | `tsx Scripts/traceAnalysis.ts` |
+| `countLoc.py` | 统计代码量（默认核心业务代码：Src + Client/src + Server/src/main/java；`--all` 含测试/工具/基准） | `npm run count:loc` / `npm run count:loc:all` |
 | `dbPeek.cjs` | 诊断：查看某会话最近消息 | `node Scripts/dbPeek.cjs` |
 | `dupCheck.cjs` | 诊断：检测后端是否对同一 chunk 双重推送 | `node Scripts/dupCheck.cjs` |
 | `wsDiagnose.cjs` | 联调诊断：模拟前端 WS 行为，测 `generate_reply` 全链路时序 | `node Scripts/wsDiagnose.cjs <sessionId>` |

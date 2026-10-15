@@ -1,0 +1,25 @@
+{
+  "id": "scn-clock-rewind",
+  "title": "L5 混沌：系统时钟回拨必须被检出，且单调时钟不得倒退",
+  "tags": ["chaos", "reliability"],
+  "matrixCells": ["MEM1-ENV-CLOCK"],
+  "task": {
+    "description": "跑一轮任务；期间系统时钟被回拨（NTP 校正/虚拟机恢复常见）",
+    "goal": "完成任务并汇报"
+  },
+  "agentRole": "worker",
+  "clockSkewProbe": { "rewindMs": 60000 },
+  "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
+  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "text", "content": "任务完成。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 3,
+    "clockSkewDetected": true
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "id": "scn-retrieval-golden",
+  "title": "检索质量：golden set 上的 Recall@5 与 MRR",
+  "tags": [
+    "retrieval",
+    "memory"
+  ],
+  "matrixCells": [
+    "RET-BEN-GOLDEN"
+  ],
+  "task": {
+    "description": "把检索质量 ground truth 跑一遍（本场景不考察 Agent 行为，只采集检索指标）",
+    "goal": "采集检索质量基线"
+  },
+  "agentRole": "worker",
+  "loop": {
+    "maxIterations": 2,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "bench.echo",
+      "behavior": "ok"
+    }
+  ],
+  "retrievalSuite": {
+    "goldenSet": "Benchmarks/datasets/retrievalGoldenSet.json"
+  },
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "检索基线采集完成。"
+      }
+    ],
+    "defaultReply": "检索基线采集完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 2,
+    "retrieval": {
+      "minRecallAtK": 0.85,
+      "minMrr": 0.85
+    }
+  }
+}

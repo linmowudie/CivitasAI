@@ -11,11 +11,15 @@
  *    对应一条 `run-<traceId>` 会话行；
  *  - 所有读写按 `owner_user_id` 收敛（与项目其余个人数据一致）；
  *  - 落库失败**不阻断编排**，仅留痕（与 agentRepository 同策略）。
+ *
+ * 日志分级（REV-337）：所有落库失败统一走 `Db/dbFailureLog.ts` 的 `logDbFailure()`——
+ * 数据库未初始化是一种运行形态（纯内存运行），按来源降为一条 `warn`；
+ * 库已就绪却写失败是真故障，逐条 `error`。两种分级都记录本行采用的 `fallback`。
  */
 
-import { getMainDb } from '../database.js';
-import { getActiveOwner } from '../../AccountScope/activeAccount.js';
-import { logger } from '../../Logging/logger.js';
+import { getMainDb } from "../database.js";
+import { getActiveOwner } from "../../AccountScope/activeAccount.js";
+import { logDbFailure } from "../dbFailureLog.js";
 
 /** 任务行（`tasks` 表） */
 export interface TaskRow {
@@ -64,14 +68,21 @@ export function upsertTask(input: TaskPersistInput): void {
     const db = getMainDb();
     const sessionKey = input.sessionKey ?? `run-${input.traceId}`;
     const now = input.createdAt ?? Date.now();
-    const status = input.status ?? 'pending';
-    const startedAt = status === 'running' || status === 'in_progress' ? now : null;
+    const status = input.status ?? "pending";
+    const startedAt =
+      status === "running" || status === "in_progress" ? now : null;
 
     // 运行基座会话行（FK: tasks.session_key → sessions.session_key）
     db.prepare(
       `INSERT OR IGNORE INTO sessions (session_key, trace_id, description, status, created_at, last_active_at)
        VALUES (?, ?, ?, 'active', ?, ?)`,
-    ).run(sessionKey, input.traceId, `orchestrator run ${input.traceId}`, now, now);
+    ).run(
+      sessionKey,
+      input.traceId,
+      `orchestrator run ${input.traceId}`,
+      now,
+      now,
+    );
 
     db.prepare(
       `INSERT INTO tasks (
@@ -103,11 +114,15 @@ export function upsertTask(input: TaskPersistInput): void {
     );
   } catch (e) {
     // 落库失败不应阻断编排运行（内存态仍是权威运行时视图），但必须留痕
-    logger.error('任务落库失败（不阻断编排）', {
-      source: 'taskRepository/upsertTask',
-      taskId: input.taskId,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    logDbFailure(
+      "任务落库失败（不阻断编排）",
+      "taskRepository/upsertTask",
+      {
+        taskId: input.taskId,
+      },
+      e,
+      "本轮编排无任务行（读侧只能看到内存派发态）",
+    );
   }
 }
 
@@ -123,32 +138,59 @@ export function updateTaskRow(
 ): void {
   const sets: string[] = [];
   const params: unknown[] = [];
-  if (updates.status !== undefined) { sets.push('status = ?'); params.push(updates.status); }
-  if (updates.finalResult !== undefined) { sets.push('final_result = ?'); params.push(updates.finalResult); }
-  if (updates.qualityScore !== undefined) { sets.push('quality_score = ?'); params.push(updates.qualityScore); }
-  if (updates.completedAt !== undefined) { sets.push('completed_at = ?'); params.push(updates.completedAt); }
+  if (updates.status !== undefined) {
+    sets.push("status = ?");
+    params.push(updates.status);
+  }
+  if (updates.finalResult !== undefined) {
+    sets.push("final_result = ?");
+    params.push(updates.finalResult);
+  }
+  if (updates.qualityScore !== undefined) {
+    sets.push("quality_score = ?");
+    params.push(updates.qualityScore);
+  }
+  if (updates.completedAt !== undefined) {
+    sets.push("completed_at = ?");
+    params.push(updates.completedAt);
+  }
   if (sets.length === 0) return;
   params.push(taskId, getActiveOwner());
   try {
-    getMainDb().prepare(
-      `UPDATE tasks SET ${sets.join(', ')} WHERE task_id = ? AND owner_user_id = ?`,
-    ).run(...params);
+    getMainDb()
+      .prepare(
+        `UPDATE tasks SET ${sets.join(", ")} WHERE task_id = ? AND owner_user_id = ?`,
+      )
+      .run(...params);
   } catch (e) {
-    logger.error('任务更新落库失败', {
-      source: 'taskRepository/updateTaskRow',
-      taskId,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    logDbFailure(
+      "任务更新落库失败",
+      "taskRepository/updateTaskRow",
+      {
+        taskId,
+      },
+      e,
+      "库里终态未落（任务行停在旧状态，重启后读侧仍见旧状态）",
+    );
   }
 }
 
 /** 读取任务行（按当前属主过滤） */
 export function getTaskRow(taskId: string): TaskRow | undefined {
   try {
-    return getMainDb().prepare(
-      'SELECT * FROM tasks WHERE task_id = ? AND owner_user_id = ?',
-    ).get(taskId, getActiveOwner()) as TaskRow | undefined;
-  } catch {
+    return getMainDb()
+      .prepare("SELECT * FROM tasks WHERE task_id = ? AND owner_user_id = ?")
+      .get(taskId, getActiveOwner()) as TaskRow | undefined;
+  } catch (e) {
+    logDbFailure(
+      "任务行读取失败",
+      "taskRepository/getTaskRow",
+      {
+        taskId,
+      },
+      e,
+      "返回 undefined（读侧保留内存派发态，不宣称库里终态权威）",
+    );
     return undefined;
   }
 }

@@ -10,9 +10,9 @@
  * - 管理用户选中的模型和工作方式（同步到 prefsStore）
  */
 
-import { create } from 'zustand';
-import { usePrefsStore } from './prefsStore';
-import type { WorkingMode } from './chatStore';
+import { create } from "zustand";
+import { usePrefsStore } from "./prefsStore";
+import type { WorkingMode } from "./chatStore";
 import {
   ipcGetProviders,
   ipcAddProvider,
@@ -24,7 +24,8 @@ import {
   ipcSaveProviderSecrets,
   ipcLoadProviderSecrets,
   type ProviderSecretData,
-} from '@/services/ipcApi';
+  type RoutingUpdateResult,
+} from "@/services/ipcApi";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
@@ -59,15 +60,35 @@ export interface RoutingConfig {
 // ── 预置供应商 ─────────────────────────────────────────────────────
 
 export const PRESET_PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com/v1' },
-  { id: 'huawei-maas', name: '华为云 MaaS', base_url: 'https://api.modelarts-maas.com/plan/v2' },
-  { id: 'dashscope', name: '阿里通义', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { id: 'qianfan', name: '百度文心', base_url: 'https://qianfan.baidubce.com/v2' },
-  { id: 'zhipu', name: '智谱 AI', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
-  { id: 'deepseek', name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1' },
-  { id: 'moonshot', name: '月之暗面', base_url: 'https://api.moonshot.cn/v1' },
-  { id: 'minimax', name: 'MiniMax', base_url: 'https://api.minimax.chat/v1' },
-  { id: 'lingyi', name: '零一万物', base_url: 'https://api.lingyiwanwu.com/v1' },
+  { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1" },
+  {
+    id: "huawei-maas",
+    name: "华为云 MaaS",
+    base_url: "https://api.modelarts-maas.com/plan/v2",
+  },
+  {
+    id: "dashscope",
+    name: "阿里通义",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    id: "qianfan",
+    name: "百度文心",
+    base_url: "https://qianfan.baidubce.com/v2",
+  },
+  {
+    id: "zhipu",
+    name: "智谱 AI",
+    base_url: "https://open.bigmodel.cn/api/paas/v4",
+  },
+  { id: "deepseek", name: "DeepSeek", base_url: "https://api.deepseek.com/v1" },
+  { id: "moonshot", name: "月之暗面", base_url: "https://api.moonshot.cn/v1" },
+  { id: "minimax", name: "MiniMax", base_url: "https://api.minimax.chat/v1" },
+  {
+    id: "lingyi",
+    name: "零一万物",
+    base_url: "https://api.lingyiwanwu.com/v1",
+  },
 ];
 
 // ── Store ──────────────────────────────────────────────────────────
@@ -87,12 +108,23 @@ interface ModelState {
   restoreFromSecrets: () => Promise<void>;
 
   // 供应商管理
-  addProvider: (config: { provider: string; base_url: string; api_key: string; display_name: string; models?: ModelSpec[] }) => Promise<{ ok: boolean; error?: string }>;
+  addProvider: (config: {
+    provider: string;
+    base_url: string;
+    api_key: string;
+    display_name: string;
+    models?: ModelSpec[];
+  }) => Promise<{ ok: boolean; error?: string }>;
   removeProvider: (name: string) => Promise<{ ok: boolean; error?: string }>;
-  fetchProviderModels: (base_url: string, api_key: string) => Promise<{ ok: boolean; data?: ModelSpec[]; error?: string }>;
+  fetchProviderModels: (
+    base_url: string,
+    api_key: string,
+  ) => Promise<{ ok: boolean; data?: ModelSpec[]; error?: string }>;
 
   // 路由配置
-  updateRouting: (config: Partial<RoutingConfig>) => Promise<{ ok: boolean; error?: string }>;
+  updateRouting: (
+    config: Partial<RoutingConfig>,
+  ) => Promise<RoutingUpdateResult>;
 
   // 用户选择（同步到 prefsStore）
   setSelectedModel: (model: string) => void;
@@ -112,7 +144,10 @@ export const useModelStore = create<ModelState>((set, get) => ({
       const providers = await ipcGetProviders();
       set({ providers, loading: false });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : '获取供应商失败', loading: false });
+      set({
+        error: e instanceof Error ? e.message : "获取供应商失败",
+        loading: false,
+      });
     }
   },
 
@@ -138,7 +173,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
     try {
       const result = await ipcLoadProviderSecrets();
       if (!result.ok || !result.data?.providers) return;
-      
+
       // 逐个恢复供应商（注册到内存 + 重建状态）
       for (const secret of result.data.providers) {
         await ipcAddProvider({
@@ -206,10 +241,10 @@ export const useModelStore = create<ModelState>((set, get) => ({
   },
 
   setSelectedModel: (model) => {
-    usePrefsStore.getState().setPref('selectedModel', model);
+    usePrefsStore.getState().setPref("selectedModel", model);
   },
 
   setSelectedWorkingMode: (mode) => {
-    usePrefsStore.getState().setPref('selectedWorkingMode', mode);
+    usePrefsStore.getState().setPref("selectedWorkingMode", mode);
   },
 }));

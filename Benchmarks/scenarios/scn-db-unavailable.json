@@ -1,0 +1,29 @@
+{
+  "id": "scn-db-unavailable",
+  "title": "L5 混沌：DB 中途不可用时，持久化失败必须留痕（不得静默丢弃）",
+  "tags": ["chaos", "durability"],
+  "matrixCells": ["MEM1-ENV-DBFAIL"],
+  "task": {
+    "description": "分多轮推进并逐步持久化；中途数据库变为不可用",
+    "goal": "推进任务并持久化中间结论"
+  },
+  "agentRole": "worker",
+  "closeDbAfterIteration": 1,
+  "loop": { "maxIterations": 5, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
+  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-1" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-2" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-3" } }] },
+      { "kind": "text", "content": "中间结论已持久化。任务完成。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 5,
+    "dbFailureMustBeLogged": true,
+    "forbidDiagnoses": ["false_success"]
+  }
+}

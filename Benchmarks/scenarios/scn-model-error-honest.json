@@ -1,0 +1,29 @@
+{
+  "id": "scn-model-error-honest",
+  "title": "故障恢复：模型侧持续失败必须如实作废，不得伪装成最终答复",
+  "tags": ["recovery", "diagnosis"],
+  "matrixCells": ["AG-ENV-MODELERR"],
+  "task": {
+    "description": "把配置项整理成表格并汇报",
+    "goal": "整理配置并汇报"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
+  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "error", "category": "server_error", "message": "mock 5xx #1" },
+      { "kind": "error", "category": "server_error", "message": "mock 5xx #2" },
+      { "kind": "error", "category": "server_error", "message": "mock 5xx #3" },
+      { "kind": "error", "category": "server_error", "message": "mock 5xx #4" },
+      { "kind": "error", "category": "server_error", "message": "mock 5xx #5" }
+    ],
+    "defaultReply": "（不该走到这里）"
+  },
+  "expect": {
+    "exitReason": "model_error",
+    "maxIterations": 1,
+    "forbidDiagnoses": ["false_success"],
+    "allowDiagnoses": ["recovery_missing"]
+  }
+}

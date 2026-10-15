@@ -98,11 +98,29 @@ foreach ($file in $checkFiles) {
         $timestamped = if ($sig.TimeStamperCertificate) { '有' } else { '无' }
     }
 
-    $badSignature = ($status -eq 'NotSigned')
-    $badTrust = ($status -ne 'Valid' -and $status -ne 'NotSigned' -and $status -ne 'UnknownError')
-    # UnknownError 常见于"根不受信任"；单独用 RequireTrusted 才判失败
-    if ($Require -and $badSignature) { $failed++ }
-    if ($RequireTrusted -and ($badSignature -or $status -ne 'Valid')) { $failed++ }
+    # 判定分三档，且**每个文件最多计一次失败**（避免同一文件被重复计数后汇总数字失真）：
+    #   · 已签名但校验不通过（HashMismatch / 证书过期 / 被吊销等）→ 无条件失败：
+    #     这意味着包在签名之后被改动过，或签名本身无效，与"有没有签名"是两个级别的问题。
+    #     旧实现把这种情况算进 $badTrust 却从不参与判定，等于给它发了绿灯。
+    #   · 未签名 → 仅在 Require / RequireTrusted 下失败（本机自测可接受未签名）。
+    #   · 链不可信（UnknownError，常见于自签根未安装）→ 仅在 RequireTrusted 下失败。
+    $notSigned = ($status -eq 'NotSigned')
+    $chainUntrusted = $status -in @('UnknownError', 'NotTrusted', 'TrustError')
+    $brokenSignature = -not ($notSigned -or $chainUntrusted -or $status -eq 'Valid')
+
+    $failThis = $false
+    $why = ''
+    if ($brokenSignature) {
+        $failThis = $true
+        $why = "签名校验不通过（$status）"
+    } elseif ($notSigned -and ($Require -or $RequireTrusted)) {
+        $failThis = $true
+        $why = '未签名'
+    } elseif ($chainUntrusted -and $RequireTrusted) {
+        $failThis = $true
+        $why = '签名链不可信'
+    }
+    if ($failThis) { $failed++ }
 
     $icon = switch ($status) {
         'Valid' { '✅' }
@@ -119,7 +137,15 @@ foreach ($file in $checkFiles) {
         $msg = ($sig.StatusMessage -split "`n")[0].Trim()
         Write-Host ("      说明      : {0}" -f $msg) -ForegroundColor DarkGray
     }
-    $rows += [pscustomobject]@{ File = $file.Name; Status = $status; Signer = $signer }
+    if ($failThis) {
+        Write-Host ("      判定      : ❌ 计入失败（{0}）" -f $why) -ForegroundColor Red
+    }
+    $rows += [pscustomobject]@{
+        File    = $file.Name
+        Status  = $status
+        Signer  = $signer
+        判定失败 = if ($failThis) { $why } else { '' }
+    }
 }
 
 Write-Host ''

@@ -97,9 +97,9 @@ function formatDuration(ms) {
   return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
 
-/** 分块计算 SHA256，避免把上百 MB 的安装包整体读进内存 */
-function sha256File(absPath) {
-  const hash = crypto.createHash('sha256');
+/** 分块计算摘要，避免把上百 MB 的安装包整体读进内存 */
+function hashFile(absPath, algorithm = 'sha256', encoding = 'hex') {
+  const hash = crypto.createHash(algorithm);
   const fd = fs.openSync(absPath, 'r');
   try {
     const buf = Buffer.allocUnsafe(HASH_CHUNK);
@@ -110,7 +110,11 @@ function sha256File(absPath) {
   } finally {
     fs.closeSync(fd);
   }
-  return hash.digest('hex');
+  return hash.digest(encoding);
+}
+
+function sha256File(absPath) {
+  return hashFile(absPath);
 }
 
 function dirSize(absDir) {
@@ -132,13 +136,13 @@ function dirSize(absDir) {
  * Windows 下 npm 是 npm.cmd，Node 20+ 不允许直接 spawn .cmd（EINVAL），
  * 因此 win32 走 shell:true（命令与参数拼成一行，参数都是本脚本内的常量，无注入面）。
  */
-function run(command, args, label) {
+function run(command, args, label, extraEnv) {
   log(`\n$ ${[command, ...args].join(' ')}`);
   const isWin = process.platform === 'win32';
   const result = spawnSync(
     isWin ? [command, ...args].join(' ') : command,
     isWin ? [] : args,
-    { stdio: 'inherit', cwd: ROOT, shell: isWin, env: process.env },
+    { stdio: 'inherit', cwd: ROOT, shell: isWin, env: { ...process.env, ...(extraEnv || {}) } },
   );
   if (result.error) {
     bad(`${label}启动失败：${result.error.message}`);
@@ -159,7 +163,17 @@ function resolveElectronBuilderCli() {
 
 // ===== CLI 解析 =====
 function parseArgs(argv) {
-  const opts = { targets: [], skipBuild: false, noVerify: false, check: false, noMirror: false, help: false };
+  const opts = {
+    targets: [],
+    skipBuild: false,
+    noVerify: false,
+    check: false,
+    noMirror: false,
+    help: false,
+    allowUnsigned: false,
+    skipTests: false,
+    noProbe: false,
+  };
   const unknown = [];
   for (const arg of argv) {
     switch (arg) {
@@ -187,6 +201,15 @@ function parseArgs(argv) {
       case '--no-mirror':
         opts.noMirror = true;
         break;
+      case '--allow-unsigned':
+        opts.allowUnsigned = true;
+        break;
+      case '--skip-tests':
+        opts.skipTests = true;
+        break;
+      case '--no-probe':
+        opts.noProbe = true;
+        break;
       case '-h':
       case '--help':
         opts.help = true;
@@ -204,18 +227,35 @@ function printHelp() {
   log(`
 Civitas-AI 一键打包脚本
 
+流水线（八步，任一步不过即中止）：
+  1 预检        Node/图标/依赖/泄漏排除护栏/publish/签名
+  2 静态门禁    tsc 类型检查（含 electron 工程）+ vitest 单元测试
+  3 后端构建    npm run build:server
+  4 前端构建    npm run build:client（内置 renderer 产物校验）
+  5 输入校验    Scripts/verifyPackage.cjs（dist 完整性）
+  6 打包        electron-builder
+  7 产物核验    存在性/体积/SHA256 + Scripts/verifyRelease.cjs（asar 入口、资源、binding、泄漏面）
+  8 后端探针    Scripts/probePackagedBackend.cjs（真实拉起包内后端）
+
 用法：
-  node Scripts/package.cjs [--nsis|--portable|--dir|--all] [--skip-build] [--no-verify] [--check]
+  node Scripts/package.cjs [--nsis|--portable|--dir|--all] [--check] [选项]
 
 选项：
-  --nsis        只打 NSIS 安装包（默认）→ release/CivitasAI-Setup-${VERSION}.exe
-  --portable    只打便携版单文件        → release/CivitasAI-Portable.exe
-  --dir         只展开免安装目录        → release/win-unpacked/
-  --all         同时打 NSIS + 便携版
-  --skip-build  跳过构建（假定 dist/ 已是最新）
-  --no-verify   跳过产物校验器 Scripts/verifyPackage.cjs
-  --check       只做预检（① + ④），不构建不打包
-  --no-mirror   不注入 npmmirror 镜像，按默认源（GitHub Releases）下载
+  --nsis            只打 NSIS 安装包（默认）→ release/CivitasAI-Setup-${VERSION}.exe
+  --portable        只打便携版单文件        → release/CivitasAI-Portable.exe
+  --dir             只展开免安装目录        → release/win-unpacked/
+  --all             同时打 NSIS + 便携版
+  --check           只做预检 + 现有 dist/ 与 release/ 校验，不构建不打包
+  --skip-build      跳过构建（假定 dist/ 已是最新）
+  --no-verify       跳过 dist 与发布包内容校验器（不建议）
+  --skip-tests      跳过第 2 步类型检查与测试（不建议：会打出编译期就坏的包）
+  --no-probe        跳过第 8 步打包后端探针（Electron GUI 冒烟仍需人工，见 Docs/Dev）
+  --allow-unsigned  未配置证书时放行（仅限本地验证；SmartScreen 会拦截未签名包）
+  --no-mirror       不注入 npmmirror 镜像，按默认源（GitHub Releases）下载
+
+签名：优先使用环境变量 CSC_LINK / WIN_CSC_LINK；否则自动采用 npm run sign:setup
+      产出的本机自签证书（.tmp/signing/signing.env.json，已被 .gitignore 忽略）。
+      需要正式证书时由 npm run package:signed 走完整签名链。
 
 等价 npm 脚本：
   npm run package             # 默认 NSIS
@@ -243,7 +283,9 @@ function applyMirrors(disabled) {
   return applied;
 }
 
-function precheck(targetNames, noMirror) {
+function precheck(opts) {
+  const targetNames = opts.targets;
+  const noMirror = opts.noMirror;
   log('   打包配置：');
   log(`     productName : ${pkg.build.productName}    version: ${VERSION}`);
   log(`     输出目录    : ${RELEASE_DIR}`);
@@ -334,13 +376,148 @@ function precheck(targetNames, noMirror) {
     warn('node_modules/electron/dist/electron.exe 不存在，electron-builder 首次会自动下载（约 100MB+，可能较慢）');
   }
 
+  // 6) 泄漏排除护栏自检（REV-278）
+  // 护栏本身也要被校验：Configs/local.json 是覆盖层里优先级最高的一层（可含供应商凭据），
+  // 而 `files`/`extraResources` 都是整目录拷贝——少一条排除项就等于把本机凭据发给用户。
+  const filesPats = pkg.build.files || [];
+  const requiredDenies = ['!Configs/local.json', '!.env', '!.env.*'];
+  const missingDenies = requiredDenies.filter((p) => !filesPats.includes(p));
+  const configsExtra = (pkg.build.extraResources || []).find((r) => r && r.from === 'Configs');
+  const extraDenies = configsExtra && Array.isArray(configsExtra.filter) ? configsExtra.filter : [];
+  if (missingDenies.length > 0) {
+    bad(`build.files 缺少泄漏排除项：${missingDenies.join('、')}`);
+    problems.push('在 package.json 的 build.files 中补上这些排除项（本机凭据文件不得进入发布包）');
+  } else if (!extraDenies.includes('!local.json')) {
+    bad('extraResources 把 Configs 明文拷到 resources/app/，但 filter 没有排除 local.json');
+    problems.push('在 build.extraResources 的 Configs 项 filter 中加入 "!local.json"');
+  } else {
+    ok('泄漏排除护栏已就位（build.files + extraResources.filter）');
+  }
+  const guardrailOk = missingDenies.length === 0 && extraDenies.includes('!local.json');
+  const onDiskLeaks = ['Configs/local.json', '.env'].filter((rel) => fs.existsSync(path.join(ROOT, rel)));
+  if (onDiskLeaks.length > 0 && guardrailOk) {
+    warn(`本机存在 ${onDiskLeaks.join('、')}，已由排除护栏挡住（不会进入发布包）`);
+  } else if (onDiskLeaks.length > 0) {
+    warn(`本机存在 ${onDiskLeaks.join('、')} 且排除护栏不完整 —— 这些文件正处在会被打进发布包的状态`);
+  }
+
+  // 7) 更新元数据不得由 git remote 推断而来（REV-279）
+  // 项目未使用 electron-updater；若 build.publish 不为 null，electron-builder 会读 git remote
+  // 生成 app-update.yml，把个人仓库地址与个人证书主体写进每一个用户机器上的安装包。
+  if (pkg.build.publish !== null) {
+    bad(`build.publish 未显式设为 null（当前：${JSON.stringify(pkg.build.publish)}）`);
+    problems.push('在 package.json 的 build 段设置 "publish": null，或删除产物中的 app-update.yml 后重打');
+  } else {
+    ok('build.publish=null（不会从 git remote 推断出更新通道）');
+  }
+
+  // 8) 代码签名门禁（REV-281）
+  // 无证书时 electron-builder 只打一条 warning 就继续产出安装包（假绿灯）；
+  // forceCodeSigning 让它失败，预检则负责在长时间构建之前就给出可操作的修复路径。
+  if (pkg.build.win && pkg.build.win.forceCodeSigning !== true) {
+    bad('build.win.forceCodeSigning 未开启：无证书打包会被 electron-builder 静默放过');
+    problems.push('在 package.json 的 build.win 中设置 "forceCodeSigning": true');
+  }
+  const needsSigning = targetNames.some((t) => t === 'nsis' || t === 'portable');
+  const envCert = process.env.CSC_LINK || process.env.WIN_CSC_LINK;
+  const signingEnvPath = path.join(ROOT, '.tmp', 'signing', 'signing.env.json');
+  if (!envCert && fs.existsSync(signingEnvPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(signingEnvPath, 'utf8'));
+      if (parsed.pfxPath && parsed.pfxPassword && fs.existsSync(path.resolve(ROOT, parsed.pfxPath))) {
+        opts.signingEnv = { link: path.resolve(ROOT, parsed.pfxPath), password: parsed.pfxPassword };
+        ok(`本机自签证书可用：${parsed.pfxPath}${parsed.trustedRoot === false ? '（根证书未安装，本机仍显示"未知发布者"）' : ''}`);
+      } else {
+        bad(`signing.env.json 指向的证书不可用：${parsed.pfxPath || '(未配置 pfxPath)'}`);
+        problems.push('重跑 npm run sign:setup（可加 -Force 重新生成）');
+      }
+    } catch (e) {
+      bad(`signing.env.json 解析失败：${e instanceof Error ? e.message : String(e)}`);
+      problems.push('删除 .tmp/signing/signing.env.json 后重跑 npm run sign:setup');
+    }
+  } else if (envCert) {
+    ok(`签名证书由环境变量提供：${envCert}`);
+  }
+  const signingReady = Boolean(envCert || opts.signingEnv);
+  if (needsSigning && !signingReady) {
+    if (opts.allowUnsigned) {
+      warn('未配置签名，但已按 --allow-unsigned 显式放行（产物未签名，SmartScreen 会拦截；仅限本地验证）');
+    } else {
+      bad('未配置代码签名证书（既无 CSC_LINK/WIN_CSC_LINK，也无 .tmp/signing/signing.env.json）');
+      problems.push('先执行 npm run sign:setup 生成本机自签证书，或改用 npm run package:signed；仅本地验证时可加 --allow-unsigned');
+    }
+  }
+
   return problems;
 }
 
 // ===== ⑥⑦ 产物核验 =====
+/** release/ 下已存在的目标产物（相对路径），用于 --check 模式判断是否有可核验的旧产物 */
+function targetArtifactsExist(targetNames) {
+  return targetNames
+    .flatMap((name) => TARGETS[name].artifacts.map((a) => a.rel))
+    .filter((rel) => fs.existsSync(path.join(RELEASE_DIR, rel)));
+}
+
+/** 当前 dist/ 的构建时间（拿不到返回 null）：用于判断发布包是否落后于现有构建产物 */
+function distBuildTime() {
+  try {
+    return fs.statSync(path.join(ROOT, 'dist', 'renderer', 'index.html')).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `release/latest.yml` 只有在 electron-builder 能推断出 publish 配置时才会生成。
+ * 本项目已设 `build.publish:null`，该文件不再随包重生成 —— 于是遗留的 yml 会一直写着
+ * **旧安装包**的 sha512，而同名文件却已被新包覆盖：一旦被拷进任何发布渠道，
+ * 客户端按它校验的就是那份坏包（REV-283 的实况：233KB 壳的 hash 挂在 latest.yml 上）。
+ */
+function checkReleaseMetadata(exeAbs, problems) {
+  const name = path.basename(exeAbs);
+  const ymlPath = path.join(RELEASE_DIR, 'latest.yml');
+  if (!fs.existsSync(ymlPath)) return;
+
+  let yml = '';
+  try {
+    yml = fs.readFileSync(ymlPath, 'utf8');
+  } catch {
+    return;
+  }
+  if (!yml.includes(name)) {
+    ok(`latest.yml 未引用 ${name}，无需一致性核验`);
+    return;
+  }
+
+  const recorded = [...yml.matchAll(/sha512:\s*(\S+)/g)].map((m) => m[1]);
+  if (recorded.length === 0) {
+    warn(`latest.yml 引用了 ${name} 却没有任何 sha512 字段，发布元数据形态异常，请删除后重打`);
+    problems.push('release/latest.yml 缺失 sha512，无法核验发布元数据');
+    return;
+  }
+
+  const actual = hashFile(exeAbs, 'sha512', 'base64');
+  if (recorded.includes(actual)) {
+    ok(`latest.yml 的 sha512 与 ${name} 一致`);
+    return;
+  }
+  bad(`latest.yml 记录的 sha512 与 ${name} 实际不符（发布元数据指向旧包/坏包）`);
+  log(`     记录值: ${recorded[0]}`);
+  log(`     实际值: ${actual}`);
+  problems.push(
+    `release/latest.yml 与 ${name} 不一致：本项目不启用自动更新，请删除 release/latest.yml；若确需发布元数据，请重跑打包生成`,
+  );
+}
+
+/**
+ * @param startedAt 本次打包的开始时间；--check 模式没有打包，传 null
+ *        （拿"本次运行开始"去比对旧产物必然判成"非新鲜"，等于每次都刷一条无效告警）
+ */
 function reportArtifacts(targetNames, startedAt) {
   const rows = [];
   const problems = [];
+  const distAt = distBuildTime();
 
   for (const name of targetNames) {
     for (const artifact of TARGETS[name].artifacts) {
@@ -353,7 +530,7 @@ function reportArtifacts(targetNames, startedAt) {
 
       const stat = fs.statSync(abs);
       const bytes = artifact.kind === 'dir' ? dirSize(abs) : stat.size;
-      const isFresh = stat.mtimeMs >= startedAt - 5000;
+      const isFresh = startedAt === null ? true : stat.mtimeMs >= startedAt - 5000;
 
       // 体积与 SHA256 必须来自同一份文件：中间若被改写（杀软/签名工具/并发打包），
       // 这里会显式告警，而不是打印一组自相矛盾的数字。
@@ -370,7 +547,14 @@ function reportArtifacts(targetNames, startedAt) {
       log(`     路径  : ${abs}`);
       log(`     体积  : ${bytes} 字节（${formatMB(bytes)}）`);
       if (hash) log(`     SHA256: ${hash}`);
-      if (!isFresh) warn(`产物修改时间早于本次打包开始时间，可能是上一次的旧产物（请确认上方 electron-builder 是否真的重建）`);
+      if (startedAt !== null) {
+        if (!isFresh) warn('产物修改时间早于本次打包开始时间，可能是上一次的旧产物（请确认上方 electron-builder 是否真的重建）');
+      } else {
+        log(`     修改时间: ${new Date(stat.mtimeMs).toLocaleString('zh-CN')}`);
+        if (distAt !== null && stat.mtimeMs < distAt - 1000) {
+          warn('产物比当前 dist/ 更旧：这份发布包不匹配现有构建产物，发布前请按 npm run package 重打');
+        }
+      }
       if (mutated) {
         warn('产物在核验期间被改写（体积/时间戳发生变化），上面打印的 SHA256 可能已失效，请重新核验');
         problems.push(`${artifact.rel} 在核验期间被外部进程改写，请确认杀毒/签名工具后重新打包`);
@@ -382,6 +566,8 @@ function reportArtifacts(targetNames, startedAt) {
       } else {
         ok(`体积合理（>= ${formatMB(MIN_ARTIFACT_BYTES)}）`);
       }
+
+      if (artifact.kind === 'file') checkReleaseMetadata(abs, problems);
       rows.push({ abs, bytes });
     }
   }
@@ -409,8 +595,8 @@ function main() {
   log('╚══════════════════════════════════════════════════════════════╝');
 
   // ── ① 预检 ──
-  step('1/7', `打包前预检（Node / 图标 / electron-builder / 必需文件）`);
-  const precheckProblems = precheck(opts.targets, opts.noMirror);
+  step('1/8', '打包前预检（Node / 图标 / electron-builder / 必需文件 / 泄漏护栏 / 签名）');
+  const precheckProblems = precheck(opts);
   if (precheckProblems.length > 0) {
     log('');
     bad('预检未通过，已中止打包。修复建议：');
@@ -419,53 +605,123 @@ function main() {
     return 1;
   }
 
-  // ── --check：只做预检 + 现有产物校验，不构建不打包 ──
+  // 签名环境变量：预检已从本机 signing.env.json 读到，或外部已提供 CSC_LINK
+  const signingEnv = {};
+  if (opts.signingEnv) {
+    signingEnv.CSC_LINK = opts.signingEnv.link;
+    signingEnv.CSC_KEY_PASSWORD = opts.signingEnv.password;
+    signingEnv.WIN_CSC_LINK = opts.signingEnv.link;
+    signingEnv.WIN_CSC_KEY_PASSWORD = opts.signingEnv.password;
+  }
+
+  // ── --check：预检 + 现有 dist/ 与 release/ 校验，不构建不打包 ──
   if (opts.check) {
     if (!opts.noVerify) {
-      step('2/7', '产物校验器（Scripts/verifyPackage.cjs，仅检查现有 dist/）');
+      step('5/8', '产物校验器（Scripts/verifyPackage.cjs，仅检查现有 dist/）');
       if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyPackage.cjs')], '产物校验')) {
         log('   提示：请先执行 npm run build:all 生成 dist/ 产物。');
         return 1;
       }
+      step('5/8', 'renderer 产物校验（Scripts/verifyClientDist.cjs）');
+      if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyClientDist.cjs')], 'renderer 校验')) {
+        return 1;
+      }
     }
+
+    // 关键：--check 不能只看 dist/。release/ 里躺着一个 233KB 的坏安装包时，
+    // 只校验 dist 的"预检通过"会直接把人误导成"可以发布了"。
+    const existing = targetArtifactsExist(opts.targets);
+    let checkProblems = [];
+    if (existing.length > 0) {
+      step('7/8', '现有 release/ 产物核验（体积 / SHA256）');
+      checkProblems = reportArtifacts(opts.targets, null).problems;
+      const unpackedAbs = path.join(RELEASE_DIR, 'win-unpacked');
+      if (!opts.noVerify && fs.existsSync(unpackedAbs)) {
+        step('7/8', '发布包内容校验（Scripts/verifyRelease.cjs）');
+        if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyRelease.cjs')], '发布包内容校验')) {
+          checkProblems.push('release/win-unpacked 内容校验未通过（入口/资源/binding/泄漏面）');
+        }
+      }
+    } else {
+      log('');
+      log('   （release/ 下没有本次目标产物，跳过产物核验——首次使用请先 npm run package）');
+    }
+
     log('');
-    log('✅ 仅预检模式（--check）：预检与产物校验均已通过，未执行构建与打包。');
+    if (checkProblems.length > 0) {
+      bad('仅预检模式：现有产物核验未通过（' + checkProblems.length + ' 项）：');
+      for (const p of checkProblems) log(`     · ${p}`);
+      log('');
+      return 1;
+    }
+    log('✅ 仅预检模式（--check）：预检、dist 产物与现有发布包校验均通过，未执行构建与打包。');
     log(`   下一步：npm run package（默认 NSIS 安装包）\n`);
     return 0;
   }
 
-  // ── ②③ 构建 ──
-  if (opts.skipBuild) {
-    step('2/7', '构建：已按 --skip-build 跳过（复用现有 dist/）');
+  // ── ② 静态门禁（REV-302）──
+  // 打包链原先不含类型检查与测试：编译期就坏的代码会被 electron-builder 正常打出来，
+  // 症状推迟到用户双击时才出现。
+  if (opts.skipTests) {
+    step('2/8', '类型检查与测试：已按 --skip-tests 跳过（产物未经过任何静态验证）');
   } else {
-    step('2/7', '构建后端（npm run build:server）');
+    step('2/8', '类型检查（tsc --noEmit + electron 工程）');
+    if (!run('npm', ['run', 'typecheck'], '类型检查')) return 1;
+    if (!run('npm', ['run', 'typecheck:electron'], 'electron 类型检查')) return 1;
+
+    step('2/8', '单元测试（vitest run，排除需真实模型密钥的集成用例）');
+    if (
+      !run(
+        'npx',
+        ['vitest', 'run', '--exclude', '**/Tests/AgentRuntime/realAgent.spec.ts', '--exclude', '**/node_modules/**'],
+        '单元测试',
+      )
+    ) {
+      return 1;
+    }
+  }
+
+  // ── ③④ 构建 ──
+  if (opts.skipBuild) {
+    step('3/8', '构建：已按 --skip-build 跳过（复用现有 dist/）');
+  } else {
+    step('3/8', '构建后端（npm run build:server）');
     if (!run('npm', ['run', 'build:server'], '后端构建')) return 1;
 
-    step('3/7', '构建前端（npm run build:client）');
+    step('4/8', '构建前端（npm run build:client）');
     if (!run('npm', ['run', 'build:client'], '前端构建')) return 1;
   }
 
-  // ── ④ 产物校验（构建之后、打包之前；--no-verify 时跳过）──
+  // ── ⑤ 产物校验（构建之后、打包之前；--no-verify 时跳过）──
   if (!opts.noVerify) {
-    step('4/7', '产物校验器（Scripts/verifyPackage.cjs，打包前）');
+    step('5/8', '产物校验器（Scripts/verifyPackage.cjs + verifyClientDist.cjs，打包前）');
     if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyPackage.cjs')], '产物校验')) {
       log('   提示：缺少打包输入意味着 electron-builder 会打出一个不可用的包，已中止。');
+      return 1;
+    }
+    if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyClientDist.cjs')], 'renderer 校验')) {
       return 1;
     }
   } else {
     warn('已按 --no-verify 跳过产物校验器（构建结果未被校验）');
   }
 
-  // ── ⑤ electron-builder ──
+  // ── ⑥ electron-builder ──
   const builderTargets = [...new Set(opts.targets.flatMap((t) => TARGETS[t].builderTargets))];
-  step('5/7', `electron-builder 打包（--win ${builderTargets.join(' ')}）`);
+  step('6/8', `electron-builder 打包（--win ${builderTargets.join(' ')}）`);
   const ebCli = resolveElectronBuilderCli();
   if (!ebCli) {
     bad('找不到 node_modules/electron-builder/cli.js，请先 npm install');
     return 1;
   }
-  if (!run(process.execPath, [ebCli, '--win', ...builderTargets], 'electron-builder 打包')) {
+  const ebArgs = [ebCli, '--win', ...builderTargets];
+  if (opts.allowUnsigned && !Object.keys(signingEnv).length) {
+    ebArgs.push('--config.win.forceCodeSigning=false');
+  }
+  if (!run(process.execPath, ebArgs, 'electron-builder 打包', signingEnv)) {
     log('   常见原因与处理：');
+    log('     · 未签名且未加 --allow-unsigned → build.win.forceCodeSigning=true 会让打包直接失败，');
+    log('       先跑 npm run sign:setup（本机自签）或配置 CSC_LINK（正式证书）');
     log('     · 网络不可达（connect ETIMEDOUT）→ 脚本已默认注入 npmmirror 镜像；若仍失败，');
     log('       请检查代理后重试，或用环境变量 ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR 指定可用镜像');
     log('     · 图标格式不合法 → 运行 python Scripts/genIcons.py 重新生成 assets/icon.ico');
@@ -473,14 +729,18 @@ function main() {
     return 1;
   }
 
-  // ── ⑥⑦ 产物核验 ──
-  step('6/7', '产物核验（存在性 / 体积 / SHA256）');
+  // ── ⑦ 产物核验 ──
+  step('7/8', '产物核验（存在性 / 体积 / SHA256）');
   const { problems } = reportArtifacts(opts.targets, startedAt);
 
   if (!opts.noVerify) {
-    step('7/7', '产物校验器（Scripts/verifyPackage.cjs，打包后复核）');
+    step('7/8', '发布包内容校验（Scripts/verifyRelease.cjs：asar 入口 / 引用资源 / 原生 binding / 泄漏面）');
+    if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyRelease.cjs')], '发布包内容校验')) {
+      problems.push('release/win-unpacked 内容校验未通过');
+    }
+    step('7/8', '产物校验器（Scripts/verifyPackage.cjs，打包后复核）');
     if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'verifyPackage.cjs'), '--stage=post'], '产物复核')) {
-      return 1;
+      problems.push('打包后 dist 复核未通过');
     }
   }
 
@@ -493,8 +753,23 @@ function main() {
     return 1;
   }
 
+  // ── ⑧ 打包后端探针（REV-296）──
+  // 前面所有校验都是"静态取证"；探针会真实拉起包内后端，验证迁移、监听与令牌通道可用。
+  if (opts.noProbe) {
+    step('8/8', '打包后端探针：已按 --no-probe 跳过（包内后端从未被真实拉起过）');
+  } else {
+    step('8/8', '打包后端探针（Scripts/probePackagedBackend.cjs）');
+    if (!run(process.execPath, [path.join(ROOT, 'Scripts', 'probePackagedBackend.cjs')], '打包后端探针')) {
+      log('   提示：探针失败说明包内后端起不来（体积/入口都对但运行即崩），此包不可发布。');
+      log('═'.repeat(64));
+      return 1;
+    }
+  }
+
+  log('');
   log(`✅ 打包成功（耗时 ${formatDuration(Date.now() - startedAt)}）`);
   log('═'.repeat(64));
+  log('   仍需人工：双击安装包做 Electron GUI 冒烟（白屏/托盘/登录），自动化无法取证窗口渲染。');
 
   const setupArtifact = path.join(RELEASE_DIR, `CivitasAI-Setup-${VERSION}.exe`);
   if (opts.targets.includes('nsis') && fs.existsSync(setupArtifact)) {

@@ -1,0 +1,7 @@
+# 每次运行都会写时间戳报告（.json 机读 + .md 人读）+ 覆盖稳定指针 latest.*。
+# 时间戳报告是本地产物，不入库；
+# `latest.json` 是基线采集（Scripts/benchMetrics.cjs）读取的稳定指针，需要入库。
+*.json
+!latest.json
+*.md
+!latest.md

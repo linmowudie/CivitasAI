@@ -6,29 +6,31 @@
  *   在 `loop:approval_requested/decided` 时即时刷新；
  * - 浏览器模式没有事件下行通道，才需要轮询兜底。
  *
- * 间隔取 30s 的原因：后端 API 限流为 30 次/分钟 × burst 1.5 = 45 次/分钟/每 IP
- * （Configs/supervision.json → supervision.rateLimit）。5s 轮询会占掉 12 次/分钟，
- * 叠加应用其他请求会触发 429，导致审批决策等写操作失败。
+ * 间隔来自 `ui.approvalQueueRefreshSec`（设置面板可调，真实消费方就是这里）。
+ * 预算约束写在 schema 的 constraint 上：后端限流为 30 次/分钟 × burst 1.5
+ * （Configs/supervision.json → supervision.rateLimit），轮询调得过低会挤占写操作配额。
  *
  * 多个组件（左面板角标 + 审批视图）同时使用时只保留一个定时器（引用计数）。
  */
-import { useEffect } from 'react';
-import { useApprovalStore } from '@/stores/approvalStore';
+import { useEffect } from "react";
+import { useApprovalStore } from "@/stores/approvalStore";
+import { useUiNumber } from "@/config/uiSettings";
 
 let pollRefs = 0;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-export function useApprovalPolling(intervalMs = 30_000): void {
+export function useApprovalPolling(intervalMs?: number): void {
   const hydrate = useApprovalStore((s) => s.hydrate);
+  const configuredMs = useUiNumber("approvalQueueRefreshSec", 30) * 1000;
+  const interval = intervalMs ?? configuredMs;
 
   useEffect(() => {
     hydrate();
     pollRefs += 1;
-    if (!pollTimer) {
-      pollTimer = setInterval(() => {
-        void useApprovalStore.getState().hydrate();
-      }, intervalMs);
-    }
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+      void useApprovalStore.getState().hydrate();
+    }, interval);
     return () => {
       pollRefs -= 1;
       if (pollRefs <= 0 && pollTimer) {
@@ -36,5 +38,5 @@ export function useApprovalPolling(intervalMs = 30_000): void {
         pollTimer = null;
       }
     };
-  }, [hydrate, intervalMs]);
+  }, [hydrate, interval]);
 }

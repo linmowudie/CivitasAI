@@ -9,7 +9,7 @@ TypeScript 后端，严格单向分层：**Interface → Core → Services → T
 |---|------|------|
 | Interface | `Interface/` | 交互层：`IpcBridge/`（IPC 事件桥接）、`RestApi/`（chatApi 等）、`WebServer/`（httpServer / routes）、`InputDeduplication/` |
 | Core | `Core/` | 引擎层：`Loop/`（runIteration 十步主循环 / iterationController）、`Middleware/`（六钩子注册表 + 内置 goalReanchor / fingerprintDetector / budgetSentinel / failureInjector）、`Model/`（modelCaller）、`AgentRuntime/`（agentFactory）、`Decision/`（orchestrator 编排） |
-| Services | `Services/` | 服务层：`LoopControl/`、`Supervision/` 监管、`TokenEconomy/` 经济、`Arbitration/` 仲裁、`Audit/` `Regulation/` 审计监管、`SharedMemory/` `Context/` `Retrieval/` 记忆、`EventBus/`、`Session/`、`Cache/`、`Pipeline/`、`Recruitment/`、`ReviewerAgent/`、`Hook/`、`LoopScheduler/` |
+| Services | `Services/` | 服务层：`LoopControl/`、`Supervision/` 监管（含**上下文管理策略机族** `compactionStrategies` / `strategyRegistry`：注册表 + 选择器，见 [Docs/Dev/一些思考3-落实说明](../Docs/Dev/一些思考3-落实说明.md)）、`TokenEconomy/` 经济、`Arbitration/` 仲裁、`Audit/` `Regulation/` 审计监管、`SharedMemory/` `Context/` `Retrieval/` 记忆、`EventBus/`、`Session/`、`Cache/`、`Pipeline/`、`Recruitment/`、`ReviewerAgent/`、`Hook/`、`LoopScheduler/` |
 | Tools | `Tools/` | 工具层：`Builtin/`（Execute / Read / Write / Search）、`Custom/`（agentRecruiter / submitForReview）、`Registry/`、`Factory/`、`Traits/`（toolSpec） |
 | Infra | `Infra/` | 基础设施层：`Config/` `Db/` `Logging/` `Security/` `DurableExecution/` `Llm/` `Fs/` `Time/` `Workspace/` `Sandbox/` `Watcher/` `Hook/` `Embedding/` `Slm/` `Terminal/` `Contracts/` |
 

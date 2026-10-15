@@ -27,19 +27,35 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "bench": "npm run bench:selftest && npm run bench:matrix && npm run bench:metrics:check && npm run bench:conformance",
+    "bench:selftest": "tsx Benchmarks/runner/selftest.ts",
+    "bench:notrun": "node Scripts/credentialNotRun.cjs",
+    "bench:gaps": "node Scripts/benchGapReport.cjs",
+    "bench:conformance": "node Scripts/benchConformanceCheck.cjs",
+    "bench:static": "node Scripts/staticRecon.cjs",
+    "bench:static:json": "node Scripts/staticRecon.cjs --json",
+    "bench:run": "tsx Benchmarks/runner/run.ts",
+    "bench:typecheck": "tsc --noEmit -p Benchmarks/tsconfig.json",
+    "bench:matrix": "node Scripts/experimentMatrix.cjs",
+    "bench:matrix:strict": "node Scripts/experimentMatrix.cjs --strict",
+    "bench:metrics": "node Scripts/benchMetrics.cjs",
+    "bench:metrics:check": "node Scripts/benchMetrics.cjs --check",
+    "count:loc": "python Scripts/countLoc.py",
+    "count:loc:all": "python Scripts/countLoc.py --all",
     "lint": "eslint Src/ --ext .ts",
     "lint:fix": "eslint Src/ --ext .ts --fix",
     "layer-check": "eslint Src/ --ext .ts --rule '{\"import/no-restricted-paths\": [\"error\", {\"zones\": []}]}'",
     "typecheck": "tsc --noEmit",
     "typecheck:electron": "tsc --noEmit -p tsconfig.electron.json",
     "electron:dev": "npm run dev:electron",
-    "electron:build": "npm run build:all && electron-builder --win portable",
-    "electron:build:dir": "npm run build:all && electron-builder --win dir",
+    "electron:build": "node Scripts/package.cjs --portable",
+    "electron:build:dir": "node Scripts/package.cjs --dir",
     "package": "node Scripts/package.cjs",
     "package:nsis": "node Scripts/package.cjs --nsis",
     "package:portable": "node Scripts/package.cjs --portable",
     "package:dir": "node Scripts/package.cjs --dir",
     "package:check": "node Scripts/package.cjs --check",
+    "package:verify": "node Scripts/verifyRelease.cjs",
     "package:signed": "node Scripts/packageSigned.cjs",
     "sign:setup": "pwsh -NoProfile -ExecutionPolicy Bypass -File Scripts/setupSelfSignedCert.ps1",
     "sign:verify": "pwsh -NoProfile -ExecutionPolicy Bypass -File Scripts/verifySign.ps1",
@@ -50,6 +66,7 @@
   "build": {
     "appId": "com.civitasai.app",
     "productName": "CivitasAI",
+    "publish": null,
     "directories": {
       "output": "release"
     },
@@ -63,14 +80,20 @@
       "node_modules/**/*",
       "!node_modules/.cache/**/*",
       "!node_modules/*/{test,tests,example,examples,docs,doc}/**",
-      "!**/*.map"
+      "!**/*.map",
+      "!Configs/local.json",
+      "!.env",
+      "!.env.*",
+      "!**/*.pfx",
+      "!**/*.p12"
     ],
     "extraResources": [
       {
         "from": "Configs",
         "to": "app/Configs",
         "filter": [
-          "**/*"
+          "**/*",
+          "!local.json"
         ]
       },
       {
@@ -103,7 +126,8 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "forceCodeSigning": true
     },
     "nsis": {
       "oneClick": false,

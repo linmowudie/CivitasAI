@@ -78,23 +78,30 @@ export async function ipcGetProviders(): Promise<ProviderInfo[]> {
 }
 
 /** 添加/注册新供应商 */
-export async function ipcAddProvider(config: ModelProviderConfig): Promise<{ ok: boolean; error?: string }> {
+export async function ipcAddProvider(
+  config: ModelProviderConfig,
+): Promise<{ ok: boolean; error?: string }> {
   const api = getModelProvidersAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.addProvider(config);
 }
 
 /** 注销供应商 */
-export async function ipcRemoveProvider(name: string): Promise<{ ok: boolean; error?: string }> {
+export async function ipcRemoveProvider(
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
   const api = getModelProvidersAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.removeProvider(name);
 }
 
 /** 用 API_KEY 调用 /models 端点拉取模型列表 */
-export async function ipcFetchProviderModels(config: { base_url: string; api_key: string }): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+export async function ipcFetchProviderModels(config: {
+  base_url: string;
+  api_key: string;
+}): Promise<{ ok: boolean; data?: any[]; error?: string }> {
   const api = getModelProvidersAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.fetchModels(config);
 }
 
@@ -105,10 +112,23 @@ export async function ipcGetRouting(): Promise<RoutingConfig | null> {
   return api.getRouting();
 }
 
+/** 路由更新回执：后端先落盘再同步运行态，被拒绝/非法的键必须回传给界面 */
+export interface RoutingUpdateResult {
+  ok: boolean;
+  data?: RoutingConfig;
+  error?: string;
+  /** 白名单外、未写入用户配置层的 routing.* 键 */
+  rejected?: string[];
+  /** 取值非法、未写入的键与原因 */
+  invalid?: Array<{ path: string; reason: string }>;
+}
+
 /** 更新路由配置 */
-export async function ipcUpdateRouting(config: Partial<RoutingConfig>): Promise<{ ok: boolean; data?: RoutingConfig; error?: string }> {
+export async function ipcUpdateRouting(
+  config: Partial<RoutingConfig>,
+): Promise<RoutingUpdateResult> {
   const api = getModelProvidersAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.updateRouting(config);
 }
 
@@ -124,7 +144,7 @@ export async function ipcGetModels(): Promise<string[]> {
 export interface ChatSession {
   session_id: string;
   title: string;
-  status: 'active' | 'archived' | 'closed';
+  status: "active" | "archived" | "closed";
   created_at: number;
   updated_at: number;
   work_dir?: string | null;
@@ -133,7 +153,7 @@ export interface ChatSession {
 export interface ChatMessage {
   message_id: string;
   session_id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   model?: string;
   tokens_used?: number;
@@ -142,53 +162,76 @@ export interface ChatMessage {
 }
 
 /** 获取会话列表（`archived`：默认仅未归档；true=仅已归档；'all'=全部） */
-export async function ipcListSessions(options?: { archived?: boolean | 'all' }): Promise<{ ok: boolean; data?: ChatSession[]; error?: string }> {
+export async function ipcListSessions(options?: {
+  archived?: boolean | "all";
+}): Promise<{ ok: boolean; data?: ChatSession[]; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.list(options);
 }
 
 /** 归档 / 取消归档任务（软状态：不删除消息，可随时恢复） */
-export async function ipcArchiveSession(params: { sessionId: string; archived: boolean }): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
+export async function ipcArchiveSession(params: {
+  sessionId: string;
+  archived: boolean;
+}): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.archive(params);
 }
 
 /** 创建会话 */
-export async function ipcCreateSession(params?: { title?: string; workDir?: string }): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
+export async function ipcCreateSession(params?: {
+  title?: string;
+  workDir?: string;
+}): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.create(params ?? {});
 }
 
 /** 更新会话（标题/工作目录） */
-export async function ipcUpdateSession(params: { sessionId: string; title?: string; workDir?: string | null }): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
+export async function ipcUpdateSession(params: {
+  sessionId: string;
+  title?: string;
+  workDir?: string | null;
+}): Promise<{ ok: boolean; data?: ChatSession; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.update(params);
 }
 
 /** 获取消息列表 */
-export async function ipcListMessages(sessionId: string, limit = 50): Promise<{ ok: boolean; data?: ChatMessage[]; error?: string }> {
+export async function ipcListMessages(
+  sessionId: string,
+  limit = 50,
+): Promise<{ ok: boolean; data?: ChatMessage[]; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.listMessages({ sessionId, limit });
 }
 
 /** 添加消息 */
-export async function ipcAddMessage(params: { sessionId: string; role: 'user' | 'assistant' | 'system'; content: string; model?: string; tokens_used?: number }): Promise<{ ok: boolean; data?: ChatMessage; error?: string }> {
+export async function ipcAddMessage(params: {
+  sessionId: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  model?: string;
+  tokens_used?: number;
+}): Promise<{ ok: boolean; data?: ChatMessage; error?: string }> {
   const api = getSessionsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.addMessage(params);
 }
 
 // ── 配置管理 ──────────────────────────────────────────────────────
 
 /** 获取配置文件 */
-export async function ipcGetConfig(name: string): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+export async function ipcGetConfig(
+  name: string,
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   const api = getConfigsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.get(name);
 }
 
@@ -220,7 +263,7 @@ export interface LongTermMemoryDto {
 
 export interface SkillEntry {
   id: string;
-  category: 'playbooks' | 'rubrics' | 'rules' | 'strategies';
+  category: "playbooks" | "rubrics" | "rules" | "strategies";
   name: string;
   path: string;
   size: number;
@@ -238,28 +281,51 @@ export interface ToolInfo {
 }
 
 /** 获取记忆条目 */
-export async function ipcGetMemoryEntries(query?: { namespace?: string; limit?: number; offset?: number }): Promise<{ ok: boolean; data?: { items: MemoryEntry[]; total: number } }> {
+export async function ipcGetMemoryEntries(query?: {
+  namespace?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ ok: boolean; data?: { items: MemoryEntry[]; total: number } }> {
   const api = getDataAPI();
   if (!api) return { ok: false };
   return api.getMemoryEntries(query);
 }
 
 /** 获取长时记忆 */
-export async function ipcGetLongTermMemory(query?: { category?: string; status?: string; limit?: number }): Promise<{ ok: boolean; data?: { items: LongTermMemoryDto[]; total: number } }> {
+export async function ipcGetLongTermMemory(query?: {
+  category?: string;
+  status?: string;
+  limit?: number;
+}): Promise<{
+  ok: boolean;
+  data?: { items: LongTermMemoryDto[]; total: number };
+}> {
   const api = getDataAPI();
   if (!api) return { ok: false };
   return api.getLongTermMemory(query);
 }
 
 /** 批量导入长时记忆 */
-export async function ipdBulkLongTermMemory(items: unknown[]): Promise<{ ok: boolean; data?: { imported: number; updated: number; total: number }; error?: string }> {
+export async function ipdBulkLongTermMemory(
+  items: unknown[],
+): Promise<{
+  ok: boolean;
+  data?: { imported: number; updated: number; total: number };
+  error?: string;
+}> {
   const api = getDataAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.bulkLongTermMemory({ items });
 }
 
 export interface DerivedStatsResult {
-  events: Array<{ kind: string; value: number; occurredAt: number; clientEventId: string; meta?: Record<string, unknown> }>;
+  events: Array<{
+    kind: string;
+    value: number;
+    occurredAt: number;
+    clientEventId: string;
+    meta?: Record<string, unknown>;
+  }>;
   counts: { chatTurn: number; tokenConsumed: number; toolCall: number };
   since: number;
   nextSince: number;
@@ -267,21 +333,30 @@ export interface DerivedStatsResult {
 }
 
 /** 获取统计事件 */
-export async function ipcGetStatsEvents(query?: { since?: number; limit?: number }): Promise<{ ok: boolean; data?: DerivedStatsResult }> {
+export async function ipcGetStatsEvents(query?: {
+  since?: number;
+  limit?: number;
+}): Promise<{ ok: boolean; data?: DerivedStatsResult }> {
   const api = getDataAPI();
   if (!api) return { ok: false };
   return api.getStatsEvents(query);
 }
 
 /** 获取技能列表 */
-export async function ipcGetSkills(): Promise<{ ok: boolean; data?: { items: SkillEntry[]; total: number } }> {
+export async function ipcGetSkills(): Promise<{
+  ok: boolean;
+  data?: { items: SkillEntry[]; total: number };
+}> {
   const api = getDataAPI();
   if (!api) return { ok: false };
   return api.getSkills();
 }
 
 /** 获取自定义工具列表 */
-export async function ipcGetCustomTools(): Promise<{ ok: boolean; data?: { items: ToolInfo[]; total: number } }> {
+export async function ipcGetCustomTools(): Promise<{
+  ok: boolean;
+  data?: { items: ToolInfo[]; total: number };
+}> {
   const api = getDataAPI();
   if (!api) return { ok: false };
   return api.getCustomTools();
@@ -290,9 +365,13 @@ export async function ipcGetCustomTools(): Promise<{ ok: boolean; data?: { items
 // ── 设备指纹 ─────────────────────────────────────────────────────────
 
 /** 获取设备唯一指纹 */
-export async function ipcGetDeviceFingerprint(): Promise<{ ok: boolean; data?: { fingerprint: string }; error?: string }> {
+export async function ipcGetDeviceFingerprint(): Promise<{
+  ok: boolean;
+  data?: { fingerprint: string };
+  error?: string;
+}> {
   const api = getDeviceAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.getFingerprint();
 }
 
@@ -311,16 +390,22 @@ export interface ProviderSecretData {
 }
 
 /** 加密保存供应商 API_KEY */
-export async function ipcSaveProviderSecrets(secrets: ProviderSecretData): Promise<{ ok: boolean; error?: string }> {
+export async function ipcSaveProviderSecrets(
+  secrets: ProviderSecretData,
+): Promise<{ ok: boolean; error?: string }> {
   const api = getSecretsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.saveProviders(secrets);
 }
 
 /** 解密读取供应商 API_KEY */
-export async function ipcLoadProviderSecrets(): Promise<{ ok: boolean; data?: ProviderSecretData | null; error?: string }> {
+export async function ipcLoadProviderSecrets(): Promise<{
+  ok: boolean;
+  data?: ProviderSecretData | null;
+  error?: string;
+}> {
   const api = getSecretsAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.loadProviders();
 }
 
@@ -332,39 +417,73 @@ function getA2ASyncAPI(): any {
 }
 
 export interface IpcSyncRow {
-  messageId: string; taskId: string; traceId: string; kind: string;
-  sourceAgentId: string; targetAgentId: string;
-  parentMessageId: string | null; correlationId: string | null;
-  visibility: string; contentHash: string; prevHash: string | null;
-  payload: unknown; summary: string | null; verdict: string;
-  priority: string; memoryRefs: { key: string; version: number }[]; createdAt: number;
+  messageId: string;
+  taskId: string;
+  traceId: string;
+  kind: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  parentMessageId: string | null;
+  correlationId: string | null;
+  visibility: string;
+  contentHash: string;
+  prevHash: string | null;
+  payload: unknown;
+  summary: string | null;
+  verdict: string;
+  priority: string;
+  memoryRefs: { key: string; version: number }[];
+  createdAt: number;
 }
 
 /** 待上行消息（本地 `synced_at IS NULL`） */
-export async function ipcA2AListUnsynced(limit = 200): Promise<{ ok: boolean; data?: IpcSyncRow[]; error?: string }> {
+export async function ipcA2AListUnsynced(
+  limit = 200,
+): Promise<{ ok: boolean; data?: IpcSyncRow[]; error?: string }> {
   const api = getA2ASyncAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return { ok: true, data: (await api.listUnsynced(limit)) as IpcSyncRow[] };
 }
 
 /** 标记已上行（幂等重试安全） */
-export async function ipcA2AMarkSynced(messageIds: string[]): Promise<{ ok: boolean; data?: { marked: number }; error?: string }> {
+export async function ipcA2AMarkSynced(
+  messageIds: string[],
+): Promise<{ ok: boolean; data?: { marked: number }; error?: string }> {
   const api = getA2ASyncAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
-  return { ok: true, data: (await api.markSynced(messageIds)) as { marked: number } };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
+  return {
+    ok: true,
+    data: (await api.markSynced(messageIds)) as { marked: number },
+  };
 }
 
 /** 应用拉回消息（**本机优先**：已有则跳过） */
-export async function ipcA2AApplyPulled(items: unknown[]): Promise<{ ok: boolean; data?: { applied: number; skipped: number }; error?: string }> {
+export async function ipcA2AApplyPulled(
+  items: unknown[],
+): Promise<{
+  ok: boolean;
+  data?: { applied: number; skipped: number };
+  error?: string;
+}> {
   const api = getA2ASyncAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
-  return { ok: true, data: (await api.applyPulled(items)) as { applied: number; skipped: number } };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
+  return {
+    ok: true,
+    data: (await api.applyPulled(items)) as {
+      applied: number;
+      skipped: number;
+    },
+  };
 }
 
 /** 未上行计数（诊断） */
-export async function ipcA2ASyncStats(): Promise<{ ok: boolean; data?: { unsynced: number }; error?: string }> {
+export async function ipcA2ASyncStats(): Promise<{
+  ok: boolean;
+  data?: { unsynced: number };
+  error?: string;
+}> {
   const api = getA2ASyncAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return { ok: true, data: (await api.stats()) as { unsynced: number } };
 }
 
@@ -376,7 +495,7 @@ function getOnboardingAPI(): any {
 
 /** 目录契约快照（程序根/数据根/工作空间/可写性/告警） */
 export interface AppPathsDto {
-  mode: 'development' | 'portable' | 'installed';
+  mode: "development" | "portable" | "installed";
   appRoot: string;
   dataRoot: string;
   workspaceRoot: string;
@@ -423,7 +542,8 @@ export interface ProbeResultDto {
   suggestedModel?: string;
   latencyMs?: number;
   error?: string;
-  errorKind?: 'auth' | 'http' | 'network' | 'timeout' | 'invalid_input' | 'unknown';
+  errorKind?:
+    "auth" | "http" | "network" | "timeout" | "invalid_input" | "unknown";
   hint?: string;
   /** `/models` 的 HTTP 状态（未请求/网络失败时为空） */
   listStatus?: number;
@@ -450,7 +570,12 @@ export interface OnboardingStateDto {
   completedAt?: number;
   version?: string;
   personalization?: Record<string, unknown>;
-  provider?: { name: string; displayName: string; baseUrl: string; defaultModel?: string };
+  provider?: {
+    name: string;
+    displayName: string;
+    baseUrl: string;
+    defaultModel?: string;
+  };
 }
 
 export interface OnboardingSnapshotDto {
@@ -470,29 +595,40 @@ export function hasOnboardingApi(): boolean {
   return !!getOnboardingAPI();
 }
 
-export async function ipcGetAppPaths(): Promise<{ ok: boolean; data?: AppPathsDto; error?: string }> {
+export async function ipcGetAppPaths(): Promise<{
+  ok: boolean;
+  data?: AppPathsDto;
+  error?: string;
+}> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.getPaths();
 }
 
-export async function ipcGetOnboarding(): Promise<{ ok: boolean; data?: OnboardingSnapshotDto; error?: string }> {
+export async function ipcGetOnboarding(): Promise<{
+  ok: boolean;
+  data?: OnboardingSnapshotDto;
+  error?: string;
+}> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.getState();
 }
 
 export async function ipcTestProvider(config: {
-  base_url: string; api_key: string; model?: string; chatProbe?: boolean;
+  base_url: string;
+  api_key: string;
+  model?: string;
+  chatProbe?: boolean;
 }): Promise<{ ok: boolean; data?: ProbeResultDto; error?: string }> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.testProvider(config);
 }
 
 // ── 逐模型可用性校验（模型导入重设计）──────────────────────────────
 
-export type ModelAvailabilityDto = 'available' | 'unavailable' | 'unknown';
+export type ModelAvailabilityDto = "available" | "unavailable" | "unknown";
 
 export interface ModelVerificationDto {
   id: string;
@@ -505,7 +641,12 @@ export interface ModelVerificationDto {
 
 export interface VerifyModelsResultDto {
   results: ModelVerificationDto[];
-  summary: { total: number; available: number; unavailable: number; unknown: number };
+  summary: {
+    total: number;
+    available: number;
+    unavailable: number;
+    unknown: number;
+  };
 }
 
 /**
@@ -515,53 +656,88 @@ export interface VerifyModelsResultDto {
  * **只校验不导入** —— 导入哪些模型由用户在列表里勾选后走 `ipcAddProvider`。
  */
 export async function ipcVerifyModels(config: {
-  base_url: string; api_key: string; models: string[]; concurrency?: number; timeoutMs?: number;
+  base_url: string;
+  api_key: string;
+  models: string[];
+  concurrency?: number;
+  timeoutMs?: number;
 }): Promise<{ ok: boolean; data?: VerifyModelsResultDto; error?: string }> {
   const api = getOnboardingAPI();
-  if (!api?.verifyModels) return { ok: false, error: 'Electron API 不可用' };
+  if (!api?.verifyModels) return { ok: false, error: "Electron API 不可用" };
   return api.verifyModels(config);
 }
-export async function ipcWriteUserConfig(patch: Record<string, unknown>): Promise<{
+export async function ipcWriteUserConfig(
+  patch: Record<string, unknown>,
+): Promise<{
   ok: boolean;
-  data?: { path: string; applied: string[]; rejected: string[]; invalid: Array<{ path: string; reason: string }> };
+  data?: {
+    path: string;
+    applied: string[];
+    rejected: string[];
+    invalid: Array<{ path: string; reason: string }>;
+  };
   error?: string;
 }> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.writeUserConfig(patch);
 }
 
-export async function ipcPatchOnboarding(patch: Record<string, unknown>): Promise<{ ok: boolean; data?: OnboardingStateDto; error?: string }> {
+export async function ipcPatchOnboarding(
+  patch: Record<string, unknown>,
+): Promise<{ ok: boolean; data?: OnboardingStateDto; error?: string }> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.patchState(patch);
 }
 
 export async function ipcCompleteOnboarding(payload: {
   personalization?: Record<string, unknown>;
-  provider?: { name: string; displayName: string; baseUrl: string; defaultModel?: string };
+  provider?: {
+    name: string;
+    displayName: string;
+    baseUrl: string;
+    defaultModel?: string;
+  };
   configPatch?: Record<string, unknown>;
-}): Promise<{ ok: boolean; data?: { state: OnboardingStateDto; config: { path: string; applied: string[]; rejected: string[] } }; error?: string }> {
+}): Promise<{
+  ok: boolean;
+  data?: {
+    state: OnboardingStateDto;
+    config: { path: string; applied: string[]; rejected: string[] };
+  };
+  error?: string;
+}> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.complete(payload);
 }
 
-export async function ipcSkipOnboarding(): Promise<{ ok: boolean; data?: OnboardingStateDto; error?: string }> {
+export async function ipcSkipOnboarding(): Promise<{
+  ok: boolean;
+  data?: OnboardingStateDto;
+  error?: string;
+}> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.skip();
 }
 
-export async function ipcResetOnboarding(): Promise<{ ok: boolean; data?: { reset: boolean }; error?: string }> {
+export async function ipcResetOnboarding(): Promise<{
+  ok: boolean;
+  data?: { reset: boolean };
+  error?: string;
+}> {
   const api = getOnboardingAPI();
-  if (!api) return { ok: false, error: 'Electron API 不可用' };
+  if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.reset();
 }
 
 /** 在资源管理器中打开目录（引导"我的数据在哪"用） */
-export async function ipcOpenPath(target: string): Promise<{ ok: boolean; error?: string }> {
+export async function ipcOpenPath(
+  target: string,
+): Promise<{ ok: boolean; error?: string }> {
   const api = getElectronAPI();
-  if (!api?.openPath) return { ok: false, error: 'Electron API 不可用' };
+  if (!api?.openPath) return { ok: false, error: "Electron API 不可用" };
   return api.openPath(target);
 }

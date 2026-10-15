@@ -7,5 +7,6 @@
  * 用于消除层间反向依赖。详见各契约模块头部说明与 ADR-0006。
  */
 
-export * from './middlewareTypes.js';
-export * from './rateLimitTypes.js';
+export * from "./middlewareTypes.js";
+export * from "./rateLimitTypes.js";
+export * from "./compactionTypes.js";

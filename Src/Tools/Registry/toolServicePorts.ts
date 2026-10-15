@@ -14,23 +14,33 @@
  *    对应工具如实返回 `NOT_ENABLED`，不假成功。
  */
 
-import type { Result } from '../../Infra/types.js';
+import type { Result } from "../../Infra/types.js";
 
 // ── 工具结果缓存端口（FE-064，Services/Cache/toolResultCache 注入）──────────
 
 export interface ToolResultCachePort {
-  get: (toolName: string, input: Record<string, unknown>) => Result<unknown> | null;
-  put: (toolName: string, input: Record<string, unknown>, result: unknown) => void;
+  get: (
+    toolName: string,
+    input: Record<string, unknown>,
+  ) => Result<unknown> | null;
+  put: (
+    toolName: string,
+    input: Record<string, unknown>,
+    result: unknown,
+  ) => void;
   clear: () => void;
 }
 
 // ── Hook 派发端口（FE-066，Services/Hook/hookRegistry.dispatchHook 注入）────
 
-export type DispatchHookPort = (event: string, data: Record<string, unknown>) => Promise<unknown>;
+export type DispatchHookPort = (
+  event: string,
+  data: Record<string, unknown>,
+) => Promise<unknown>;
 
 // ── todo.write 存储端口（Services/Planning/todoStore 注入）──────────────────
 
-export type TodoStatusPort = 'pending' | 'in_progress' | 'completed';
+export type TodoStatusPort = "pending" | "in_progress" | "completed";
 
 export interface TodoStorePort {
   /** 单次提交条目上限（Services 侧 MAX_TODOS_PER_AGENT） */
@@ -40,8 +50,18 @@ export interface TodoStorePort {
     agentId: string;
     agentRole?: string;
     todos: Array<{ content: string; status?: TodoStatusPort }>;
-  }) => Result<{ progress: { total: number; completed: number; pending: number; inProgress: number } }>;
-  listTodosForAgent: (sessionId: string, agentId: string) => Array<{ content: string; status: string }>;
+  }) => Result<{
+    progress: {
+      total: number;
+      completed: number;
+      pending: number;
+      inProgress: number;
+    };
+  }>;
+  listTodosForAgent: (
+    sessionId: string,
+    agentId: string,
+  ) => Array<{ content: string; status: string }>;
 }
 
 // ── vector.search 检索端口（FE-058，Services/Retrieval/retriever 注入）──────
@@ -54,15 +74,34 @@ export interface MemoryRetrieverFragmentPort {
 }
 
 export interface MemoryRetrieverPort {
-  retrieve: (query: { query: string; topK: number; minScore: number })
-    => Promise<Result<{ fragments: MemoryRetrieverFragmentPort[] }>>;
+  retrieve: (query: {
+    query: string;
+    topK: number;
+    minScore: number;
+  }) => Promise<Result<{ fragments: MemoryRetrieverFragmentPort[] }>>;
 }
 
 export type MemoryRetrieverFactoryPort = () => MemoryRetrieverPort;
 
+/**
+ * 记忆写入端口（裁定 (a)，2026-10-14）：Tools 层不得 import Services（分层红线），
+ * 故由组合根把 Services 的写实现接到此端口上，供内置工具 `memory.write` 调用。
+ * 参数用**原始类型**而非 Services 的联合类型，避免 Tools → Services 的类型依赖。
+ */
+export type MemoryWritePort = (params: {
+  title: string;
+  content: string;
+  /** 记忆分类（Services 侧收窄为 MemoryCategory） */
+  category: string;
+  sourceTraceIds: string[];
+  /** 断言级别；Services 侧会按 §8.4 拒绝非 observed 的写入 */
+  assertion?: string;
+}) => Result<{ memoryId: string }>;
+
 // ── agent.recruit 端口（FE-072，Services/Recruitment/recruiter 注入）────────
 
-export type RecruitableRolePort = 'worker' | 'reviewer' | 'partner' | 'assembly_node';
+export type RecruitableRolePort =
+  "worker" | "reviewer" | "partner" | "assembly_node";
 
 export interface RecruitedAgentPort {
   agentId: string;
@@ -94,9 +133,17 @@ export interface ReviewPort {
     payload: { summary: string; artifacts: string[]; submittedBy: string };
   }) => Result<{ reviewId?: string }>;
   ensureReviewerAgent: (traceId: string) => Result<{ agentId: string }>;
-  performReview: (input: { taskId: string; reviewerAgentId: string })
-    => Promise<Result<{ status: string; reviewerComment?: string; reviewId?: string }>>;
-  markSubtaskReviewed: (taskId: string, accepted: boolean, comment?: string) => void;
+  performReview: (input: {
+    taskId: string;
+    reviewerAgentId: string;
+  }) => Promise<
+    Result<{ status: string; reviewerComment?: string; reviewId?: string }>
+  >;
+  markSubtaskReviewed: (
+    taskId: string,
+    accepted: boolean,
+    comment?: string,
+  ) => void;
 }
 
 // ── 端口容器 ────────────────────────────────────────────────────────
@@ -106,6 +153,7 @@ export interface ToolServicePorts {
   dispatchHook?: DispatchHookPort;
   todoStore?: TodoStorePort;
   memoryRetrieverFactory?: MemoryRetrieverFactoryPort;
+  memoryWrite?: MemoryWritePort;
   recruitment?: RecruitmentPort;
   review?: ReviewPort;
 }

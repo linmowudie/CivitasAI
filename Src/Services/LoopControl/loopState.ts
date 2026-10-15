@@ -8,31 +8,66 @@
  * 持久化真源唯一为 SQLite（loops.goal_json / loops.state_json）。
  */
 
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
 
 import type {
-  LoopPhase, FailureCategory, VerifierLevel, DefectCategory,
-  RiskLevel, ApprovalKind, DecisionPolicy, ApprovalStatus,
+  LoopPhase,
+  FailureCategory,
+  VerifierLevel,
+  DefectCategory,
+  RiskLevel,
+  ApprovalKind,
+  DecisionPolicy,
+  ApprovalStatus,
   UserRole,
-} from './types.js';
+} from "./types.js";
 
 // ── VerifierSpec（Docs/Agent/11 §3.2）────────────────────────────────────
 
 export type VerifierSpec =
-  | { level: 'L1'; kind: 'test'; payload: { command: string; expectExit: 0 } }
-  | { level: 'L1'; kind: 'schema'; payload: { jsonSchema: object } }
-  | { level: 'L1'; kind: 'numeric'; payload: { metric: string; op: '<=' | '>=' | '=='; threshold: number } }
-  | { level: 'L1'; kind: 'http'; payload: { url: string; expectStatus: number } }
-  | { level: 'L1'; kind: 'file_exists'; payload: { pathGlob: string; minSize?: number } }
-  | { level: 'L2'; kind: 'rule'; payload: { expression: string } }
-  | { level: 'L2'; kind: 'golden'; payload: { referenceArtifactId: string; tolerance: number } }
-  | { level: 'L3'; kind: 'llm_judge'; payload: {
-      model: string; rubric: unknown[]; minScore: number; requireEvidence: true;
-    } }
-  | { level: 'L4'; kind: 'human_gate'; payload: {
-      reason: string; reviewerRoles: UserRole[]; timeoutSec: number;
-    } };
+  | { level: "L1"; kind: "test"; payload: { command: string; expectExit: 0 } }
+  | { level: "L1"; kind: "schema"; payload: { jsonSchema: object } }
+  | {
+      level: "L1";
+      kind: "numeric";
+      payload: { metric: string; op: "<=" | ">=" | "=="; threshold: number };
+    }
+  | {
+      level: "L1";
+      kind: "http";
+      payload: { url: string; expectStatus: number };
+    }
+  | {
+      level: "L1";
+      kind: "file_exists";
+      payload: { pathGlob: string; minSize?: number };
+    }
+  | { level: "L2"; kind: "rule"; payload: { expression: string } }
+  | {
+      level: "L2";
+      kind: "golden";
+      payload: { referenceArtifactId: string; tolerance: number };
+    }
+  | {
+      level: "L3";
+      kind: "llm_judge";
+      payload: {
+        model: string;
+        rubric: unknown[];
+        minScore: number;
+        requireEvidence: true;
+      };
+    }
+  | {
+      level: "L4";
+      kind: "human_gate";
+      payload: {
+        reason: string;
+        reviewerRoles: UserRole[];
+        timeoutSec: number;
+      };
+    };
 
 // ── VerifierResult（Docs/Agent/11 §3.2）──────────────────────────────────
 
@@ -86,7 +121,7 @@ export interface PendingApproval {
   payload: unknown;
   riskLevel: RiskLevel;
   timeoutSec: number;
-  defaultOnTimeout: 'reject' | 'abort_loop';
+  defaultOnTimeout: "reject" | "abort_loop";
   deciders: ApprovalDecider[];
   decisionPolicy: DecisionPolicy;
   /**
@@ -96,6 +131,18 @@ export interface PendingApproval {
    * L1 自身或治理请求 → 用户 + L0 两方。未设置时退回旧语义（全部审批人角色都需通过）。
    */
   requiredApprovals?: number;
+  /**
+   * 法定人数缺口（2026-10-08，修复 REV-264）：
+   * approve=true 已记账但**尚未达到法定人数**时由 `decideApproval` 写入，
+   * 落定（APPROVED/REJECTED/TIMEOUT）时清空。前端据此如实显示「还需几位独立审批人」，
+   * 而不是把「状态仍为 PENDING」当作"还差某个角色"去反复补齐同一身份。
+   */
+  quorumBlocked?: {
+    required: number;
+    matched: number;
+    remainingIdentities: number;
+    reason: string;
+  };
   status: ApprovalStatus;
   decidedBy?: string[];
   decidedAt?: number;
@@ -143,7 +190,11 @@ export interface LoopState {
   // ─── 可变区 ───
   phase: LoopPhase;
   iteration: number;
-  completedSteps: Array<{ stepId: string; artifact?: string; verifiedAt: number }>;
+  completedSteps: Array<{
+    stepId: string;
+    artifact?: string;
+    verifiedAt: number;
+  }>;
   failedAttempts: FailedAttempt[];
   actionFingerprints: FingerprintRecord[];
   latestVerification?: VerifierResult;
@@ -159,8 +210,8 @@ export interface LoopState {
 // ── 不可变区保护 ────────────────────────────────────────────────────
 
 /** 深拷贝不可变区 */
-export function cloneImmutableZone(state: LoopState): LoopState['goal'] {
-  return JSON.parse(JSON.stringify(state.goal)) as LoopState['goal'];
+export function cloneImmutableZone(state: LoopState): LoopState["goal"] {
+  return JSON.parse(JSON.stringify(state.goal)) as LoopState["goal"];
 }
 
 /**
@@ -169,10 +220,10 @@ export function cloneImmutableZone(state: LoopState): LoopState['goal'] {
  */
 export function setGoalImmutable(
   state: LoopState,
-  goal: LoopState['goal'],
+  goal: LoopState["goal"],
 ): Result<LoopState> {
-  if (state.goal.originalRequirement !== '') {
-    return err('LoopState.goal 已初始化，禁止二次修改（ADR-0005）');
+  if (state.goal.originalRequirement !== "") {
+    return err("LoopState.goal 已初始化，禁止二次修改（ADR-0005）");
   }
   return ok({ ...state, goal: JSON.parse(JSON.stringify(goal)) });
 }
@@ -190,7 +241,7 @@ export function verifyGoalIntegrity(
 }
 
 /** 计算 goal 的简单 hash（用于完整性校验） */
-export function hashGoal(goal: LoopState['goal']): string {
+export function hashGoal(goal: LoopState["goal"]): string {
   const canonical = JSON.stringify({
     originalRequirement: goal.originalRequirement,
     constraints: [...goal.immutableConstraints].sort(),
@@ -224,14 +275,14 @@ export function createInitialLoopState(input: CreateLoopStateInput): LoopState {
     parentAgentId: input.parentAgentId,
     goal: JSON.parse(JSON.stringify(input.goal)),
     createdAt: Date.now(),
-    phase: 'planning',
+    phase: "planning",
     iteration: 0,
     completedSteps: [],
     failedAttempts: [],
     actionFingerprints: [],
     artifactPaths: [],
     budgetUsed: { tokens: 0, usd: 0 },
-    lastCheckpointId: '',
+    lastCheckpointId: "",
     pendingApprovals: [],
   };
 }

@@ -8,8 +8,8 @@
  * - 校验跨段一致性（如 profitSharing 权重和 = 1）
  */
 
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
+import type { Result } from "../types.js";
+import { ok, err } from "../types.js";
 
 /** 校验错误汇总 */
 export interface ValidationError {
@@ -22,53 +22,110 @@ export interface ValidationError {
 /**
  * 校验 default.json 基础段
  */
-export function validateDefaultConfig(config: Record<string, unknown>): Result<ValidationError[]> {
+export function validateDefaultConfig(
+  config: Record<string, unknown>,
+): Result<ValidationError[]> {
   const errors: ValidationError[] = [];
 
   // system 段
-  const system = config['system'];
-  if (!system || typeof system !== 'object') {
-    errors.push({ path: 'system', message: 'system 段缺失' });
+  const system = config["system"];
+  if (!system || typeof system !== "object") {
+    errors.push({ path: "system", message: "system 段缺失" });
   } else {
     const s = system as Record<string, unknown>;
-    if (typeof s['name'] !== 'string') errors.push({ path: 'system.name', message: '必须为 string' });
-    if (typeof s['version'] !== 'string') errors.push({ path: 'system.version', message: '必须为 string' });
-    if (typeof s['logLevel'] !== 'string') errors.push({ path: 'system.logLevel', message: '必须为 string' });
-    if (typeof s['dataDir'] !== 'string') errors.push({ path: 'system.dataDir', message: '必须为 string' });
-    if (typeof s['logDir'] !== 'string') errors.push({ path: 'system.logDir', message: '必须为 string' });
-    if (typeof s['promptDir'] !== 'string') errors.push({ path: 'system.promptDir', message: '必须为 string' });
+    if (typeof s["name"] !== "string")
+      errors.push({ path: "system.name", message: "必须为 string" });
+    if (typeof s["version"] !== "string")
+      errors.push({ path: "system.version", message: "必须为 string" });
+    if (typeof s["logLevel"] !== "string")
+      errors.push({ path: "system.logLevel", message: "必须为 string" });
+    if (typeof s["dataDir"] !== "string")
+      errors.push({ path: "system.dataDir", message: "必须为 string" });
+    if (typeof s["logDir"] !== "string")
+      errors.push({ path: "system.logDir", message: "必须为 string" });
+    if (typeof s["promptDir"] !== "string")
+      errors.push({ path: "system.promptDir", message: "必须为 string" });
   }
 
   // server 段
-  const server = config['server'];
-  if (!server || typeof server !== 'object') {
-    errors.push({ path: 'server', message: 'server 段缺失' });
+  const server = config["server"];
+  if (!server || typeof server !== "object") {
+    errors.push({ path: "server", message: "server 段缺失" });
   } else {
     const sv = server as Record<string, unknown>;
-    if (typeof sv['host'] !== 'string') errors.push({ path: 'server.host', message: '必须为 string' });
-    if (typeof sv['httpPort'] !== 'number' || !Number.isInteger(sv['httpPort'])) {
-      errors.push({ path: 'server.httpPort', message: '必须为整数' });
+    if (typeof sv["host"] !== "string")
+      errors.push({ path: "server.host", message: "必须为 string" });
+    else if (
+      sv["host"].trim() === "" ||
+      /\s/.test(sv["host"]) ||
+      sv["host"].includes("/")
+    ) {
+      errors.push({
+        path: "server.host",
+        message: "必须是主机名或 IP 字面量（不能含空白或 /）",
+      });
     }
-    if (typeof sv['wsPort'] !== 'number' || !Number.isInteger(sv['wsPort'])) {
-      errors.push({ path: 'server.wsPort', message: '必须为整数' });
+    if (
+      sv["allowRemoteAccess"] !== undefined &&
+      typeof sv["allowRemoteAccess"] !== "boolean"
+    ) {
+      errors.push({
+        path: "server.allowRemoteAccess",
+        message: "必须为 boolean（非回环绑定的显式授权）",
+      });
+    }
+    if (sv["apiToken"] !== undefined && typeof sv["apiToken"] !== "string") {
+      errors.push({
+        path: "server.apiToken",
+        message: "必须为 string（本机控制面凭据；不设置则进程内随机生成）",
+      });
+    } else if (
+      typeof sv["apiToken"] === "string" &&
+      sv["apiToken"].trim() !== "" &&
+      sv["apiToken"].trim().length < 16
+    ) {
+      errors.push({
+        path: "server.apiToken",
+        message: "至少 16 字符（过短的凭据可被枚举，等于没有门）",
+      });
+    }
+    if (
+      typeof sv["httpPort"] !== "number" ||
+      !Number.isInteger(sv["httpPort"])
+    ) {
+      errors.push({ path: "server.httpPort", message: "必须为整数" });
+    }
+    if (typeof sv["wsPort"] !== "number" || !Number.isInteger(sv["wsPort"])) {
+      errors.push({ path: "server.wsPort", message: "必须为整数" });
     }
   }
 
   // database 段
-  const db = config['database'];
-  if (!db || typeof db !== 'object') {
-    errors.push({ path: 'database', message: 'database 段缺失' });
+  const db = config["database"];
+  if (!db || typeof db !== "object") {
+    errors.push({ path: "database", message: "database 段缺失" });
   } else {
     const d = db as Record<string, unknown>;
-    if (typeof d['mainPath'] !== 'string') errors.push({ path: 'database.mainPath', message: '必须为 string' });
-    if (typeof d['eventsPath'] !== 'string') errors.push({ path: 'database.eventsPath', message: '必须为 string' });
-    if (typeof d['memoryPath'] !== 'string') errors.push({ path: 'database.memoryPath', message: '必须为 string' });
-    if (typeof d['walMode'] !== 'boolean') errors.push({ path: 'database.walMode', message: '必须为 boolean' });
-    if (typeof d['busyTimeoutMs'] !== 'number') errors.push({ path: 'database.busyTimeoutMs', message: '必须为 number (ms)' });
+    if (typeof d["mainPath"] !== "string")
+      errors.push({ path: "database.mainPath", message: "必须为 string" });
+    if (typeof d["eventsPath"] !== "string")
+      errors.push({ path: "database.eventsPath", message: "必须为 string" });
+    if (typeof d["memoryPath"] !== "string")
+      errors.push({ path: "database.memoryPath", message: "必须为 string" });
+    if (typeof d["walMode"] !== "boolean")
+      errors.push({ path: "database.walMode", message: "必须为 boolean" });
+    if (typeof d["busyTimeoutMs"] !== "number")
+      errors.push({
+        path: "database.busyTimeoutMs",
+        message: "必须为 number (ms)",
+      });
   }
 
   if (errors.length > 0) {
-    return err(`配置校验失败: ${errors.map(e => `${e.path}: ${e.message}`).join('; ')}`, 'FATAL');
+    return err(
+      `配置校验失败: ${errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`,
+      "FATAL",
+    );
   }
   return ok(errors);
 }
@@ -76,44 +133,64 @@ export function validateDefaultConfig(config: Record<string, unknown>): Result<V
 /**
  * 校验 loopConfig.json 硬约束（Docs/Agent/14 §7.1）
  */
-export function validateLoopConfig(config: Record<string, unknown>): Result<ValidationError[]> {
+export function validateLoopConfig(
+  config: Record<string, unknown>,
+): Result<ValidationError[]> {
   const errors: ValidationError[] = [];
 
-  const loopDefaults = config['loopDefaults'] as Record<string, unknown> | undefined;
-  const hardLimits = config['hardLimits'] as Record<string, unknown> | undefined;
-  const stopRules = config['stopRules'] as Record<string, unknown> | undefined;
-  const roleOverrides = config['roleOverrides'] as Record<string, unknown> | undefined;
+  const loopDefaults = config["loopDefaults"] as
+    Record<string, unknown> | undefined;
+  const hardLimits = config["hardLimits"] as
+    Record<string, unknown> | undefined;
+  const stopRules = config["stopRules"] as Record<string, unknown> | undefined;
+  const roleOverrides = config["roleOverrides"] as
+    Record<string, unknown> | undefined;
 
   if (!loopDefaults || !hardLimits || !stopRules || !roleOverrides) {
-    return err('loopConfig.json 缺少必要段（loopDefaults/hardLimits/stopRules/roleOverrides）', 'FATAL');
+    return err(
+      "loopConfig.json 缺少必要段（loopDefaults/hardLimits/stopRules/roleOverrides）",
+      "FATAL",
+    );
   }
 
   // 校验 roleOverrides 键集必须与 agents.role 全集一一对应
   const expectedRoles = [
-    'prime_director', 'partner', 'worker', 'reviewer',
-    'assembly_node', 'arbitrator', 'auditor', 'regulator',
+    "prime_director",
+    "partner",
+    "worker",
+    "reviewer",
+    "assembly_node",
+    "arbitrator",
+    "auditor",
+    "regulator",
   ];
   for (const role of expectedRoles) {
     if (!(role in roleOverrides)) {
-      errors.push({ path: `roleOverrides.${role}`, message: '缺少角色覆盖配置' });
+      errors.push({
+        path: `roleOverrides.${role}`,
+        message: "缺少角色覆盖配置",
+      });
     }
   }
   // 检查未知角色键
   for (const key of Object.keys(roleOverrides)) {
     if (!expectedRoles.includes(key)) {
-      errors.push({ path: `roleOverrides.${key}`, message: `未知角色键，合法值: ${expectedRoles.join('/')}` });
+      errors.push({
+        path: `roleOverrides.${key}`,
+        message: `未知角色键，合法值: ${expectedRoles.join("/")}`,
+      });
     }
   }
 
   // 校验 roleOverrides 内只允许 max_iterations / token_budget / temperature
-  const allowedOverrideKeys = ['max_iterations', 'token_budget', 'temperature'];
+  const allowedOverrideKeys = ["max_iterations", "token_budget", "temperature"];
   for (const [role, overrides] of Object.entries(roleOverrides)) {
-    if (overrides && typeof overrides === 'object') {
+    if (overrides && typeof overrides === "object") {
       for (const key of Object.keys(overrides as Record<string, unknown>)) {
         if (!allowedOverrideKeys.includes(key)) {
           errors.push({
             path: `roleOverrides.${role}.${key}`,
-            message: `不允许覆盖此键，合法值: ${allowedOverrideKeys.join('/')}`,
+            message: `不允许覆盖此键，合法值: ${allowedOverrideKeys.join("/")}`,
           });
         }
       }
@@ -121,63 +198,143 @@ export function validateLoopConfig(config: Record<string, unknown>): Result<Vali
   }
 
   // 校验 budget 比例递增：warmRatio < softRatio < expandRequestRatio < hardRatio <= 1.0
-  const budget = stopRules['budget'] as Record<string, unknown> | undefined;
+  const budget = stopRules["budget"] as Record<string, unknown> | undefined;
   if (budget) {
-    const warm = budget['warmRatio'] as number;
-    const soft = budget['softRatio'] as number;
-    const expand = budget['expandRequestRatio'] as number;
-    const hard = budget['hardRatio'] as number;
+    const warm = budget["warmRatio"] as number;
+    const soft = budget["softRatio"] as number;
+    const expand = budget["expandRequestRatio"] as number;
+    const hard = budget["hardRatio"] as number;
     if (!(warm < soft && soft < expand && expand <= hard && hard <= 1.0)) {
       errors.push({
-        path: 'stopRules.budget',
+        path: "stopRules.budget",
         message: `比例必须递增: warm(${warm}) < soft(${soft}) < expand(${expand}) <= hard(${hard}) <= 1.0`,
       });
     }
   }
 
   // 校验 partitionCeilingRatio 四项和 <= 1.0
-  const context = config['context'] as Record<string, unknown> | undefined;
+  const context = config["context"] as Record<string, unknown> | undefined;
   if (context) {
-    const ceiling = context['partitionCeilingRatio'] as Record<string, number> | undefined;
+    const ceiling = context["partitionCeilingRatio"] as
+      Record<string, number> | undefined;
     if (ceiling) {
-      const sum = (ceiling['static'] ?? 0) + (ceiling['lowFreq'] ?? 0) +
-                  (ceiling['midFreq'] ?? 0) + (ceiling['highFreq'] ?? 0);
+      const sum =
+        (ceiling["static"] ?? 0) +
+        (ceiling["lowFreq"] ?? 0) +
+        (ceiling["midFreq"] ?? 0) +
+        (ceiling["highFreq"] ?? 0);
       if (sum > 1.0 + 1e-9) {
         errors.push({
-          path: 'context.partitionCeilingRatio',
+          path: "context.partitionCeilingRatio",
           message: `四项之和 ${sum} > 1.0`,
         });
+      }
+    }
+
+    // 校验管理策略机（《一些思考3》§1-§4）：水位线单调 + 难度档比例区间 + 相关度权重和为 1
+    const compaction = context["compaction"] as
+      Record<string, unknown> | undefined;
+    if (compaction) {
+      const wm = compaction["watermarks"] as Record<string, number> | undefined;
+      if (wm) {
+        const { light = 0, main = 0, high = 0, overflow = 0 } = wm;
+        const ordered =
+          light < main && main <= high && high <= overflow && overflow <= 1.0;
+        if (!ordered || light <= 0) {
+          errors.push({
+            path: "context.compaction.watermarks",
+            message: `水位线必须满足 0 < light(${light}) < main(${main}) <= high(${high}) <= overflow(${overflow}) <= 1.0`,
+          });
+        }
+      }
+
+      const profiles = compaction["profiles"] as
+        Record<string, Record<string, number>> | undefined;
+      if (profiles) {
+        for (const key of ["simple", "medium", "complex"]) {
+          const profile = profiles[key];
+          if (!profile) {
+            errors.push({
+              path: `context.compaction.profiles.${key}`,
+              message: "缺少难度档配置",
+            });
+            continue;
+          }
+          const trigger = profile["triggerRatio"] ?? 0;
+          const tail = profile["tailProtect"] ?? 0;
+          if (!(trigger > 0 && trigger <= 1.0)) {
+            errors.push({
+              path: `context.compaction.profiles.${key}.triggerRatio`,
+              message: `触发水位须在 (0, 1]，当前 ${trigger}`,
+            });
+          }
+          if (!(tail >= 0 && tail < 1.0)) {
+            errors.push({
+              path: `context.compaction.profiles.${key}.tailProtect`,
+              message: `尾部保护比例须在 [0, 1)，当前 ${tail}`,
+            });
+          }
+        }
+      }
+    }
+
+    const relevance = context["relevance"] as
+      Record<string, unknown> | undefined;
+    const weights = relevance?.["weights"] as
+      Record<string, Record<string, number>> | undefined;
+    if (weights) {
+      for (const [profileName, profileWeights] of Object.entries(weights)) {
+        // 注意：`??` 优先级低于 `+`，每项都必须单独加括号，否则会退化成
+        // `semantic ?? (0 + ...)` ——只取第一项，权重和恒判不通过。
+        const sum =
+          (profileWeights["semantic"] ?? 0) +
+          (profileWeights["structural"] ?? 0) +
+          (profileWeights["temporal"] ?? 0) +
+          (profileWeights["citation"] ?? 0) +
+          (profileWeights["subtask"] ?? 0);
+        if (Math.abs(sum - 1.0) > 1e-6) {
+          errors.push({
+            path: `context.relevance.weights.${profileName}`,
+            message: `五维权重和须为 1.0，当前 ${sum}`,
+          });
+        }
       }
     }
   }
 
   // 校验 profitSharing 权重和 = 1
-  const economy = config['economy'] as Record<string, unknown> | undefined;
+  const economy = config["economy"] as Record<string, unknown> | undefined;
   if (economy) {
-    const ps = (economy['profitSharing'] as Record<string, number>) ?? {};
-    const weightSum = (ps['qualityWeight'] ?? 0) + (ps['quantityWeight'] ?? 0) + (ps['efficiencyWeight'] ?? 0);
+    const ps = (economy["profitSharing"] as Record<string, number>) ?? {};
+    const weightSum =
+      (ps["qualityWeight"] ?? 0) +
+      (ps["quantityWeight"] ?? 0) +
+      (ps["efficiencyWeight"] ?? 0);
     if (Math.abs(weightSum - 1.0) > 1e-9) {
       errors.push({
-        path: 'economy.profitSharing',
+        path: "economy.profitSharing",
         message: `权重和 ${weightSum} != 1.0`,
       });
     }
   }
 
   // 校验 arbitrationModels 长度 >= 3
-  const routing = config['routing'] as Record<string, unknown> | undefined;
+  const routing = config["routing"] as Record<string, unknown> | undefined;
   if (routing) {
-    const models = routing['arbitrationModels'];
+    const models = routing["arbitrationModels"];
     if (!Array.isArray(models) || models.length < 3) {
       errors.push({
-        path: 'routing.arbitrationModels',
-        message: '仲裁模型列表长度必须 >= 3',
+        path: "routing.arbitrationModels",
+        message: "仲裁模型列表长度必须 >= 3",
       });
     }
   }
 
   if (errors.length > 0) {
-    return err(`Loop 配置校验失败: ${errors.map(e => `${e.path}: ${e.message}`).join('; ')}`, 'FATAL');
+    return err(
+      `Loop 配置校验失败: ${errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`,
+      "FATAL",
+    );
   }
   return ok(errors);
 }
@@ -185,13 +342,15 @@ export function validateLoopConfig(config: Record<string, unknown>): Result<Vali
 /**
  * 运行全部配置校验
  */
-export function validateAllConfigs(configs: Record<string, Record<string, unknown>>): Result<void> {
+export function validateAllConfigs(
+  configs: Record<string, Record<string, unknown>>,
+): Result<void> {
   // 校验 default.json
-  const defaultResult = validateDefaultConfig(configs['default'] ?? {});
+  const defaultResult = validateDefaultConfig(configs["default"] ?? {});
   if (!defaultResult.ok) return defaultResult as unknown as Result<void>;
 
   // 校验 loopConfig.json
-  const loopResult = validateLoopConfig(configs['loopConfig'] ?? {});
+  const loopResult = validateLoopConfig(configs["loopConfig"] ?? {});
   if (!loopResult.ok) return loopResult as unknown as Result<void>;
 
   return ok(undefined);

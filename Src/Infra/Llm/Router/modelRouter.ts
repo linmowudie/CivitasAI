@@ -8,10 +8,10 @@
  * - 支持 fallback 顺序
  */
 
-import type { Result } from '../../types.js';
-import { ok, err } from '../../types.js';
-import { LlmProvider } from '../Provider/providerBase.js';
-import type { ModelSpec } from '../Provider/providerBase.js';
+import type { Result } from "../../types.js";
+import { ok, err } from "../../types.js";
+import { LlmProvider } from "../Provider/providerBase.js";
+import type { ModelSpec } from "../Provider/providerBase.js";
 
 // ===== 类型定义 =====
 
@@ -23,7 +23,19 @@ export interface RoutingConfig {
   readonly verifierModel: string;
   readonly arbitrationModels: string[];
   readonly fallbackOrder: string[];
+  /**
+   * 非流式**交互**调用（Loop 内的模型调用）的墙钟上限。
+   * 流式链路不读它（走 firstByte/interChunk）。
+   */
   readonly timeoutMs: number;
+  /**
+   * 内部一次性长成果调用的墙钟上限（L3 Judge / 上下文压缩 / 摘要，REV-326）。
+   *
+   * 与 `timeoutMs` 分档的理由：这些调用一次要产出整段评审意见或整篇摘要，
+   * 实测确实会跑过 60s；而 60s 掐断后 Judge 等于"判不了"、压缩等于"静默降级"。
+   * 缺省 180_000（见 `Core/Model/modelCaller.ts` 的 `INTERNAL_TIMEOUT_MS`）。
+   */
+  readonly internalTimeoutMs?: number;
   readonly firstByteTimeoutMs: number;
   readonly interChunkTimeoutMs: number;
 }
@@ -34,7 +46,10 @@ export type QualifiedModelName = string;
 // ===== 内部状态 =====
 
 const providers = new Map<string, LlmProvider>();
-const modelRegistry = new Map<QualifiedModelName, { provider: LlmProvider; spec: ModelSpec }>();
+const modelRegistry = new Map<
+  QualifiedModelName,
+  { provider: LlmProvider; spec: ModelSpec }
+>();
 let routingConfig: RoutingConfig | null = null;
 
 // ===== 公开 API =====
@@ -56,7 +71,7 @@ export function registerProvider(provider: LlmProvider): Result<void> {
     return ok(undefined);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`注册 Provider 失败: ${message}`, 'FATAL');
+    return err(`注册 Provider 失败: ${message}`, "FATAL");
   }
 }
 
@@ -68,7 +83,7 @@ export function registerProvider(provider: LlmProvider): Result<void> {
  * 唯一名（如 `openai-compatible-2`），即可多实例共存。
  */
 export function uniqueProviderName(base: string): string {
-  const trimmed = base.trim() || 'provider';
+  const trimmed = base.trim() || "provider";
   if (!providers.has(trimmed)) return trimmed;
   for (let n = 2; ; n++) {
     const candidate = `${trimmed}-${n}`;
@@ -93,10 +108,12 @@ export function getRoutingConfig(): RoutingConfig | null {
 /**
  * 解析模型全限定名到 Provider + Spec
  */
-export function resolveModel(qualifiedName: QualifiedModelName): Result<{ provider: LlmProvider; spec: ModelSpec }> {
+export function resolveModel(
+  qualifiedName: QualifiedModelName,
+): Result<{ provider: LlmProvider; spec: ModelSpec }> {
   const entry = modelRegistry.get(qualifiedName);
   if (!entry) {
-    return err(`模型 ${qualifiedName} 未注册`, 'ERROR');
+    return err(`模型 ${qualifiedName} 未注册`, "ERROR");
   }
   return ok(entry);
 }
@@ -131,7 +148,7 @@ export function getRegisteredModels(): QualifiedModelName[] {
 export function getFallbackProviders(): LlmProvider[] {
   if (!routingConfig) return getProviders();
   return routingConfig.fallbackOrder
-    .map(name => providers.get(name))
+    .map((name) => providers.get(name))
     .filter((p): p is LlmProvider => p !== undefined);
 }
 

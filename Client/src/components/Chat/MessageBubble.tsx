@@ -15,6 +15,7 @@ import { MessageShell } from '@/ai-components/core/MessageShell';
 import { CoTFolder } from '@/ai-components/core/CoTFolder';
 import { StreamBuffer } from '@/ai-components/core/StreamBuffer';
 import { ToolGroup } from '@/ai-components/harness/ToolGroup';
+import MessageActions from './MessageActions';
 import { Wrench, RefreshCw, Type } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ChatMessage, MessageSegment } from '@/stores/chatStore';
@@ -39,10 +40,6 @@ function inferKind(msg: ChatMessage): { label: string; icon: ReactNode } | null 
 
 interface MessageBubbleProps {
   msg: ChatMessage;
-  onCopy?: () => void;
-  onRegenerate?: () => void;
-  onThumbUp?: () => void;
-  onThumbDown?: () => void;
 }
 
 export default function MessageBubble({ msg }: MessageBubbleProps) {
@@ -89,6 +86,7 @@ export default function MessageBubble({ msg }: MessageBubbleProps) {
       error={msg.error}
       kindLabel={kind?.label}
       kindIcon={kind?.icon}
+      footer={!isUser && !isSystem && <MessageActions msg={msg} />}
     >
       {/* 系统消息：内容由 MessageShell 直接渲染 */}
       {isSystem && msg.content}

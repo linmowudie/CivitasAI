@@ -8,6 +8,7 @@ import LoginPage from '@/views/Auth/LoginPage';
 import OnboardingWizard from '@/views/Onboarding/OnboardingWizard';
 import { useAccountStore } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useConfigStore } from '@/stores/configStore';
 
 /**
  * 应用根：初始化 → 首次运行引导 → 主界面。
@@ -33,6 +34,10 @@ function AppRoutes() {
   const checkOnboarding = useOnboardingStore((s) => s.check);
 
   useEffect(() => {
+    // ui.* 的消费方（大屏轮询、审批轮询、流式合并、事件缓冲）在主界面挂载时就要拿到配置值，
+    // 因此这里就启动一次读取；hydrate 内部已处理后端不可达的降级。
+    void useConfigStore.getState().hydrate();
+
     // init() 内部已吞掉服务端不可用的错误；这里再兜一层，避免它抛出去导致永远停在"正在初始化"
     init()
       .catch((e: unknown) => {

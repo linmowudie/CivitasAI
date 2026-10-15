@@ -1,0 +1,28 @@
+{
+  "id": "scn-tool-loop",
+  "title": "极限环：反复用同样参数调用同一工具",
+  "tags": ["convergence", "tool-use", "diagnosis"],
+  "matrixCells": ["AG-ENV-TOOLLOOP"],
+  "task": {
+    "description": "统计仓库里的待办项数量",
+    "goal": "统计待办项数量并汇报"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 6, "tokenBudget": 100000, "timeoutMs": 60000, "stream": false },
+  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "list-todos" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "list-todos" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "list-todos" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "list-todos" } }] },
+      { "kind": "text", "content": "共有 0 个待办项。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 3,
+    "forbidDiagnoses": ["tool_loop"]
+  }
+}

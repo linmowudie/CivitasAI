@@ -5,7 +5,7 @@
  * context_window 为必填字段，缺失则拒注。
  */
 
-import type { Result } from '../../types.js';
+import type { Result } from "../../types.js";
 
 // ===== 类型定义 =====
 
@@ -36,12 +36,27 @@ export interface ProviderConfig {
   readonly models: ModelSpec[];
 }
 
+/** 模型发起的一次工具调用（OpenAI 兼容形；请求与响应两侧同构） */
+export interface ToolCallSpec {
+  readonly id: string;
+  readonly type: string;
+  readonly function: {
+    readonly name: string;
+    readonly arguments: string;
+  };
+}
+
 /** Chat 消息 */
 export interface ChatMessage {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
+  readonly role: "system" | "user" | "assistant" | "tool";
   readonly content: string;
   readonly name?: string;
   readonly tool_call_id?: string;
+  /**
+   * 助手消息发起的工具调用。`role:'tool'` 的结果必须紧跟一条带 `tool_calls` 的助手消息，
+   * 否则供应商直接判非法请求（REV-341：多轮工具循环的第二轮起整批请求被 400 拒掉）。
+   */
+  readonly tool_calls?: ToolCallSpec[];
 }
 
 /** 调用选项 */
@@ -67,14 +82,7 @@ export interface CallResult {
   };
   readonly model: string;
   /** 模型返回的工具调用（OpenAI 兼容格式） */
-  readonly tool_calls?: Array<{
-    readonly id: string;
-    readonly type: string;
-    readonly function: {
-      readonly name: string;
-      readonly arguments: string;
-    };
-  }>;
+  readonly tool_calls?: ToolCallSpec[];
 }
 
 /** 流式 chunk */
@@ -82,7 +90,7 @@ export interface StreamChunk {
   readonly delta: string;
   readonly reasoning_delta?: string;
   readonly finish_reason?: string;
-  readonly usage?: CallResult['usage'];
+  readonly usage?: CallResult["usage"];
   /**
    * 工具调用**增量**（2026-10-03 新增，修复"工具块只在完全生成后才出现"）。
    *
@@ -105,15 +113,15 @@ export interface StreamChunk {
 
 /** 错误分类（Docs/Agent/02 §10.2） */
 export type ErrorCategory =
-  | 'auth'           // 401/403 → FATAL，不重试
-  | 'rate_limited'   // 429 → 退避 5s 重试 1 次
-  | 'server_error'   // 5xx → 重试 2 次
-  | 'unavailable'    // 503 → 直接降级
-  | 'network'        // 连接错误 → 重试 2 次
-  | 'format_error'   // Schema 不匹配 → 重试 1 次
-  | 'content_blocked' // 内容安全 → 不重试
-  | 'timeout'        // 超时 → 归为网络错误
-  | 'unknown';
+  | "auth" // 401/403 → FATAL，不重试
+  | "rate_limited" // 429 → 退避 5s 重试 1 次
+  | "server_error" // 5xx → 重试 2 次
+  | "unavailable" // 503 → 直接降级
+  | "network" // 连接错误 → 重试 2 次
+  | "format_error" // Schema 不匹配 → 重试 1 次
+  | "content_blocked" // 内容安全 → 不重试
+  | "timeout" // 超时 → 归为网络错误
+  | "unknown";
 
 /** Provider 调用错误 */
 export class ProviderError extends Error {
@@ -123,10 +131,10 @@ export class ProviderError extends Error {
 
   constructor(category: ErrorCategory, message: string, statusCode?: number) {
     super(message);
-    this.name = 'ProviderError';
+    this.name = "ProviderError";
     this.category = category;
     this.statusCode = statusCode;
-    this.retryable = category !== 'auth' && category !== 'content_blocked';
+    this.retryable = category !== "auth" && category !== "content_blocked";
   }
 }
 
@@ -165,12 +173,12 @@ export abstract class LlmProvider {
 
   /** 检查是否支持指定模型 */
   supportsModel(modelId: string): boolean {
-    return this.config.models.some(m => m.id === modelId);
+    return this.config.models.some((m) => m.id === modelId);
   }
 
   /** 获取模型规格 */
   getModelSpec(modelId: string): ModelSpec | undefined {
-    return this.config.models.find(m => m.id === modelId);
+    return this.config.models.find((m) => m.id === modelId);
   }
 
   /**
@@ -203,19 +211,19 @@ export abstract class LlmProvider {
   /** 解析 API Key 引用（env:XXX 或 inline:XXX 格式） */
   protected resolveApiKey(): string {
     const ref = this.config.api_key_ref;
-    if (ref.startsWith('env:')) {
+    if (ref.startsWith("env:")) {
       const envVar = ref.slice(4);
       const value = process.env[envVar];
       if (!value) {
-        throw new ProviderError('auth', `环境变量 ${envVar} 未设置`);
+        throw new ProviderError("auth", `环境变量 ${envVar} 未设置`);
       }
       return value;
     }
-    if (ref.startsWith('inline:')) {
+    if (ref.startsWith("inline:")) {
       // 运行时直接传入的 API Key（不持久化，应用重启后失效）
       return ref.slice(7);
     }
-    throw new ProviderError('auth', `不支持的 api_key_ref 格式: ${ref}`);
+    throw new ProviderError("auth", `不支持的 api_key_ref 格式: ${ref}`);
   }
 
   /**
@@ -225,7 +233,7 @@ export abstract class LlmProvider {
    * 得到 "model does not support the token plan subscription" 这类误导性 404。
    */
   protected resolveRequestModel(requested: string): string {
-    const slash = requested.indexOf('/');
+    const slash = requested.indexOf("/");
     return slash >= 0 ? requested.slice(slash + 1) : requested;
   }
 
@@ -234,16 +242,36 @@ export abstract class LlmProvider {
     switch (statusCode) {
       case 401:
       case 403:
-        return new ProviderError('auth', `认证失败 (${statusCode}): ${body}`, statusCode);
+        return new ProviderError(
+          "auth",
+          `认证失败 (${statusCode}): ${body}`,
+          statusCode,
+        );
       case 429:
-        return new ProviderError('rate_limited', `速率限制 (429): ${body}`, statusCode);
+        return new ProviderError(
+          "rate_limited",
+          `速率限制 (429): ${body}`,
+          statusCode,
+        );
       case 503:
-        return new ProviderError('unavailable', `服务不可用 (503): ${body}`, statusCode);
+        return new ProviderError(
+          "unavailable",
+          `服务不可用 (503): ${body}`,
+          statusCode,
+        );
       default:
         if (statusCode >= 500) {
-          return new ProviderError('server_error', `服务器错误 (${statusCode}): ${body}`, statusCode);
+          return new ProviderError(
+            "server_error",
+            `服务器错误 (${statusCode}): ${body}`,
+            statusCode,
+          );
         }
-        return new ProviderError('unknown', `未知错误 (${statusCode}): ${body}`, statusCode);
+        return new ProviderError(
+          "unknown",
+          `未知错误 (${statusCode}): ${body}`,
+          statusCode,
+        );
     }
   }
 }

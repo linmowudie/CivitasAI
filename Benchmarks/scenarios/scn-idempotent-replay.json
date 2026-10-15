@@ -1,0 +1,29 @@
+{
+  "id": "scn-idempotent-replay",
+  "title": "L5 幂等重放：同参重复调用不得产生第二次副作用",
+  "tags": ["recovery", "durability"],
+  "matrixCells": ["TOOL-ENV-IDEMP"],
+  "task": {
+    "description": "把同一条结论写入存储；模型可能因未见回执而重复提交同一次写入",
+    "goal": "写入结论并汇报"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 4, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
+  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "write-conclusion" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "write-conclusion" } }] },
+      { "kind": "text", "content": "结论已写入。任务完成。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReason": "success",
+    "maxIterations": 4,
+    "mustCallTools": ["bench.echo"],
+    "minToolResults": 2,
+    "idempotentReplay": { "tool": "bench.echo", "maxExecutions": 1 },
+    "forbidDiagnoses": ["false_success"]
+  }
+}

@@ -4,6 +4,162 @@
 
 ---
 
+## [校准 · Server Java 重写文档收口] - 2026-10-14
+
+`Server/` 由 TS/Fastify 重写为 Java（Spring Boot 3.3.5 + Maven）后，对文档集做全量口径校准——以已通过验收的 Java 代码为准，回写设计文档、缺陷复核、计划偏差与使用/运维文档。
+
+### 变更
+
+- **`Server/01-服务端/服务端设计文档.md`**：全面 Java 对位——§1.2/§4.5/§10.5 校验与符号改 Java（`AuthBodies`、`StatsService.resolveRange()`、`VerificationCodesRepository` 等）；§3.1 ER 图补迁移 006 两表（`a2a_messages`/`a2a_agent_cards`，全图口径 **12 张业务表**）；§10.4 计数改为 **15 个测试类 / 138 项**（单元 42 + 集成 96）；附录 A–E 全改 Java（附录 C 路由 **37→40** 条并补 A2A 三条，附录 E 新增 TS→Java 全量路径对位表），各节附「2026-10-14 校准」说明。
+- **`Server/01-服务端/服务端缺陷清单.md`**：新增「Java 重写复核（2026-10-14）」——SV-001~SV-015 逐条 Java 符号复核表（15 行）+ 重写引入风险 5 条；**SV-015 写限流由死代码变为真实生效**（修复型行为偏差，`PlatformBasicsTest` 新用例取证）；计数口径 117 项更正为 **TS 126 / Java 138**（并登记 TS 版漏记 `a2a.spec.ts` 9 项的历史欠账）。
+- **`Server/01-服务端/Server-Java重写计划-qodercn-20261013T204210.md`**：补 §13.7「测试类级勾稽表（TS 126 项 → Java 138 项）」，实施期取舍与偏差（含 TokenSweeper 初版漏接线、写限流单侧生效等）回写 §13.3。
+- **`agent.md`**：§1 目录表补 `Server/` 行（独立 Java 服务：Maven 工程、端口 8787；根 `npm run server:*` 为 Maven 包装脚本）。
+- **`Server/02-使用指南` 与 `03-部署运维`**：7 份文档 Server 线命令/符号改 Java（`quickStart.md`、`Deployment/{docker,local,windows}.md`、`Runbooks/{commonIssues,healthCheck,rollback}.md`），统一加「2026-10-14 校准（Java 重写）」页脚；顺带更正 `Server/` 入库状态口径（自 763b113 起已被跟踪，原「未跟踪目录」结论不再成立）。
+
+### 说明
+
+- 对外契约零变更：HTTP 信封 / 14 错误码 / 限流头 / 安全响应头 / JWT / 迁移 SQL 字节 / 环境变量名均与 TS 版一致；`后端接口契约.md` 复查无漂移（历史路径笔误 `03-AI组件架构` → 实为 `03-AI组件族架构`）。
+- 行为偏差仅一处且为修复型：SV-015 写限流（TS 因 Fastify 钩子顺序实为死代码，Java 修正后按用户真实生效）。
+- 重写执行本身（代码变更）见根 [`CHANGELOG.md`](../CHANGELOG.md)。
+
+---
+
+## [新增 · Server Java 重写计划] - 2026-10-13
+
+新增 [`Docs/Server/01-服务端/Server-Java重写计划-qodercn-20261013T204210.md`](Server/01-服务端/Server-Java重写计划-qodercn-20261013T204210.md)：
+`Server/`（账号与数据服务，Fastify 5 + PG）**重写为 Java（Spring Boot 3 + Maven）**的执行前计划。
+
+### 变更
+
+- **范围盘点（按代码实态，非文档口径）**：40 条路由（设计文档附录 C 37 条 + A2A 三条增量）、12 张业务表（迁移 001–006，含设计文档未收录的 `a2a_messages`/`a2a_agent_cards`）、14 错误码、40+ 环境变量、117 项测试（unit 32 + integration 85）——**设计文档对迁移 006 与 A2A 域的记载欠账一并登记**。
+- **硬性约束 15 条（C1–C15）**：HTTP 信封/错误码/限流头/安全响应头/JWT/刷新令牌/session 回查（SV-002）/密码 Argon2id PHC 互认/验证码加固/迁移 SQL 字节不动/JSON 时间毫秒+Z/备份包/A2A 脱敏/配置 fail-closed，及**用户命名约束**（类大驼峰、方法/字段小驼峰；对外契约不变）。
+- **技术映射**：TS 依赖逐项对位 Java（JdbcTemplate+Hikari 代 pg、jjwt 代 jose、BouncyCastle/Spring Security Argon2 代 @node-rs/argon2、`@Scheduled` 代 setInterval、Filter 链代 Fastify 钩子链、JUnit 5+MockMvc 代 vitest+inject）；含 TS 文件→Java 类全量映射表与 40 路由移植台账。
+- **高风险项预案**：Argon2 PHC 跨语言互认冒烟门禁、迁移 checksum 字节一致策略、JSON 序列化细节契约快照、双跑差分验证（同一 PG 库新旧双服务对比）。
+- **里程碑 M1–M6**：骨架配置 → 鉴权域 → 数据域 → 任务/备份/A2A → 限流平台 → 收口（含文档/脚本更新清单），每步含独立运行级验收；另列 6 项待人工裁定（Q1–Q6，含分支名、旧版差分脚手架接受度、`main` 未提交修改处置）。
+
+### 说明
+
+- 本条目仅登记**文档新增**；重写执行本身（代码变更）开始后另按根 `CHANGELOG.md` 登记。
+- 计划落位与用户已确认口径一致：**直接替换 `Server/` 目录**（新分支执行，旧 TS 版仅存于 git 历史）。
+
+---
+
+## [落实 · 控制论审查收尾（P2-14 间接注入防线 + StoppedReason 单一事实源）] - 2026-10-13
+
+承接 2026-10-12《Core 层控制论审查 13 条改进》，清掉该轮**如实登记的两个未完成项**。
+
+### 变更
+
+- **`P2-14` 空敏感器（安全侧）**：`Src/Services/Supervision/preSupervision.ts` — 修复前前置监管每轮检测的 `userInput` 与 Hook 入参同源、**永远是同一条原始输入**，从不检查模型新产出与工具返回值，"工具返回值里的间接注入"这条真实攻击面完全无覆盖；`INJECTION_PATTERNS` 也只有 5 条英文关键词。现在：
+  - `PreSupervisionInput` 新增 `untrustedSegments`（来源标注 + 文本），`runIteration` ② 步经新增的 `collectUntrustedSegments(ctx.chatMessages)` 传入「**最后一条 `user` 消息之后**新出现的工具结果 / 模型产出」（最多 20 段、每段截断 20k 字符，避免把整套工具输出做多轮正则回溯）；
+  - 模式表从 5 条扩为 **17 条分类模式**（`InjectionPatternDef{ id, re }`）：指令覆盖（中英）、角色劫持（中英）、系统提示词窃取（中英）、越狱/绕过安全、以及**对话模板注入标记**（`<|im_start|>`、`[INST]`/`<<SYS>>`、行首 `system: you are (now|a|an|the)`）；模板标记放在表首——最具体的证据优先用于诊断定位；
+  - 命中结果回传 `injectionSource`（`user-input` / `tool-result` / `model-output`）与 `injectionPatternId`，`rejectReason` 带来源（如 `PROMPT_INJECTION_DETECTED: tool-result`）；**诊断字段不记录被检原文**，避免把注入载荷写进日志；
+  - 命中计 `injection_detected` 控制计数器（`Src/Infra/Logging/controlTriggers.ts` 新增该键）——该计数恒 0 即意味着注入防线没接上。
+- **第 4 条建议后半句：以 `StoppedReason` 为单一事实源的收敛**：`Src/Core/Loop/runIteration.ts` 的 `mapStoppedReasonToExitReason` 从 `switch` 改为 `const STOPPED_REASON_TO_EXIT_REASON: Record<StoppedReason, ExitReason>`。类型标注带来**编译期强制**——`StoppedReason` 一旦新增取值，映射表立刻报缺项；"单一事实源"由此从注释承诺变成可验证约束（`iterationController` 的 `ExitReason` 只是下游投影）。
+
+### 说明
+
+- **误报护栏是这次的主要设计取向**：前置监管命中即 fail-closed 终止本轮 Loop，误报的代价是打断正常任务。因此每条模式都要求较完整的指令性短语，并为易混项专门收窄——`developer mode` 必须与"启用类动词"同现（否则命中编辑器/框架的正常术语）、系统提示词窃取必须出现 `system/initial/hidden` 限定词（否则会命中"打印这份 prompt 模板"）、行首 `system: you are` 必须后接角色式断言（否则会命中 `system: you are here` 这类日志）。新增 `Tests/Services/preSupervisionInjection.spec.ts`（40 用例）**双向锁死**：17 条攻击必须命中、9 条合规文本必须放行。
+- **`StoppedReason` 收敛的验证方式**：`Tests/Core/controlLoopFixes.spec.ts` 新增一条用例遍历 7 个 `StoppedReason` 取值，断言投影覆盖 6 个类别且每个结果都在 `EXIT_REASONS` 白名单内（编译期由 `Record` 兜底、运行期由该用例兜底）。
+- **本轮全程未触碰 `Server/` 与 `Docs/Server/`**（该端将由 Qoder 改造成 Java）；改动仅落在 `Src/`、`Tests/` 与本文件。
+- 验证：`npx tsc --noEmit` 0 error；`npx eslint Src/ --ext .ts` 0 error；`npx vitest run` **172 文件 / 2057 用例全绿**（本轮前 171 / 2016）。
+
+---
+
+## [落实 · Core 层控制论审查 13 条改进与 E1–E10 实验] - 2026-10-12
+
+依据 [`Docs/Agent/17-控制论审查/core_audit.md`](Agent/17-控制论审查/core_audit.md) **逐条落实**其 13 条改进建议，并把 E1–E10 落为可执行回归锁。**审查前置声明**（"该登记动作待用户指示""另一代理持续改代码"）已由本轮满足：实现前对"零调用 / 未注册"类结论逐条 grep 复验，全部成立。
+
+### 变更
+
+**第 1 批（P0 优先）**
+
+- **P0-1 主反馈通路断线**：`Src/Core/Loop/runIteration.ts` — `loopControlSnapshot?: Partial<LoopRuntimeSnapshot>` 从 `IterationContext` 的**可选面移除**，改为 `runIteration(loopState, ctx, control: LoopControlView)` 的**必填参数**，视图由 `executeLoop` 每轮用本地已有量构造（`createLoopControlView()`）。`evaluateStopRules()` 整段不再包在 `if (ctx.loopControlSnapshot)` 里 → `limits`（墙钟 / 工具数）/ `budget_hard` / `no_progress` / `risk` 四类判据在生产路径**必然被评估**。**同时修正两链并存时的优先级**：原 `if (shouldStop && !decision.shouldContinue) { /* 两者一致，无需处理 */ }` 会在 ⑩ 已判 `success` 时**静默丢弃** StopRules 的 `limits`/`risk`/`budget_hard`——这是审查未点名的第二条"伪 success"通路，现统一以 StopRules 为退出类别事实源。附带：`loopState.startedAt` 为 0（未 `startLoop`）时墙钟判据会算成"数十年"并立刻截断，已加兜底。
+- **P0-2 安全执行器生命周期失控**：`Src/Core/Middleware/middlewareRegistry.ts` — 注册改为返回**句柄** `{ id, name, ownerId }`、注销**按句柄**；重名判定放宽为「同名 + 同 ownerId」；执行器按 `ctx.loopId` 过滤（只跑「全局 + 本 Loop」，`loopId` 缺失时回路级中间件**一律不跑** = fail-closed）；注册失败计 `middleware_registered_failed` 且由 `executeLoop` **fail-closed 拒绝起 Loop**。`Src/Infra/Contracts/middlewareTypes.ts` 相应新增 `MiddlewareContext.loopId` 与 `AgentMiddleware.ownerId`。
+- **P0-3 Token 账本归一**：以 `loopState.iteration.totalTokensConsumed` 为**唯一累加器**，`executeLoop` 去掉本地累加器（本地求和仅供收尾对账），⑨ 步改从账本读，`mwCtx.data.tokensConsumed` 从账本取并新增 `estimatedPromptTokens` 前瞻；`Src/Core/Middleware/builtin/budgetSentinel.ts` 改读「上轮累计 + 本轮 prompt 估算」，把传感器滞后从一整轮缩到半轮内；收尾不一致计 `ledger_mismatch`。
+- **P1-4 伪成功停机 + 退出类别坍缩**：`budgetSentinel` 由 `wrapModelCall` 移到 **`beforeModel`**（原生支持短路契约），返回 `{ shortCircuit: true, result: { exitReason: 'budget_exhausted' } }`（`ModelCallOutput` 新增 `exitReason`/`reason` 字段）；`Src/Core/Loop/iterationController.ts` 的 `ExitReason` 扩为 8 值（新增 `intercepted` / `pre_supervision` / `model_error`），`runIteration` 四处硬编码 `'risk'` 拆分完毕，`human_abort` 不再折进 `risk`。
+
+**第 2 批（回路装记忆）**
+
+- **P1-5 振荡检测结构上不可能成立**：`fingerprintHistory` 从每轮重建的 `ctx.data` 迁到 `LoopState`，`runIteration` 按**引用**注入；`Src/Core/Loop/loopEngine.ts` 新增 `detectRepetitiveFingerprint()`，`executeLoop` 命中即注入 `repetitive_output` 风险信号。
+- **P1-5/P0-1 进展量缺失**：`recentMetrics` 改为**累积"新的工具调用签名"数**（明确废弃"有无输出"这类恒真伪指标），空转重放 → 平台期 → `no_progress` 可命中。
+- **P1-6 频率限制传感器恒 0**：`executeLoop` 维护滑动窗口并逐轮 push 真实调用时刻，覆盖两个生产调用点传来的字面量 `[]`。
+- **P2-12 / P2-13 限流无回路作用域**：`src/Core/Middleware/builtin/rateLimiter.ts` 改为按 `sessionId|agentId` 分桶并淘汰空桶；`retryAfterMs` 写进给模型的提示（可行动退避建议）。
+- **P1-7 重锚通路断开**：`goalReanchor.ts`（S5 桩）与 `goalReanchorControl.ts`（完整版）的闩锁均改为**无条件清零**；`runIteration` ⑤ 步压缩成功处置位 `loopState.needsGoalReanchor`（此前无任何置位方）；`Src/main.ts` **注册 `GoalReanchorControl`**（priority 5 先于桩，避免重复注入），配置取 `loopConfig.json → goalReanchor`。
+- **P2-11 两套 `LoopState` 不同构**：新增跨层契约 `Src/Infra/Contracts/loopStateTypes.ts`（`ControlLoopStateView`，ADR-0006 模式）；引擎侧 `LoopState` 实现该契约（补 `goal` / `failedAttempts` / `needsGoalReanchor` / `fingerprintHistory` / `riskSignals`），`goal.originalRequirement` 由 `executeLoop` 用 `userInput` 填充；重锚器改依赖契约而非任一具体类型，因而**首次可被生产注册**。
+
+**第 3 批（执行器与慢环）**
+
+- **P1-8 只有 0/1 两档人工控制**：`runIteration.ts` 新增 `waitWhilePaused()`，`executeLoop` 每轮开始读 `loopState.phase`；暂停则阻塞等待（恢复 / abort / `pauseSignal` / 超时四路出口），`LoopConfig.pauseSignal` 首次被消费。
+- **P1-9 编排开环：约束没有执行器**：新增 `Src/Core/Decision/orchestrator/dispatchGate.ts`（依赖序 + 并发上限闸门，非阻塞、事件驱动）；`orchestrator.ts` 抽出 `activatePlanWithGate()`，把 DELEGATION / ASSEMBLY_LINE / CONSORTIUM 三处**无条件全量扇出**改为**两段式派发**——招募阶段建齐 Agent（拓扑立即可见），派发阶段由闸门按 `dependsOn` 与 `maxParallelism` 释放（`assignTask` 的 `Result` 也不再被静默丢弃）；前置失败则后继如实落失败并回调 `onBlocked`。
+- **P1-10 编排无监视回路**：新增 `Src/Core/Decision/orchestrator/orchestrationMonitor.ts`（周期 = `stagnationTimeoutMs/4`，调 `detectAllAnomalies` → 发布 `TASK_FAILED` → 计 `anomaly_poll_invoked`）；`orchestrator.ts` 新增 `reapStalePlans()`（`activePlans` TTL 看门狗）；`agentExecutor` 在每轮迭代发布 `TASK_PROGRESS`（此前**只有订阅方没有发布方**），`progressTracker` 追加订阅 `AGENT_ITERATION_COMPLETE`；`main.ts` 启停监视器。
+- **P2-16 缓存层方波扰动**：`systemPromptCache` 超过 64 由 `clear()` 全量清空改为 **LRU 逐出最旧一条**（原实现一次插入即打掉整个会话的前缀缓存命中）。
+- **P2-15 Loop 级墙钟完全缺失（顺带收口）**：`Src/Core/Model/modelCaller.ts` 原为 `combinedSignal = options?.signal ?? timeoutController.signal`——**传了外部 signal 就不再挂墙钟**（注释自认 REV-025 未收口），而交互路径恰好总传 `abortController.signal` → 单次模型调用无任何超时保护。现改为两者**同时生效**（任一触发即中止），并在 `finally` 摘除转发监听。
+
+**元监控（建议 13）**
+
+- 新增 `Src/Infra/Logging/controlTriggers.ts`：11 个控制组件触发计数 + 6 个「存活信号」+ `getDanglingCircuits()`（**恒 0 ⇒ 该回路断线**）。已埋 `stopRules_evaluated` / `approval_gate_invoked` / `rate_limit_checked` / `fingerprint_hit` / `anomaly_poll_invoked` / `middleware_registered_failed` / `middleware_short_circuit` / `goal_reanchor_injected` / `ledger_mismatch` / `pause_observed`。
+- `getLoopSummary()` 输出触发矩阵 + 断线清单 + 回路记忆字段；`main.ts` 优雅关闭 ⑥ 步打印 `formatControlTriggerReport()`（放在关闭而非启动——启动时全 0 无法区分"没接上"与"还没跑过"）。
+
+### 说明
+
+- **E1–E10 落为可执行回归锁**：新增 `Tests/Core/controlLoopFixes.spec.ts`（16 用例，E1/E2/E3 + 退出类别 + 元监控）、`Tests/Core/loopMemoryFixes.spec.ts`（8 用例，E4/E8/E9 + P2-11）、`Tests/Core/pauseAndCacheFixes.spec.ts`（10 用例，E5 + P2-16）、`Tests/Decision/dispatchGateAndMonitor.spec.ts`（10 用例，E6/E7）。E10 由 `getLoopSummary().danglingCircuits` 与关闭报告承载。
+- **一条既有测试按新语义改写**：`Tests/Decision/orchestrationPipelines.spec.ts` 的 "ASSEMBLY_LINE 节点被真实指派" 原先断言**两个流水线节点同时 `running`**（正是 P1-9 的缺陷形态）；现改为断言"首节点 running / 后继 ready"并**追加一步**——首节点落终态后后继被闸门释放（依赖序真实生效的端到端证据）。
+- **P1-9 的一处诚实取舍**：闸门采**非阻塞**语义（派发方仍立刻返回，何时派发第 k 批改由终态事件驱动），未改动编排对外契约；`maxParallelism` 约束的是**派发**（即真正启动 Loop 的那一步），不是招募。
+- **P1-10 的一处诚实边界**：监视器通过**事件**驱动终态，不直接改写对端进程内 `LoopState.riskSignals`（LoopState 是进程内对象，跨回路写回需状态注册表，属独立改造）。
+- **唯一未落实项（如实登记，不在本次范围）**：`P2-14`（前置监管每轮只检测同一个原始 `userInput`，从不检查模型新产出与工具返回值 → 工具返回值中的**间接注入**这条真实攻击面无覆盖；`INJECTION_PATTERNS` 仅 5 条关键词）。它是**缺陷登记**而非 13 条改进建议之一，本次范围限定为"13 项 + E1–E10"，故留待独立改造；其余 P2 项（`P2-11`/`P2-12`/`P2-13`/`P2-15`/`P2-16`）均已随对应建议落实或顺带收口。
+- **本轮自查抓到的两个自身缺陷**（均由测试而非评审发现）：① P2-11 注释声称已把 `loopState` 注入中间件数据通道，实际漏加该键（E8 用例立刻红）；② 派发闸门的订阅用"已初始化"标志，`resetEventBus()` 后旧句柄失效而标志仍为真 → 闸门从此收不到终态事件（"恒不触发"形态的复现），改为每次注册计划重建订阅。
+- 验证：`npx tsc --noEmit` 0 error；`npx eslint Src/ --ext .ts` 0 error；`npx vitest run` **170 文件 / 2006 用例全绿**（落实前基线 167 / 1972）。
+
+---
+
+## [变更 · 派发执行驱动契约与子任务台账三格（P1-8）] - 2026-10-09
+
+### 变更
+
+- **`Docs/Agent/16-开发规范/Interfaces/coreInterfaces.md`** §5（`orchestrator/orchestrator.ts`）：追加 **2026-10-09 校准**块，**两处更正**——"实际执行由主循环驱动"（实为 `task:assigned` 全库无订阅者，派发出去即无下文；现由 `orchestrator/taskDriver.ts` 的 FIFO 串行队列承接，导出 `initTaskDriver`/`resetTaskDriver`/`drainTaskDriver`，装配点唯一 `main.ts` ⑫.7 且 Core 侧不自接线）、"仅 `DELEGATION` 发布 `task:assigned`"（三个多 Agent 分支各发布一条，另有第二发布方 `AgentRuntime/assignTask` 载荷只带 `agentId`/`taskId`）；**三处补录**——`task:assigned` 载荷字段集（`assignmentId`/`instruction`/`maxIterations`/`tokenBudget`/`timeLimitMs`，缺 `assignmentId` 即不被驱动）、`task:failed` 的三处发布者与"assignmentId 是唯一认领键"、`subtaskDispatcher.ts` 完整导出面（新增 `markSubtaskFailed` 的终态幂等与来源判定、`markSubtaskStarted` 作为 `started_at` 唯一入口及其"队列头部而非派发时刻"的调用时机约束），并写进 `executeAssignedTask` 新签名与"时限/预算只在迭代边界判定"的边界。
+- **`Docs/Client/03-AI组件族架构/后端接口契约.md`** §10.1：`taskApi.ts` 行**撤掉同日 P1-7b 末尾那条"⚠️ 现状边界：自动执行驱动仍缺，故 REST 提交的任务停在 `running` 属如实显示"**（该现状已被代码推翻），改为当前契约（驱动已存在 + 载荷字段集 + 台账三格 + `in_progress` 新态）；`agentApi.ts` 行标注 `POST /api/agents/:agentId/execute` 的**定位变化**——不再是任务链路唯一执行入口，降为手工/调试入口（同步跑完整轮 Loop，长任务会占住请求）。
+
+### 说明
+
+- 本轮仍按 2026-10-03 校准规则**文档向代码看齐**；配套代码与工程变更见根 `CHANGELOG.md` 同日"派发执行驱动 + 终态链路贯通（P1-8）"一节，逐条取证见 `Docs/Dev/三端模块代码审查-Bug登记.md` §16.12 / §17（REV-338/339/340/341/344/345①/346/347 + 新登记 REV-343/348）；
+- **撤写"现状边界"时必须留下被撤口径的来源**：契约文档里那条"任务停在 `running` 属如实显示"在同一天内先成立（P1-7b 收口）后被推翻（P1-8 补上驱动），若直接删掉，读者会把今天的实测结果误当成文档错误。故新表述显式写明"取代同日 P1-7b 末尾那条边界"，两份文档与登记表三处对齐；
+- **两条边界继续写在契约里而不是删掉**：① 评审面端到端**仍未取证**（三轮真实进程 `GET /api/reviews` 恒 0 条，Worker 在预算耗尽时停在 `agent.submit_review` 之前，根因是单轮约 20.8 万 token 的用量口径 → REV-345② 归 P1-5），所以契约不能说"多 Agent 任务已可跑到评审通过"；② 后台任务遇 CRITICAL 人工审批会挂住整条串行队列（审批等待与子任务时限都只在迭代边界判定 → REV-348 待产品口径）。**"预算会被执行" ≠ "花费被控制在预算内"**——这句口径约束同时写进登记表与契约，防止后续读者把 ① 的修复误读成额度保护；
+- 行号引用一律以"文件名 + 函数/符号名"定位（N-10 口径）。
+
+---
+
+## [变更 · 配置写面配对规则与任务终态权威对账（P1-7）] - 2026-10-09
+
+### 变更
+
+- **`Docs/Agent/16-开发规范/Interfaces/interfaceInterfaces.md`**：§2 `configApi.ts` 行追加 **P1-7a 两条写前配对规则**（基线为"配置段"而候选为标量/数组 → 该项 `invalid`，不再整段替换；候选树同时出现 `server.allowRemoteAccess=true` + 非回环 `server.host` + 无 ≥16 字符 `server.apiToken` → 两键双双 `invalid` 并附补救文案），并写明**配对类拒写只拒违规项**、同批合法键照常 `applied`；§2 `taskApi.ts` 行追加 **P1-7b 终态口径**（`tasks` 表为终态权威、读时先套表再按 `?status=` 筛选、派发成功只标 `running` + `result={"status":"dispatched",…}`、`DELETE` 写 `cancelled` 但不中断已在跑的 Loop）。
+- **`Docs/Client/03-AI组件族架构/后端接口契约.md`**：§10.1 `configApi.ts`(5) 行同上补两条配对规则的**回执级实例**（一批五键 → `applied:["ui.dashboardPollIntervalSec"]` + 三项 `invalid`，磁盘只多出 `ui` 段）；`taskApi.ts`(4) 行改写为"终态口径改定（P1-7b，**取代此前"派发即 completed"的行为**）"，并加 ⚠️ **现状边界**：编排的自动执行驱动仍缺（无人订阅 `task:assigned`，唯一执行入口是 `POST /api/agents/:agentId/execute`），故 REST 提交的任务在真实后端停在 `running` 属如实显示。
+
+### 说明
+
+- 本轮同样按 2026-10-03 校准规则**文档向代码看齐**；配套代码与工程变更见根 `CHANGELOG.md` 同日"配置写路径配对 + 任务/Agent 终态权威（P1-7）"一节，逐条取证见 `Docs/Dev/三端模块代码审查-Bug登记.md` §16.11 / §17（REV-330/331/333/334/336 + 新登记 REV-338~342）；
+- **一处口径被真实取证收窄**：同日 P0-4 的文档与 CHANGELOG 写作"候选值整批过启动校验器，校验不过整批拒绝"，实测该句只对 `validateAllConfigs` 那层**跨字段硬约束**成立；`rejected` / 单键取值非法 / 形态与配对不过的 `invalid` 都是**逐路径**判定。两份文档与 `userConfigWriter.ts` 头注释已按此把两种粒度分开写清——混写成一句会让读者以为一次误填能把整批设置打回，从而误判回执字段的含义；
+- **契约文档必须写下"驱动缺口"这一现状**：否则读者会把"提交任务 → 停在 `running`"误读成终态权威的回归。真实进程取证连续 6 次 `/api/agents/:agentId/execute` 全 200 而 `GET /api/reviews` 为空，根因链登记为 REV-338（无执行驱动）/ REV-339（`task:failed` 无发布者）/ REV-341（助手消息从不带 `tool_calls`，请求体被上游判 `Invalid messages` 却被伪装成成功）；④⑤ 两条验收口径因此在真实进程不可达，文档与登记表都如实标注为"代码 + 库路径取证"而非"已验证"；
+- 行号引用一律以"文件名 + 函数/符号名"定位（N-10 口径），仅控制面凭据门保留 `httpServer.ts:82-88` 一处行号。
+
+---
+
+## [变更 · 配置与任务接口契约对账（P0-4 设置真实生效）] - 2026-10-09
+
+### 变更
+
+- **`Docs/Agent/16-开发规范/Interfaces/interfaceInterfaces.md`**：§2 `configApi.ts` 行由"2 端点 / 只读"改写为 **5 端点**并写入生效面与写面契约（`GET /api/configs/effective` 的三态视图字段、`PUT /api/configs/user` 的 `{patch,unset}` 入参与 `{applied,removed,rejected,invalid,statuses,restartPendingCount}` 回执、`400` 分支、具体路径须先于 `:name` 注册的匹配顺序约束）；§2 `taskApi.ts` 行补 `routingMode` 可选集与 `400` 语义、`receiveTask({forcedMode})` 转调；§1 `ipc-update-routing` 行改为"先落盘再应用"并补 `rejected/invalid` 返回字段；§1 `generate_reply` 行补 `workingMode` 分流语义（DIRECT 流式 / 非 DIRECT 转交编排 + 回执落库 / 不可执行模式 `stream_end.error`）；§2 校准块覆盖面按 `registerRoute(` 逐文件重数为 **17 模块 / 78 端点**。
+- **`Docs/Client/03-AI组件族架构/后端接口契约.md`**：§10.1 HTTP REST 行同改为 17 文件 / 78 条；§10.2 标题与方法分布同步重数（GET 50 / POST 21 / PATCH 2 / PUT 2 / DELETE 3），补"注册顺序即匹配顺序"警示块，`configApi`(5)/`taskApi`(routingMode)/`agentApi`(3)/`approvalApi`(4) 四行更新，并**补列此前未逐项登记的五个路由组**（`governanceApi` 2 / `regulationApi` 7 / `auditApi` 6 / `arbitrationApi` 3 / `a2aApi` 9）；文末"原文缺口"结论收窄——仲裁查询面**已存在**，仍缺的是 memory 冲突决断端点。
+
+### 说明
+
+- 本轮为**文档向代码看齐**的对账（口径沿用 2026-10-03 校准规则），配套代码与工程变更见根 `CHANGELOG.md` 同日"设置真实生效（P0-4）"一节，取证与逐条登记见 `Docs/Dev/三端模块代码审查-Bug登记.md` §16.10 / §17（REV-328~337）；
+- 两个文档的旧数（12 模块 / 46 端点）与"配置只读"表述并非笔误，而是**契约缺口本身**：写通道不存在时，设置面板的 153 个控件只能"传而不消"（REV-265/266）。因此本轮的文档更新是修复的第二半，不是事后补记；
+- 行号引用一律以"文件名 + 函数/符号名"定位（N-10 口径），仅控制面凭据门标注了 `httpServer.ts:82-88` 这一处行号，因该门禁按路径前缀生效、位置即语义。
+
+---
+
 ## [变更 · 提示词链路接线（FE-052 ~ FE-054）] - 2026-10-04
 
 ### 变更

@@ -35,6 +35,7 @@ export default function ApprovalCard({ approval, onDecide, deciding = false }: A
 
   // 倒计时（基于后端 requestedAt + timeoutSec，不做假递减）
   useEffect(() => {
+    if (a.readOnly) { setRemaining(null); return; }
     if (a.status !== 'PENDING') { setRemaining(null); return; }
     const calc = () => {
       const expiresAt = a.requestedAt + a.timeoutSec * 1000;
@@ -116,44 +117,61 @@ export default function ApprovalCard({ approval, onDecide, deciding = false }: A
                 </span>
               </div>
             )}
+
+            {/* 法定人数缺口（REV-264）：已记账但未达双人控制时，如实说明还差什么 */}
+            {a.status === 'PENDING' && a.quorumBlocked && (
+              <div className="mt-2 text-[10px] text-warning leading-relaxed">
+                {a.quorumBlocked.reason}（{a.quorumBlocked.matched}/{a.quorumBlocked.required}）。
+                双人控制要求由不同身份分别裁决：请由另一账号登录裁决，或由已注册的治理 Agent 裁决；
+                如需免人工放行，可把该工具加入自动审批白名单。
+              </div>
+            )}
           </div>
         </div>
 
         {/* 右侧：操作区 */}
         <div className="flex flex-col items-end gap-2 shrink-0">
           {a.status === 'PENDING' ? (
-            <>
-              {/* 剩余超时 */}
-              <div className={`flex items-center gap-1 text-xs font-mono ${
-                remaining !== null && remaining < 60 ? 'text-danger' : 'text-text-secondary'
-              }`}>
-                <Clock size={12} />
-                {remaining !== null ? formatTimer(remaining) : '--:--'}
-              </div>
-              {/* 批准/拒绝按钮 */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => onDecide(a.approvalId, true)}
-                  disabled={deciding}
-                  className="btn btn-success text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Check size={14} />{deciding ? '提交中…' : '批准'}
-                </button>
-                <button
-                  onClick={() => onDecide(a.approvalId, false)}
-                  disabled={deciding}
-                  className="btn btn-danger text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <X size={14} />拒绝
-                </button>
-              </div>
-            </>
+            a.readOnly ? (
+              <span className="badge badge-info">等待 Reviewer Agent 裁决</span>
+            ) : (
+              <>
+                {/* 剩余超时 */}
+                <div className={`flex items-center gap-1 text-xs font-mono ${
+                  remaining !== null && remaining < 60 ? 'text-danger' : 'text-text-secondary'
+                }`}>
+                  <Clock size={12} />
+                  {remaining !== null ? formatTimer(remaining) : '--:--'}
+                </div>
+                {/* 批准/拒绝按钮 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onDecide(a.approvalId, true)}
+                    disabled={deciding}
+                    className="btn btn-success text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Check size={14} />{deciding ? '提交中…' : '批准'}
+                  </button>
+                  <button
+                    onClick={() => onDecide(a.approvalId, false)}
+                    disabled={deciding}
+                    className="btn btn-danger text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <X size={14} />拒绝
+                  </button>
+                </div>
+              </>
+            )
           ) : (
             <div className="flex flex-col items-end gap-1">
               <span className={`badge ${
                 a.status === 'APPROVED' ? 'badge-success' : 'badge-danger'
               }`}>
-                {a.status === 'APPROVED' ? '已通过' : a.status === 'TIMEOUT' ? '超时拒绝' : '已拒绝'}
+                {a.status === 'APPROVED'
+                  ? (a.reviewId ? '评审通过' : '已通过')
+                  : a.status === 'TIMEOUT'
+                    ? '超时拒绝'
+                    : (a.reviewId ? '评审拒绝' : '已拒绝')}
               </span>
               {/* 决策者与原因（审计回溯） */}
               {a.decidedBy && a.decidedBy.length > 0 && (

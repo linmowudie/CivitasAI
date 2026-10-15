@@ -11,14 +11,21 @@
  * 建议后续接异步任务队列（当前复用 middleware 注册与既有中断语义）。
  */
 
-import { getAgent } from './agentRegistry.js';
-import { assignTask } from './agentRuntime.js';
-import { createLoopConfig } from '../Loop/loopConfig.js';
-import { createLoopState } from '../Loop/loopEngine.js';
-import { executeLoop } from '../Loop/runIteration.js';
-import { resolveModel, getRoutingConfig } from '../../Infra/Llm/Router/modelRouter.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { EventType } from "../../Services/EventBus/eventTypes.js";
+import { createEvent, publish } from "../../Services/EventBus/eventBus.js";
+import { createLoopConfig, getLoopLimits } from "../Loop/loopConfig.js";
+import { createLoopState } from "../Loop/loopEngine.js";
+import { executeLoop } from "../Loop/runIteration.js";
+import {
+  resolveModel,
+  getRoutingConfig,
+} from "../../Infra/Llm/Router/modelRouter.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
+
+import { assignTask, getPendingReview } from "./agentRuntime.js";
+import { getAgent } from "./agentRegistry.js";
 
 export interface AgentExecutionResult {
   agentId: string;
@@ -31,6 +38,34 @@ export interface AgentExecutionResult {
 }
 
 /**
+ * 发布子任务失败终态事件（REV-339）。
+ *
+ * `payload.assignmentId` 是编排聚合与进度追踪器唯一的认领键（统一 ID 空间：
+ * `subtask_id = assignmentId = agent.lastTaskId`）；缺它则事件被 `handleAssignmentTerminal`
+ * 当作汇总事件丢弃，`tasks` 行停在 running、Agent 也不回收。
+ */
+function publishSubtaskFailure(
+  assignmentId: string,
+  agentId: string,
+  traceId: string,
+  reason: string,
+): void {
+  publish(
+    createEvent({
+      eventType: EventType.TASK_FAILED,
+      source: "AgentRuntime/executeAssignedTask",
+      traceId,
+      payload: {
+        taskId: assignmentId,
+        assignmentId,
+        workerAgentId: agentId,
+        reason,
+      },
+    }),
+  );
+}
+
+/**
  * 驱动指定 Agent 执行其已登记任务（或由 `instruction` 显式指定指令）。
  * @returns 执行结果；Agent 不存在/终态/配置非法时返回错误
  */
@@ -39,10 +74,16 @@ export async function executeAssignedTask(params: {
   instruction?: string;
   model?: string;
   maxIterations?: number;
+  tokenBudget?: number;
+  timeLimitMs?: number;
 }): Promise<Result<AgentExecutionResult>> {
   const agent = getAgent(params.agentId);
   if (!agent) return err(`Agent ${params.agentId} 不存在`);
-  if (agent.status === 'destroyed' || agent.status === 'expelled' || agent.status === 'suspended') {
+  if (
+    agent.status === "destroyed" ||
+    agent.status === "expelled" ||
+    agent.status === "suspended"
+  ) {
     return err(`Agent ${params.agentId} 状态 ${agent.status}，不可执行`);
   }
 
@@ -56,24 +97,58 @@ export async function executeAssignedTask(params: {
       model = fallback;
     }
   }
+  // 任务书墙钟时限（`subtasks.timeout_ms`）此前从未透传，Loop 一直按 DEFAULT 的 60s 跑，
+  // 台账里的 150s 时限只是记录。越界时钳到 LOOP_LIMITS 合法窗口并留痕，不静默丢弃。
+  let timeoutMs: number | undefined;
+  if (params.timeLimitMs !== undefined && params.timeLimitMs > 0) {
+    const limits = getLoopLimits();
+    timeoutMs = Math.min(
+      Math.max(params.timeLimitMs, limits.minTimeoutMs),
+      limits.maxTimeoutMs,
+    );
+    if (timeoutMs !== params.timeLimitMs) {
+      logger.warn("任务书时限超出 Loop 合法窗口，已按边界钳制", {
+        source: "AgentRuntime/executeAssignedTask",
+        agentId: params.agentId,
+        requested: params.timeLimitMs,
+        applied: timeoutMs,
+      });
+    }
+  }
+
   const configResult = createLoopConfig({
     model,
     stream: false,
-    ...(params.maxIterations !== undefined ? { max_iterations: params.maxIterations } : {}),
+    ...(params.maxIterations !== undefined
+      ? { max_iterations: params.maxIterations }
+      : {}),
+    ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+    // REV-338 同源问题：任务书规定的 token 预算必须进 Loop，否则 `subtasks.token_budget`
+    // 记 15000 而运行时按默认 100000 花费（本次取证实测单轮 20.8 万 token）。
+    ...(params.tokenBudget !== undefined && params.tokenBudget >= 1
+      ? { token_budget: params.tokenBudget }
+      : {}),
   });
   if (!configResult.ok) return err(configResult.error);
 
   const loopId = `loop-exec-${params.agentId}-${Date.now()}`;
-  const traceId = `trace-exec-${Date.now().toString(36)}`;
+  // REV-340：复用 Agent 在册 traceId（recruit/编排 `assignTask` 时写入），无 trace 才新建。
+  //   此前每次执行都造 `trace-exec-<time>`：评审侧 `ensureReviewerAgent(traceId)` 按 traceId
+  //   复用 Reviewer，新 trace 必然新建一名 Reviewer Agent——同一 Worker 反复执行即在 `agents`
+  //   表和监控列表留下一串无主 reviewer 行。
+  const traceId = agent.traceId || `trace-exec-${Date.now().toString(36)}`;
+  const assignedTaskId =
+    agent.lastTaskId ?? `task-adhoc-${Date.now().toString(36)}`;
 
   // ready → running（未登记任务号时兜底生成，保证状态机可流转）
-  if (agent.status === 'ready') {
-    assignTask(params.agentId, agent.lastTaskId ?? `task-adhoc-${Date.now().toString(36)}`, traceId);
+  if (agent.status === "ready") {
+    assignTask(params.agentId, assignedTaskId, traceId);
   }
 
-  const instruction = params.instruction
-    ?? `执行你被分配的任务${agent.lastTaskId ? `（taskId=${agent.lastTaskId}）` : ''}。`
-      + '若任务详情不可见，请基于你的角色职责与已登记约束继续。';
+  const instruction =
+    params.instruction ??
+    `执行你被分配的任务（taskId=${assignedTaskId}）。` +
+      "若任务详情不可见，请基于你的角色职责与已登记约束继续。";
 
   const loopState = createLoopState({
     loopId,
@@ -88,10 +163,53 @@ export async function executeAssignedTask(params: {
     agentId: params.agentId,
     agentRole: agent.role,
     config: configResult.value,
-    chatMessages: [{ role: 'user', content: instruction }],
+    chatMessages: [{ role: "user", content: instruction }],
     recentCallTimestamps: [],
+    // ── P1-10：**进展信号发布方** ──
+    // 修复前 `EventType.TASK_PROGRESS` 只有订阅方（progressTracker）没有发布方，
+    // 于是 `currentIteration` / `tokensUsed` 恒为 0——停滞判定唯一可用的"进展"信号
+    // 根本进不来。这里在每轮迭代完成时发布真实进展（带 assignmentId 与 tokensUsed）。
+    onIterationComplete: (info) => {
+      publish(
+        createEvent({
+          eventType: EventType.TASK_PROGRESS,
+          source: "AgentRuntime/agentExecutor",
+          traceId,
+          payload: {
+            assignmentId: assignedTaskId,
+            agentId: params.agentId,
+            iteration: info.iteration,
+            tokensUsed: info.tokensConsumed,
+          },
+        }),
+      );
+    },
   });
-  if (!result.ok) return err(result.error);
+  if (!result.ok) {
+    // REV-339：Loop 失败同样要让子任务进终态，否则 `tasks` 行停在 running。
+    publishSubtaskFailure(
+      assignedTaskId,
+      params.agentId,
+      traceId,
+      `Loop 执行失败: ${result.error}`,
+    );
+    return err(result.error);
+  }
+
+  // REV-339：核心规则是"Worker 不可自行宣告完成"——没有评审记录就没有通过的可能，
+  // 该子任务按失败进终态。有评审记录时不在此重复发布（accepted→TASK_COMPLETED、
+  // rejected→TASK_FAILED 已由 `reviewSubmission` 发出）。
+  if (!getPendingReview(assignedTaskId)) {
+    const last = result.value.iterations[result.value.iterations.length - 1];
+    publishSubtaskFailure(
+      assignedTaskId,
+      params.agentId,
+      traceId,
+      `循环结束未提交评审（exitReason=${result.value.exitReason ?? "unknown"}` +
+        ` iterations=${result.value.iterations.length}` +
+        ` output=${String(last?.outputText ?? "").slice(0, 120)}）`,
+    );
+  }
 
   const last = result.value.iterations[result.value.iterations.length - 1];
   return ok({
@@ -101,6 +219,6 @@ export async function executeAssignedTask(params: {
     exitReason: result.value.exitReason,
     iterations: result.value.iterations.length,
     tokensConsumed: result.value.totalTokensConsumed,
-    output: last?.outputText ?? '',
+    output: last?.outputText ?? "",
   });
 }

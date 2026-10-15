@@ -6,23 +6,34 @@
  * 乐观锁版本控制，并发写同 key 时 expectedVersion 不匹配方被拒。
  */
 
-import { EventType } from '../EventBus/eventTypes.js';
-import { getMainDb } from '../../Infra/Db/database.js';
-import { getActiveOwner } from '../AccountScope/activeAccount.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { createEvent, publish } from '../EventBus/eventBus.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { EventType } from "../EventBus/eventTypes.js";
+import { getMainDb } from "../../Infra/Db/database.js";
+import { getActiveOwner } from "../AccountScope/activeAccount.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import { createEvent, publish } from "../EventBus/eventBus.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
 
-import { incrementClock, clockToTokens, tokensToClock } from './causalTokens.js';
-import { interceptWrite, isForbiddenKey } from './writeGuard.js';
-import { requireWritePermission, detectSemanticConflict } from './memoryGovernance.js';
-import type { WorkspaceEntry, WriteResult, WorkspaceQuery } from './versionedEntry.js';
+import {
+  incrementClock,
+  clockToTokens,
+  tokensToClock,
+} from "./causalTokens.js";
+import { interceptWrite, isForbiddenKey } from "./writeGuard.js";
+import {
+  requireWritePermission,
+  detectSemanticConflict,
+} from "./memoryGovernance.js";
+import type {
+  WorkspaceEntry,
+  WriteResult,
+  WorkspaceQuery,
+} from "./versionedEntry.js";
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
 const entries: Map<string, WorkspaceEntry> = new Map(); // entryId → entry
-const keyIndex: Map<string, string[]> = new Map();       // key → entryId[]
+const keyIndex: Map<string, string[]> = new Map(); // key → entryId[]
 let entryCounter = 0;
 /** 条目 → 属主（内存缓存无属主字段，用旁表实现属主隔离判定，2026-10-04 G-13③） */
 const entryOwners: Map<string, string> = new Map();
@@ -54,7 +65,8 @@ export interface MemoryWriteGuardDecision {
   rule?: string;
 }
 
-let memoryChannelGuard: ((input: MemoryWriteGuardInput) => MemoryWriteGuardDecision) | null = null;
+let memoryChannelGuard:
+  ((input: MemoryWriteGuardInput) => MemoryWriteGuardDecision) | null = null;
 
 /** 装配/卸载通道守卫（传 null 卸载） */
 export function setMemoryChannelGuard(
@@ -63,25 +75,23 @@ export function setMemoryChannelGuard(
   memoryChannelGuard = guard;
 }
 
-export function write(
-  params: {
-    key: string;
-    content: string;
-    contentType: WorkspaceEntry['contentType'];
-    assertion: WorkspaceEntry['assertion'];
-    traceId: string;
-    agentId: string;
-    taskId?: string;
-    taskAuthority?: number;
-    evidenceChain?: string[];
-    expectedVersion?: number;
-    conflictStrategy?: WorkspaceEntry['conflictStrategy'];
-    /** 写入者角色（2026-10-04）：治理键仅 L0 / user 可写（灵感源 §1.3 分层） */
-    actorRole?: string;
-    /** A2A 驱动的写入：来源消息 ID（RM7；须存在、同任务且已放行） */
-    sourceMessageId?: string;
-  },
-): Result<WriteResult> {
+export function write(params: {
+  key: string;
+  content: string;
+  contentType: WorkspaceEntry["contentType"];
+  assertion: WorkspaceEntry["assertion"];
+  traceId: string;
+  agentId: string;
+  taskId?: string;
+  taskAuthority?: number;
+  evidenceChain?: string[];
+  expectedVersion?: number;
+  conflictStrategy?: WorkspaceEntry["conflictStrategy"];
+  /** 写入者角色（2026-10-04）：治理键仅 L0 / user 可写（灵感源 §1.3 分层） */
+  actorRole?: string;
+  /** A2A 驱动的写入：来源消息 ID（RM7；须存在、同任务且已放行） */
+  sourceMessageId?: string;
+}): Result<WriteResult> {
   // 红线检查
   if (isForbiddenKey(params.key)) {
     return err(`key "${params.key}" 禁止写入 GlobalWorkspace`);
@@ -94,10 +104,14 @@ export function write(
       content: params.content,
       agentId: params.agentId,
       ...(params.taskId !== undefined ? { taskId: params.taskId } : {}),
-      ...(params.actorRole !== undefined ? { actorRole: params.actorRole } : {}),
-      ...(params.sourceMessageId !== undefined ? { sourceMessageId: params.sourceMessageId } : {}),
+      ...(params.actorRole !== undefined
+        ? { actorRole: params.actorRole }
+        : {}),
+      ...(params.sourceMessageId !== undefined
+        ? { sourceMessageId: params.sourceMessageId }
+        : {}),
     });
-    if (!guarded.allowed) return err(guarded.reason ?? '写入被通道守卫拒绝');
+    if (!guarded.allowed) return err(guarded.reason ?? "写入被通道守卫拒绝");
   }
 
   // ★ 分层写入权限（2026-10-04，灵感源《一些思考2》§1.3）：
@@ -118,20 +132,24 @@ export function write(
   if (existing) {
     const conflict = detectSemanticConflict(params.content, existing.content);
     if (conflict) {
-      publish(createEvent({
-        eventType: EventType.CONFLICT_DETECTED,
-        source: 'SharedMemory/globalWorkspace/write',
-        payload: {
-          key: params.key,
-          newEntryId: `pending:${params.agentId}`,
-          existingEntryId: existing.entryId,
-          newContent: params.content,
-          existingContent: existing.content,
-          reason: conflict,
-          traceId: params.traceId,
-        },
-      }));
-      return err(`写入被阻止（语义冲突）：${conflict}；新旧记忆 ID 已上报仲裁者`);
+      publish(
+        createEvent({
+          eventType: EventType.CONFLICT_DETECTED,
+          source: "SharedMemory/globalWorkspace/write",
+          payload: {
+            key: params.key,
+            newEntryId: `pending:${params.agentId}`,
+            existingEntryId: existing.entryId,
+            newContent: params.content,
+            existingContent: existing.content,
+            reason: conflict,
+            traceId: params.traceId,
+          },
+        }),
+      );
+      return err(
+        `写入被阻止（语义冲突）：${conflict}；新旧记忆 ID 已上报仲裁者`,
+      );
     }
   }
 
@@ -139,7 +157,9 @@ export function write(
   const entryId = `ws-${++entryCounter}`;
 
   // 构建因果令牌
-  const existingClock = existing ? tokensToClock(existing.causalTokens) : new Map<string, number>();
+  const existingClock = existing
+    ? tokensToClock(existing.causalTokens)
+    : new Map<string, number>();
   const newClock = incrementClock(existingClock, params.agentId);
 
   const entry: WorkspaceEntry = {
@@ -155,14 +175,16 @@ export function write(
       timestamp: now,
       sourceAgentId: params.agentId,
       taskAuthority: params.taskAuthority ?? 0.5,
-      ...(params.sourceMessageId !== undefined ? { sourceMessageId: params.sourceMessageId } : {}),
+      ...(params.sourceMessageId !== undefined
+        ? { sourceMessageId: params.sourceMessageId }
+        : {}),
       evidenceChain: params.evidenceChain,
     },
     version: currentVersion + 1,
     lastModifiedBy: params.agentId,
-    conflictStrategy: params.conflictStrategy ?? 'lww',
+    conflictStrategy: params.conflictStrategy ?? "lww",
     causalTokens: clockToTokens(newClock),
-    status: 'active',
+    status: "active",
     createdAt: now,
     updatedAt: now,
   };
@@ -171,12 +193,22 @@ export function write(
   const guardResult = interceptWrite(entry, currentVersion, expectedVersion);
   if (!guardResult.ok) return guardResult;
   if (!guardResult.value.success) {
-    return ok(guardResult.value); // 版本冲突
+    // ★ S0 修复（2026-10-15）：版本冲突必须在 **Result 层**失败。
+    //   原实现返回 `ok(guardResult.value)`（即 `ok({success:false})`）——
+    //   条目**确实未写入**，但 `result.ok === true`，任何检查 `result.ok` 的调用方
+    //   都会把它当成写入成功（"检出但未拒写"的假绿）。
+    //   分层：`interceptWrite` 是**守卫**，返回结构化 WriteResult（含 conflict）是对的；
+    //   `write` 是**对外 API**，必须在 Result 层表达失败。
+    //   结构化冲突已由 writeGuard 发布为 MEMORY_VERSION_CONFLICT 事件，观测方不丢信息。
+    const c = guardResult.value.conflict;
+    return err(
+      `写入被拒（乐观锁版本冲突）：key "${params.key}" expected=${String(c?.expectedVersion)} actual=${String(c?.actualVersion)}`,
+    );
   }
 
   // 标记旧条目为 superseded
   if (existing) {
-    existing.status = 'superseded';
+    existing.status = "superseded";
     existing.supersededBy = entryId;
     existing.updatedAt = now;
   }
@@ -190,12 +222,19 @@ export function write(
   keyIndex.set(params.key, keyEntries);
 
   // 发布 MEMORY_WRITTEN 事件
-  publish(createEvent({
-    eventType: EventType.MEMORY_WRITTEN,
-    source: 'SharedMemory/GlobalWorkspace',
-    traceId: params.traceId,
-    payload: { entryId, key: params.key, agentId: params.agentId, assertion: params.assertion },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.MEMORY_WRITTEN,
+      source: "SharedMemory/GlobalWorkspace",
+      traceId: params.traceId,
+      payload: {
+        entryId,
+        key: params.key,
+        agentId: params.agentId,
+        assertion: params.assertion,
+      },
+    }),
+  );
 
   return ok({ success: true, entry, warning: guardResult.value.warning });
 }
@@ -212,25 +251,27 @@ export function read(query: WorkspaceQuery): WorkspaceEntry[] {
     const latest = getLatestByKey(query.key);
     result = latest && ownedBy(latest.entryId, owner) ? [latest] : [];
   } else {
-    result = [...entries.values()].filter(e => ownedBy(e.entryId, owner));
+    result = [...entries.values()].filter((e) => ownedBy(e.entryId, owner));
   }
 
   // 合并持久化条目（跨重启可见；同 entryId 以内存为准）
-  const seen = new Set(result.map(e => e.entryId));
+  const seen = new Set(result.map((e) => e.entryId));
   for (const persisted of loadPersistedEntries(owner)) {
     if (!seen.has(persisted.entryId)) result.push(persisted);
   }
 
   // 过滤
-  if (query.traceId) result = result.filter(e => e.traceId === query.traceId);
-  if (query.agentId) result = result.filter(e => e.agentId === query.agentId);
-  if (query.taskId) result = result.filter(e => e.taskId === query.taskId);
-  if (query.contentType) result = result.filter(e => e.contentType === query.contentType);
-  if (query.status) result = result.filter(e => e.status === query.status);
-  if (query.assertion) result = result.filter(e => e.assertion === query.assertion);
+  if (query.traceId) result = result.filter((e) => e.traceId === query.traceId);
+  if (query.agentId) result = result.filter((e) => e.agentId === query.agentId);
+  if (query.taskId) result = result.filter((e) => e.taskId === query.taskId);
+  if (query.contentType)
+    result = result.filter((e) => e.contentType === query.contentType);
+  if (query.status) result = result.filter((e) => e.status === query.status);
+  if (query.assertion)
+    result = result.filter((e) => e.assertion === query.assertion);
   if (query.limit && query.limit > 0) result = result.slice(-query.limit);
 
-  return result.map(e => ({ ...e }));
+  return result.map((e) => ({ ...e }));
 }
 
 /** 条目是否属于指定属主（无属主记录者视为当前属主写入，兼容旧内存条目） */
@@ -244,7 +285,7 @@ function ownedBy(entryId: string, owner: string): boolean {
 export function discardEntry(entryId: string, _agentId: string): Result<void> {
   const entry = entries.get(entryId);
   if (!entry) return err(`Entry ${entryId} 不存在`);
-  entry.status = 'discarded';
+  entry.status = "discarded";
   entry.updatedAt = Date.now();
   return ok(undefined);
 }
@@ -259,7 +300,7 @@ function getLatestByKey(key: string): WorkspaceEntry | undefined {
     const id = ids[i];
     if (id === undefined) continue;
     const entry = entries.get(id);
-    if (entry && entry.status === 'active') return entry;
+    if (entry && entry.status === "active") return entry;
   }
   return undefined;
 }
@@ -307,7 +348,9 @@ function canPersist(): boolean {
 function persistEntry(entry: WorkspaceEntry, owner: string): void {
   if (!canPersist()) return;
   try {
-    getMainDb().prepare(`
+    getMainDb()
+      .prepare(
+        `
       INSERT INTO global_workspace (
         entry_id, key, trace_id, agent_id, task_id, content, content_type, assertion,
         metadata_json, version, last_modified_by, conflict_strategy, causal_tokens_json,
@@ -316,16 +359,31 @@ function persistEntry(entry: WorkspaceEntry, owner: string): void {
       ON CONFLICT(entry_id) DO UPDATE SET
         version = excluded.version, status = excluded.status, superseded_by = excluded.superseded_by,
         updated_at = excluded.updated_at, metadata_json = excluded.metadata_json
-    `).run(
-      entry.entryId, entry.key, entry.traceId, entry.agentId, entry.taskId ?? null,
-      entry.content, entry.contentType, entry.assertion,
-      JSON.stringify(entry.metadata ?? {}), entry.version, entry.lastModifiedBy,
-      entry.conflictStrategy, JSON.stringify(entry.causalTokens ?? []),
-      entry.status, entry.supersededBy ?? null, entry.createdAt, entry.updatedAt, owner,
-    );
+    `,
+      )
+      .run(
+        entry.entryId,
+        entry.key,
+        entry.traceId,
+        entry.agentId,
+        entry.taskId ?? null,
+        entry.content,
+        entry.contentType,
+        entry.assertion,
+        JSON.stringify(entry.metadata ?? {}),
+        entry.version,
+        entry.lastModifiedBy,
+        entry.conflictStrategy,
+        JSON.stringify(entry.causalTokens ?? []),
+        entry.status,
+        entry.supersededBy ?? null,
+        entry.createdAt,
+        entry.updatedAt,
+        owner,
+      );
   } catch (e) {
-    logger.warn('共享记忆落库失败（内存缓存仍生效）', {
-      source: 'globalWorkspace/persistEntry',
+    logger.warn("共享记忆落库失败（内存缓存仍生效）", {
+      source: "globalWorkspace/persistEntry",
       entryId: entry.entryId,
       error: e instanceof Error ? e.message : String(e),
     });
@@ -335,37 +393,45 @@ function persistEntry(entry: WorkspaceEntry, owner: string): void {
 /** 行 → 条目 */
 function rowToEntry(row: Record<string, unknown>): WorkspaceEntry {
   return {
-    entryId: row['entry_id'] as string,
-    traceId: row['trace_id'] as string,
-    agentId: row['agent_id'] as string,
-    ...(row['task_id'] ? { taskId: row['task_id'] as string } : {}),
-    key: row['key'] as string,
-    content: row['content'] as string,
-    contentType: row['content_type'] as WorkspaceEntry['contentType'],
-    assertion: row['assertion'] as WorkspaceEntry['assertion'],
-    metadata: JSON.parse((row['metadata_json'] as string) || '{}'),
-    version: Number(row['version']),
-    lastModifiedBy: row['last_modified_by'] as string,
-    conflictStrategy: row['conflict_strategy'] as WorkspaceEntry['conflictStrategy'],
-    causalTokens: JSON.parse((row['causal_tokens_json'] as string) || '[]'),
-    status: row['status'] as WorkspaceEntry['status'],
-    ...(row['superseded_by'] ? { supersededBy: row['superseded_by'] as string } : {}),
-    createdAt: Number(row['created_at']),
-    updatedAt: Number(row['updated_at']),
+    entryId: row["entry_id"] as string,
+    traceId: row["trace_id"] as string,
+    agentId: row["agent_id"] as string,
+    ...(row["task_id"] ? { taskId: row["task_id"] as string } : {}),
+    key: row["key"] as string,
+    content: row["content"] as string,
+    contentType: row["content_type"] as WorkspaceEntry["contentType"],
+    assertion: row["assertion"] as WorkspaceEntry["assertion"],
+    metadata: JSON.parse((row["metadata_json"] as string) || "{}"),
+    version: Number(row["version"]),
+    lastModifiedBy: row["last_modified_by"] as string,
+    conflictStrategy: row[
+      "conflict_strategy"
+    ] as WorkspaceEntry["conflictStrategy"],
+    causalTokens: JSON.parse((row["causal_tokens_json"] as string) || "[]"),
+    status: row["status"] as WorkspaceEntry["status"],
+    ...(row["superseded_by"]
+      ? { supersededBy: row["superseded_by"] as string }
+      : {}),
+    createdAt: Number(row["created_at"]),
+    updatedAt: Number(row["updated_at"]),
   } as WorkspaceEntry;
 }
 
 /** 从库中按属主加载条目（不改变内存状态；供回灌与读取合并使用） */
-export function loadPersistedEntries(owner: string = getActiveOwner()): WorkspaceEntry[] {
+export function loadPersistedEntries(
+  owner: string = getActiveOwner(),
+): WorkspaceEntry[] {
   if (!canPersist()) return [];
   try {
-    const rows = getMainDb().prepare(
-      'SELECT * FROM global_workspace WHERE owner_user_id = ? ORDER BY created_at ASC',
-    ).all(owner) as Record<string, unknown>[];
+    const rows = getMainDb()
+      .prepare(
+        "SELECT * FROM global_workspace WHERE owner_user_id = ? ORDER BY created_at ASC",
+      )
+      .all(owner) as Record<string, unknown>[];
     return rows.map(rowToEntry);
   } catch (e) {
-    logger.warn('共享记忆读取失败（降级为内存视图）', {
-      source: 'globalWorkspace/loadPersistedEntries',
+    logger.warn("共享记忆读取失败（降级为内存视图）", {
+      source: "globalWorkspace/loadPersistedEntries",
       error: e instanceof Error ? e.message : String(e),
     });
     return [];

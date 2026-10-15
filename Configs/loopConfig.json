@@ -78,7 +78,34 @@
     "tokenCoefficient": { "static": 0.05, "lowFreq": 0.5, "midFreq": 0.3, "highFreq": 1.0 },
     "truncationUsageRatio": 0.92,
     "summaryTriggerUsageRatio": 0.80,
-    "scoreCompressThreshold": 0.30
+    "scoreCompressThreshold": 0.30,
+
+    "compaction": {
+      "enabled": true,
+      "watermarks": { "light": 0.65, "main": 0.80, "high": 0.90, "overflow": 0.95 },
+      "minHeadroomTokens": 18000,
+      "minSavedRatio": 0.10,
+      "tailProtectFloorTokens": 0,
+      "toolOutputTokenLimit": 8000,
+      "cacheAware": true,
+      "maxConsecutiveLowGain": 2,
+      "profiles": {
+        "simple":  { "triggerRatio": 0.55, "tailProtect": 0.15, "cacheSensitivity": "low",    "promoteRelevant": false },
+        "medium":  { "triggerRatio": 0.70, "tailProtect": 0.20, "cacheSensitivity": "medium", "promoteRelevant": false },
+        "complex": { "triggerRatio": 0.82, "tailProtect": 0.30, "cacheSensitivity": "high",   "promoteRelevant": true  }
+      },
+      "cost": { "cachePrefillToLoadRatio": 50, "summaryCallTokens": 2000, "overflowFailureTokens": 20000 }
+    },
+
+    "relevance": {
+      "maxKeepRatio": 0.85,
+      "minKeepTokens": 8000,
+      "weights": {
+        "simple":         { "semantic": 0.50, "structural": 0.10, "temporal": 0.30, "citation": 0.05, "subtask": 0.05 },
+        "complex":        { "semantic": 0.35, "structural": 0.25, "temporal": 0.15, "citation": 0.15, "subtask": 0.10 },
+        "cacheSensitive": { "semantic": 0.35, "structural": 0.30, "temporal": 0.15, "citation": 0.10, "subtask": 0.10 }
+      }
+    }
   },
   "efficiency": {
     "invalidLoopRepeatRatio": 0.85,

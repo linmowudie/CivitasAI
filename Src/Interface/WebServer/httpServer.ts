@@ -8,14 +8,24 @@
  * - API 路由委托给 `handleRequest()`（保留旧纯函数实现供测试）
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { resolve, join, extname } from 'node:path';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { resolve, join, extname } from "node:path";
+import { readFileSync, existsSync, statSync } from "node:fs";
 
-import type { HttpMethod } from '../RestApi/router.js';
+import type { HttpMethod } from "../RestApi/router.js";
 
-import { handleRequest } from './webServer.js';
-import { applyApiRateLimit } from './apiRateLimiter.js';
+import { handleRequest } from "./webServer.js";
+import { applyApiRateLimit } from "./apiRateLimiter.js";
+import {
+  handleTokenBootstrap,
+  isApiAuthorized,
+  rejectUnauthorizedRequest,
+} from "./apiToken.js";
+import { logger } from "../../Infra/Logging/logger.js";
 
 // ── 配置 ────────────────────────────────────────────────────────────
 
@@ -30,16 +40,16 @@ export interface HttpServerConfig {
 // ── MIME 映射 ───────────────────────────────────────────────────────
 
 const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 // ── 内部状态 ────────────────────────────────────────────────────────
@@ -50,34 +60,61 @@ let server: ReturnType<typeof createServer> | null = null;
 
 export function startHttpServer(config: HttpServerConfig): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const staticDir = config.staticDir ?? resolve('Client/dist');
+    const staticDir = config.staticDir ?? resolve("Client/dist");
 
     server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
       // CORS
-      const origin = req.headers.origin ?? '';
+      const origin = req.headers.origin ?? "";
       if (config.corsOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader(
+          "Access-Control-Allow-Methods",
+          "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+        );
         // FE-041：允许治理身份验真头（G-09 方案 B 依赖 Authorization / X-Account-Token）
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Account-Token');
-        res.setHeader('Access-Control-Max-Age', '86400');
+        // P0-2：控制面凭据头同样要允许携带，否则跨源浏览器端点直接 401
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, X-Account-Token, X-Civitas-Api-Token",
+        );
+        res.setHeader("Access-Control-Max-Age", "86400");
       }
 
       // 预检
-      if (req.method === 'OPTIONS') {
+      if (req.method === "OPTIONS") {
         res.writeHead(204);
         res.end();
         return;
       }
 
-      const url = req.url ?? '/';
-      const [pathPart] = url.split('?');
-      const path = pathPart ?? '/';
+      const url = req.url ?? "/";
+      const [pathPart] = url.split("?");
+      const path = pathPart ?? "/";
 
-      // API 路由（/api/*）——先过限流中间件
-      if (path.startsWith('/api/')) {
+      // API 路由（/api/*）——先过限流中间件，再过统一凭据门（REV-133）
+      if (handleTokenBootstrap(req, res)) return;
+      if (path.startsWith("/api/")) {
         if (applyApiRateLimit(req, res)) return; // 429 已写入
+        if (!isApiAuthorized(normalizeRequestHeaders(req.headers))) {
+          rejectUnauthorizedRequest(req, res);
+          return;
+        }
         await handleApiRequest(req, res);
+        return;
+      }
+
+      // 源码映射不得对外可读（REV-291）——必须在静态与 SPA 回退**之前**拦：
+      // 若放它落到回退，响应会变成「200 + index.html」，攻击者仍拿不到源码，
+      // 但日志里一片 200，事后无法判断这是被拒的请求。返回与普通未知路径同形的 404，
+      // 不暴露"这是被策略拒绝而非不存在"。
+      if (isSourceMapPath(path)) {
+        logger.warn("源码映射请求被拒绝", {
+          source: "httpServer",
+          path,
+          peer: req.socket.remoteAddress ?? "unknown",
+        });
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: `Not Found: ${path}` }));
         return;
       }
 
@@ -85,9 +122,9 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
       if (tryServeStatic(path, staticDir, res)) return;
 
       // SPA fallback：非 API、非静态文件 → index.html
-      if (tryServeStatic('/index.html', staticDir, res)) return;
+      if (tryServeStatic("/index.html", staticDir, res)) return;
 
-      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: `Not Found: ${path}` }));
     });
 
@@ -95,7 +132,7 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
     // 原实现在 listen() 之后立刻 resolve，于是 EADDRINUSE（端口被另一个实例占用）
     // 被当成"启动成功"——启动日志照打 "HTTP 服务器启动"，实际请求却打到旧进程，
     // 表现为"改了代码没生效"。错误必须从这里显式抛出。
-    server.once('error', (e) => {
+    server.once("error", (e) => {
       server = null;
       reject(e);
     });
@@ -108,21 +145,30 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
 
 export function stopHttpServer(): Promise<void> {
   return new Promise((resolve) => {
-    if (!server) { resolve(); return; }
-    server.close(() => { server = null; resolve(); });
+    if (!server) {
+      resolve();
+      return;
+    }
+    server.close(() => {
+      server = null;
+      resolve();
+    });
   });
 }
 
 // ── API 请求处理 ────────────────────────────────────────────────────
 
-async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleApiRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   // 读取 body
-  let body = '';
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
+  let body = "";
+  if (req.method !== "GET" && req.method !== "HEAD") {
     body = await new Promise<string>((resolve) => {
       const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
-      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     });
   }
 
@@ -131,24 +177,24 @@ async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Prom
     try {
       parsedBody = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
       return;
     }
   }
 
-  const fullUrl = req.url ?? '/';
+  const fullUrl = req.url ?? "/";
   // FE-041：透传请求头 —— 此前 headers 在构造点被丢弃，
   // 导致 approvalApi 的 `extractBearerToken(req.headers)` 恒为 null（方案 B 死代码）。
   const apiResponse = await handleRequest({
-    method: (req.method ?? 'GET') as HttpMethod,
+    method: (req.method ?? "GET") as HttpMethod,
     url: fullUrl,
     body: parsedBody,
     headers: normalizeRequestHeaders(req.headers),
   });
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json; charset=utf-8',
+    "Content-Type": "application/json; charset=utf-8",
     ...(apiResponse.headers ?? {}),
   };
 
@@ -164,19 +210,28 @@ async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Prom
  * 数组值（重复头）以 `, ` 连接（与 HTTP 语义一致，RFC 9110 §5.2）。
  */
 function normalizeRequestHeaders(
-  headers: IncomingMessage['headers'],
+  headers: IncomingMessage["headers"],
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (value === undefined) continue;
-    out[key] = Array.isArray(value) ? value.join(', ') : value;
+    out[key] = Array.isArray(value) ? value.join(", ") : value;
   }
   return out;
 }
 
 // ── 静态文件服务 ────────────────────────────────────────────────────
 
-function tryServeStatic(urlPath: string, rootDir: string, res: ServerResponse): boolean {
+/** 是否源码映射请求（入参须是已剥离 query 的路径） */
+function isSourceMapPath(pathname: string): boolean {
+  return /\.map$/i.test(pathname);
+}
+
+function tryServeStatic(
+  urlPath: string,
+  rootDir: string,
+  res: ServerResponse,
+): boolean {
   const filePath = join(rootDir, urlPath);
 
   // 安全检查：防止路径穿越
@@ -186,19 +241,19 @@ function tryServeStatic(urlPath: string, rootDir: string, res: ServerResponse): 
 
   const stat = statSync(filePath);
   if (stat.isDirectory()) {
-    const indexPath = join(filePath, 'index.html');
+    const indexPath = join(filePath, "index.html");
     if (existsSync(indexPath)) {
-      return tryServeStatic(join(urlPath, 'index.html'), rootDir, res);
+      return tryServeStatic(join(urlPath, "index.html"), rootDir, res);
     }
     return false;
   }
 
   const ext = extname(filePath);
-  const contentType = MIME[ext] ?? 'application/octet-stream';
+  const contentType = MIME[ext] ?? "application/octet-stream";
 
   try {
     const content = readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, { "Content-Type": contentType });
     res.end(content);
     return true;
   } catch {

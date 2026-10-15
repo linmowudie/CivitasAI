@@ -48,6 +48,7 @@
     ],
     "fallbackOrder": ["huawei-maas"],
     "timeoutMs": 60000,
+    "internalTimeoutMs": 180000,
     "firstByteTimeoutMs": 10000,
     "interChunkTimeoutMs": 15000
   },

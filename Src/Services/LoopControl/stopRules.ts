@@ -6,8 +6,8 @@
  * 成功判定必须放在所有失败判定之后。
  */
 
-import type { LoopState, VerifierSpec } from './loopState.js';
-import type { StoppedReason } from './types.js';
+import type { LoopState, VerifierSpec } from "./loopState.js";
+import type { StoppedReason } from "./types.js";
 
 // ── StopRuleSet（Docs/Agent/11 §2.1）─────────────────────────────────────
 
@@ -28,15 +28,15 @@ export interface StopBudget {
 }
 
 export interface StopNoProgress {
-  metric: 'failed_tests' | 'validation_score' | 'goal_distance' | 'custom';
+  metric: "failed_tests" | "validation_score" | "goal_distance" | "custom";
   stagnationWindow: number;
   minDelta: number;
-  action: 'switch_strategy' | 'escalate_human' | 'abort';
+  action: "switch_strategy" | "escalate_human" | "abort";
 }
 
 export interface RiskTrigger {
   condition: string;
-  action: 'pause_and_request_approval' | 'abort' | 'rollback_and_abort';
+  action: "pause_and_request_approval" | "abort" | "rollback_and_abort";
 }
 
 export interface StopRuleSet {
@@ -69,7 +69,11 @@ export interface LoopRuntimeSnapshot {
 // ── 判定优先级（Docs/Agent/11 §2.2）───────────────────────────────────────
 
 const EVALUATION_ORDER: StoppedReason[] = [
-  'risk', 'limits', 'budget_hard', 'no_progress', 'success',
+  "risk",
+  "limits",
+  "budget_hard",
+  "no_progress",
+  "success",
 ];
 
 /**
@@ -100,7 +104,7 @@ export function evaluateStopRules(
 
   // ① 成功退出（必须在所有失败判定之后）
   if (snapshot.verifierPassed) {
-    return { shouldStop: true, reason: 'success', detail: 'Verifier 通过' };
+    return { shouldStop: true, reason: "success", detail: "Verifier 通过" };
   }
 
   return { shouldStop: false };
@@ -108,7 +112,10 @@ export function evaluateStopRules(
 
 // ── 各子检查 ────────────────────────────────────────────────────────
 
-function checkRisk(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
+function checkRisk(
+  rules: StopRuleSet,
+  snapshot: LoopRuntimeSnapshot,
+): StopDecision | null {
   if (snapshot.riskSignals.length === 0) {
     return null;
   }
@@ -120,7 +127,10 @@ function checkRisk(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecis
     let abortTrigger: string | null = null;
     for (const trigger of rules.riskTriggers) {
       if (!evaluateRiskCondition(trigger.condition, snapshot)) continue;
-      if (trigger.action === 'abort' || trigger.action === 'rollback_and_abort') {
+      if (
+        trigger.action === "abort" ||
+        trigger.action === "rollback_and_abort"
+      ) {
         abortTrigger = trigger.condition;
         break;
       }
@@ -130,7 +140,7 @@ function checkRisk(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecis
     if (abortTrigger !== null) {
       return {
         shouldStop: true,
-        reason: 'risk',
+        reason: "risk",
         detail: `风险触发器命中: ${abortTrigger}`,
       };
     }
@@ -143,16 +153,19 @@ function checkRisk(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecis
 
   return {
     shouldStop: true,
-    reason: 'risk',
-    detail: `风险信号: ${snapshot.riskSignals.join(', ')}`,
+    reason: "risk",
+    detail: `风险信号: ${snapshot.riskSignals.join(", ")}`,
   };
 }
 
-function checkLimits(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
+function checkLimits(
+  rules: StopRuleSet,
+  snapshot: LoopRuntimeSnapshot,
+): StopDecision | null {
   if (snapshot.iteration >= rules.limits.maxIterations) {
     return {
       shouldStop: true,
-      reason: 'limits',
+      reason: "limits",
       detail: `达到最大迭代数 ${rules.limits.maxIterations}`,
     };
   }
@@ -160,46 +173,55 @@ function checkLimits(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDec
   if (elapsed >= rules.limits.maxWallClockMs) {
     return {
       shouldStop: true,
-      reason: 'limits',
+      reason: "limits",
       detail: `达到最大墙钟时间 ${rules.limits.maxWallClockMs}ms`,
     };
   }
   if (snapshot.toolCallCount >= rules.limits.maxToolCalls) {
     return {
       shouldStop: true,
-      reason: 'limits',
+      reason: "limits",
       detail: `达到最大工具调用数 ${rules.limits.maxToolCalls}`,
     };
   }
   if (snapshot.consecutiveErrors >= rules.limits.maxConsecutiveErrors) {
     return {
       shouldStop: true,
-      reason: 'limits',
+      reason: "limits",
       detail: `连续错误数 ${snapshot.consecutiveErrors} >= ${rules.limits.maxConsecutiveErrors}`,
     };
   }
   return null;
 }
 
-function checkHardBudget(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
+function checkHardBudget(
+  rules: StopRuleSet,
+  snapshot: LoopRuntimeSnapshot,
+): StopDecision | null {
   if (snapshot.budgetUsed.tokens >= rules.budget.hardTokens) {
     return {
       shouldStop: true,
-      reason: 'budget_hard',
+      reason: "budget_hard",
       detail: `Token 硬预算耗尽 (${snapshot.budgetUsed.tokens}/${rules.budget.hardTokens})`,
     };
   }
-  if (rules.budget.hardUsd !== undefined && snapshot.budgetUsed.usd >= rules.budget.hardUsd) {
+  if (
+    rules.budget.hardUsd !== undefined &&
+    snapshot.budgetUsed.usd >= rules.budget.hardUsd
+  ) {
     return {
       shouldStop: true,
-      reason: 'budget_hard',
+      reason: "budget_hard",
       detail: `USD 硬预算耗尽 (${snapshot.budgetUsed.usd}/${rules.budget.hardUsd})`,
     };
   }
   return null;
 }
 
-function checkNoProgress(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): StopDecision | null {
+function checkNoProgress(
+  rules: StopRuleSet,
+  snapshot: LoopRuntimeSnapshot,
+): StopDecision | null {
   const { recentMetrics } = snapshot;
   if (recentMetrics.length < rules.noProgress.stagnationWindow) return null;
 
@@ -207,12 +229,13 @@ function checkNoProgress(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): Sto
   const first = window[0];
   const last = window[window.length - 1];
   if (first === undefined || last === undefined) return null;
-  const delta = first === 0 ? (last > 0 ? 1.0 : 0.0) : (last - first) / Math.abs(first);
+  const delta =
+    first === 0 ? (last > 0 ? 1.0 : 0.0) : (last - first) / Math.abs(first);
 
   if (delta < rules.noProgress.minDelta) {
     return {
       shouldStop: true,
-      reason: 'no_progress',
+      reason: "no_progress",
       detail: `连续 ${rules.noProgress.stagnationWindow} 轮无进展 (delta=${delta.toFixed(4)} < ${rules.noProgress.minDelta})`,
     };
   }
@@ -221,17 +244,18 @@ function checkNoProgress(rules: StopRuleSet, snapshot: LoopRuntimeSnapshot): Sto
 
 // ── 预算阶段检测（软预算 / 预热 / 扩展审批）────────────────────────
 
-export type BudgetPhase = 'warm' | 'soft' | 'expand_request' | 'hard' | 'normal';
+export type BudgetPhase =
+  "warm" | "soft" | "expand_request" | "hard" | "normal";
 
 export function detectBudgetPhase(
   rules: StopRuleSet,
   tokensUsed: number,
 ): BudgetPhase {
-  if (tokensUsed >= rules.budget.hardTokens) return 'hard';
-  if (tokensUsed >= rules.budget.expandRequestTokens) return 'expand_request';
-  if (tokensUsed >= rules.budget.softTokens) return 'soft';
-  if (tokensUsed >= rules.budget.warmTokens) return 'warm';
-  return 'normal';
+  if (tokensUsed >= rules.budget.hardTokens) return "hard";
+  if (tokensUsed >= rules.budget.expandRequestTokens) return "expand_request";
+  if (tokensUsed >= rules.budget.softTokens) return "soft";
+  if (tokensUsed >= rules.budget.warmTokens) return "warm";
+  return "normal";
 }
 
 // ── 风险条件简单解析器（DSL 仅支持 == + 字符串枚举）────────────────
@@ -241,14 +265,17 @@ export function detectBudgetPhase(
  *  - v1 可执行语法：`signal == "值"`（精确匹配 riskSignals 成员）；
  *  - 保留关键词包含匹配（历史兼容；完整 DSL 仍属后续）。
  */
-function evaluateRiskCondition(condition: string, snapshot: LoopRuntimeSnapshot): boolean {
+function evaluateRiskCondition(
+  condition: string,
+  snapshot: LoopRuntimeSnapshot,
+): boolean {
   const trimmed = condition.trim();
   const exact = /^signal\s*==\s*"([^"]+)"\s*$/.exec(trimmed);
   if (exact) {
     return snapshot.riskSignals.includes(exact[1]!);
   }
   const normalized = trimmed.toLowerCase();
-  return snapshot.riskSignals.some(s => normalized.includes(s.toLowerCase()));
+  return snapshot.riskSignals.some((s) => normalized.includes(s.toLowerCase()));
 }
 
 // ── 从配置构建 StopRuleSet ──────────────────────────────────────────
@@ -271,7 +298,9 @@ export function buildStopRuleSet(config: {
       softTokens: Math.floor(config.tokenBudget * config.softRatio),
       hardTokens: Math.floor(config.tokenBudget * config.hardRatio),
       warmTokens: Math.floor(config.tokenBudget * config.warmRatio),
-      expandRequestTokens: Math.floor(config.tokenBudget * config.expandRequestRatio),
+      expandRequestTokens: Math.floor(
+        config.tokenBudget * config.expandRequestRatio,
+      ),
     },
     noProgress: config.noProgress,
     riskTriggers: config.riskTriggers ?? [],
@@ -298,4 +327,12 @@ export function setActiveStopRuleSet(rules: StopRuleSet): void {
 /** 获取当前生效的 StopRuleSet（未设置则返回 null）。 */
 export function getActiveStopRuleSet(): StopRuleSet | null {
   return _activeStopRuleSet;
+}
+
+/**
+ * 清除全局 StopRuleSet（测试隔离用）。
+ * 生产不调用——启动侧 `main.ts` ⑮ 只在装配阶段设置一次。
+ */
+export function clearActiveStopRuleSet(): void {
+  _activeStopRuleSet = null;
 }

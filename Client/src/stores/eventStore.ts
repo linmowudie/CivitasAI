@@ -7,7 +7,8 @@
  * 职责单一：仅负责事件缓冲 + 容量控制。
  * 事件分发到各业务 store 的逻辑仍在 useEventBus 中。
  */
-import { create } from 'zustand';
+import { create } from "zustand";
+import { uiNumber } from "@/config/uiSettings";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
@@ -28,8 +29,12 @@ interface EventState {
 
 // ── 容量控制 ────────────────────────────────────────────────────────
 
-const MAX_EVENTS = 1000;
-const TRIM_TO = 500; // 超限时保留最新 N 条
+/**
+ * `ui.maxEventBufferSize` = 超限时保留的条数（设置面板可调，丢最旧、不阻断）。
+ * 裁剪只在长度超过 2 倍时才发生一次，避免每次推入都切片——与接线前的
+ * `MAX_EVENTS=1000 / TRIM_TO=500` 同语义（出厂默认 500 ⇒ 触发点仍是 1000）。
+ */
+const MAX_EVENTS_FALLBACK = 500;
 
 // ── Store 实现 ──────────────────────────────────────────────────────
 
@@ -38,11 +43,10 @@ export const useEventStore = create<EventState>((set) => ({
 
   pushEvent: (msg) =>
     set((state) => {
+      const keep = uiNumber("maxEventBufferSize", MAX_EVENTS_FALLBACK);
       const next = [...state.events, msg];
-      if (next.length > MAX_EVENTS) {
-        return { events: next.slice(-TRIM_TO) };
-      }
-      return { events: next };
+      if (next.length <= keep * 2) return { events: next };
+      return { events: next.slice(next.length - keep) };
     }),
 
   clearEvents: () => set({ events: [] }),
