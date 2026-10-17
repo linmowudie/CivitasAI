@@ -9,12 +9,12 @@
   },
   "agentRole": "worker",
   "loop": { "maxIterations": 4, "tokenBudget": 100000, "timeoutMs": 60000, "stream": false },
-  "tools": [{ "name": "bench.read", "behavior": "ok" }],
+  "tools": [{ "name": "BenchRead", "behavior": "ok" }],
   "model": {
     "script": [
       {
         "kind": "tool_calls",
-        "calls": [{ "name": "bench.read", "arguments": { "path": "src/notes.txt" } }]
+        "calls": [{ "name": "BenchRead", "arguments": { "path": "src/notes.txt" } }]
       },
       {
         "kind": "text",
@@ -26,7 +26,7 @@
   "expect": {
     "exitReason": "success",
     "maxIterations": 3,
-    "mustCallTools": ["bench.read"],
+    "mustCallTools": ["BenchRead"],
     "minToolResults": 1
   }
 }

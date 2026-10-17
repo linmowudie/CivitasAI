@@ -1,0 +1,58 @@
+{
+  "id": "scn-design-probes-subagent",
+  "title": "设计契约探针·子 Agent / 单 Agent：派生深度 / 工具权限 / 提交门 / checkpoint 续跑",
+  "tags": [
+    "design-contract",
+    "real-call"
+  ],
+  "matrixCells": [
+    "SUB-SEC-DEPTH",
+    "SUB-SEC-TOOLPERM",
+    "AGENT-ENV-SUBMITGATE",
+    "AG-BEN-RESUME"
+  ],
+  "task": {
+    "description": "按设计文档声明的接口与 oracle 做真实调用验证（不读 Src 实现；接口缺失/不符即红）",
+    "goal": "让每个设计点在实验里都有可运行的证据"
+  },
+  "agentRole": "worker",
+  "assertProbes": [
+    "SUB-SEC-DEPTH",
+    "SUB-SEC-TOOLPERM",
+    "AGENT-ENV-SUBMITGATE",
+    "AG-BEN-RESUME"
+  ],
+  "loop": {
+    "maxIterations": 1,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "BenchEcho",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "设计契约探针场景：无需工具调用。"
+      }
+    ],
+    "defaultReply": "设计契约探针场景：无需工具调用。"
+  },
+  "expect": {
+    "exitReasonOneOf": [
+      "success",
+      "max_iterations"
+    ],
+    "assertProbesMustPass": [
+      "SUB-SEC-DEPTH",
+      "SUB-SEC-TOOLPERM",
+      "AGENT-ENV-SUBMITGATE",
+      "AG-BEN-RESUME"
+    ]
+  }
+}

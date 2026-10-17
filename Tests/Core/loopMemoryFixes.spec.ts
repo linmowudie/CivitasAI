@@ -338,7 +338,7 @@ function toolCtx(sessionId: string, agentId: string): MiddlewareContext {
   };
 }
 
-const TOOL_INPUT = { toolName: "file.write", arguments: {}, toolCallId: "c1" };
+const TOOL_INPUT = { toolName: "FileWrite", arguments: {}, toolCallId: "c1" };
 
 describe("E9 · P1-6/P2-12 限流回路作用域", () => {
   it("会话 A 跑满窗口 → 会话 B 不受影响（修复前共享全局计数器）", async () => {

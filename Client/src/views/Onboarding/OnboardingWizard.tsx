@@ -10,7 +10,7 @@
  * - 不用营销文案，直接展示"东西存在哪、能不能跑"。
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ShieldCheck, FolderOpen, Rocket, Eye, KeyRound, Cpu, BookOpen, CheckCircle2,
   AlertTriangle, Loader2, ArrowLeft, ArrowRight, X,
@@ -298,7 +298,17 @@ function CredentialsStep() {
     probeModel, setProbeModel,
     availability, verifying, verifyProgress, verifiedAt,
     verifyAvailability, cancelVerify, selectOnlyAvailable, clearSelection,
+    addManualModels,
   } = useOnboardingStore();
+  /** 端点不提供 /models 时，用户手填的模型名 */
+  const [manualModel, setManualModel] = useState('');
+
+  const addManual = () => {
+    const name = manualModel.trim();
+    if (!name) return;
+    addManualModels([name]);
+    setManualModel('');
+  };
 
   /** 可用性徽标：未检测只显示序号，检测后给结论 */
   const badgeFor = (id: string): { text: string; cls: string } => {
@@ -375,7 +385,10 @@ function CredentialsStep() {
               : probe.listStatus === 401 || probe.listStatus === 403
                 ? <span className={styles.tagWarn}>模型列表：鉴权失败（HTTP {probe.listStatus}）</span>
                 : probe.listNotProvided
-                  ? <span className={styles.tagWarn}>模型列表 —（该端点确实不提供）</span>
+                  ? <span className={styles.tagWarn}>
+                      模型列表 —（该端点确实不提供）
+                      {probe.modelsFromFallback ? ` · 已用内置候选 ${probe.models.length} 个` : ''}
+                    </span>
                   : <span className={styles.tagWarn}>模型列表：未取得（HTTP {probe.listStatus ?? '—'}）</span>}
             {probe.chatOk
               ? <span className={styles.tagOk}>对话 ✓ {probe.chatModelUsed ? `${probe.chatModelUsed} · ` : ''}{probe.latencyMs}ms{probe.chatAttempts && probe.chatAttempts > 1 ? `（重试 ${probe.chatAttempts} 次）` : ''}</span>
@@ -398,6 +411,43 @@ function CredentialsStep() {
               已自动清理 Key：{probe.keySanitized.join('、')}（粘贴带入的字符会导致 401，请确认清理后仍是你自己的 Key）。
             </div>
           ) : null}
+
+          {/*
+            端点不提供 /models（404/405，实测华为云 MaaS Token Plan 的 /plan/v2 就是如此）
+            → 列表天然为空，必须给用户手填模型名的入口，否则模型勾选区永远不出现，
+            「下一步」被 `canProceed` 挡住，整个引导无法完成。
+          */}
+          {probe.listNotProvided && (
+            <div className={styles.warnBox}>
+              该端点不提供模型列表（GET /models 返回 {probe.listStatus ?? 404}）——
+              这不代表 Key 有问题：请**手动填写要接入的模型名**，再逐个校验可用性。
+              {probe.modelsFromFallback
+                ? `已按该供应商的内置候选填入 ${probe.models.length} 个（不是端点返回的列表，请核对）。`
+                : ''}
+            </div>
+          )}
+
+          {probe.listNotProvided && (
+            <div className={styles.field}>
+              <span>手动添加模型名</span>
+              <div className={styles.row}>
+                <input
+                  className={styles.input}
+                  value={manualModel}
+                  aria-label="手动添加模型名"
+                  placeholder="例如：DeepSeek-V4-Flash"
+                  onChange={(e) => setManualModel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManual(); } }}
+                />
+                <button className={styles.ghostBtn} disabled={!manualModel.trim()} onClick={addManual}>
+                  添加
+                </button>
+              </div>
+              <span className={styles.fieldHint}>
+                加入后会出现在下方列表里，仍需点「校验可用性」逐个确认（模型名拼错会显示为不可用并附供应商原话）。
+              </span>
+            </div>
+          )}
 
           {probe.models.length > 0 && (
             <>
@@ -429,7 +479,13 @@ function CredentialsStep() {
               </div>
 
               <div className={styles.hint}>
-                <b>列表可见 ≠ 当前可用</b>：`/models` 会列出账号可见但未开通/无权限的模型。
+                {probe.modelsFromFallback
+                  ? <>
+                      <b>这些是内置/手填候选，不是端点返回的列表</b>：模型名可能不适用于你的账号或已下线。
+                    </>
+                  : <>
+                      <b>列表可见 ≠ 当前可用</b>：`/models` 会列出账号可见但未开通/无权限的模型。
+                    </>}
                 导入前请点"校验可用性"逐个确认（每个发一次最小请求），再勾选要导入的模型——
                 <b>只会导入你勾选的</b>。
               </div>

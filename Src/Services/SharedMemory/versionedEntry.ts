@@ -5,31 +5,32 @@
  * GlobalWorkspace 条目携带版本号 + 因果令牌 + 冲突策略。
  */
 
-import type { AssertionLevel } from '../EventBus/eventTypes.js';
+import type { AssertionLevel } from "../EventBus/eventTypes.js";
 
 // ── WorkspaceEntry（Docs/Agent/07 §3.1 + §8.2）───────────────────────────
 
-export type ContentType = 'fact' | 'decision' | 'verdict' | 'contract' | 'status';
-export type EntryStatus = 'active' | 'superseded' | 'discarded';
-export type ConflictStrategy = 'lww' | 'authority' | 'arbitrate';
+export type ContentType =
+  "fact" | "decision" | "verdict" | "contract" | "status";
+export type EntryStatus = "active" | "superseded" | "discarded";
+export type ConflictStrategy = "lww" | "authority" | "arbitrate";
 
 export interface WorkspaceEntry {
   entryId: string;
   traceId: string;
   agentId: string;
   taskId?: string;
-  key: string;                          // 写入键（乐观锁粒度）
+  key: string; // 写入键（乐观锁粒度）
 
   // 内容
   content: string;
   contentType: ContentType;
-  assertion: AssertionLevel;            // Docs/Agent/07 §8.4
+  assertion: AssertionLevel; // Docs/Agent/07 §8.4
 
   // 元数据
   metadata: {
     timestamp: number;
     sourceAgentId: string;
-    taskAuthority: number;              // 0.0–1.0
+    taskAuthority: number; // 0.0–1.0
     evidenceChain?: string[];
     /** A2A 驱动的写入：来源消息 ID（RM7 双向可追溯，message.memoryRefs ↔ entry.metadata.sourceMessageId） */
     sourceMessageId?: string;
@@ -39,7 +40,7 @@ export interface WorkspaceEntry {
   version: number;
   lastModifiedBy: string;
   conflictStrategy: ConflictStrategy;
-  causalTokens: string[];              // 因果一致性向量
+  causalTokens: string[]; // 因果一致性向量
 
   // 状态
   status: EntryStatus;
@@ -77,4 +78,11 @@ export interface WorkspaceQuery {
   status?: EntryStatus;
   assertion?: AssertionLevel;
   limit?: number;
+  /**
+   * 读取方 Agent（MEMN-SEC-READAUTH，设计 §3.8）。
+   *
+   * 提供时执行**agent 级鉴权**：只能读回自己署名的条目（同属主下不可读回他人条目）。
+   * 不提供时保持旧行为（管理面/治理面批量视图）。
+   */
+  requesterAgentId?: string;
 }

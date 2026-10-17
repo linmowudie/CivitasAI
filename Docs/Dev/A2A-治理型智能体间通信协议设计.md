@@ -114,7 +114,7 @@ interface AgentPermission {
   "health": { "consecutiveFailures": 0, "lastActiveAt": 1791250000000 },
   "ability": {
     "skills": ["code-edit", "test-run", "refactor"],
-    "tools": ["file.read", "file.grep", "file.edit", "dir.list", "shell.exec"],
+    "tools": ["FileRead", "FileGrep", "FileEdit", "DirList", "ShellExec"],
     "models": ["huawei-maas/deepseek-v3"],
     "languages": ["zh-CN", "en"],
     "maxParallel": 2

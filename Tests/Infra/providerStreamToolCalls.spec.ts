@@ -8,9 +8,9 @@
  *
  * 本测试直接喂一段 SSE，断言 `tool_call_delta` 被逐段透传。
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { OpenAIProvider } from '../../Src/Infra/Llm/Provider/openaiProvider.js';
-import type { StreamChunk } from '../../Src/Infra/Llm/Provider/providerBase.js';
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { OpenAIProvider } from "../../Src/Infra/Llm/Provider/openaiProvider.js";
+import type { StreamChunk } from "../../Src/Infra/Llm/Provider/providerBase.js";
 
 /** 构造一个 SSE 响应体（ReadableStream of Uint8Array） */
 function sseResponse(lines: string[]): Response {
@@ -26,7 +26,10 @@ function sseResponse(lines: string[]): Response {
       controller.enqueue(chunks[i++]!);
     },
   });
-  return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
 }
 
 function sse(obj: unknown): string {
@@ -40,47 +43,60 @@ function toolDelta(tc: Record<string, unknown>): string {
 
 /** 最小可注册的 provider 配置（models 必须带 context_window，否则构造期拒注） */
 const TEST_CONFIG = {
-  provider: 'openai-compatible-test',
-  base_url: 'http://127.0.0.1:1/v1',
+  provider: "openai-compatible-test",
+  base_url: "http://127.0.0.1:1/v1",
   // 密钥引用只支持 env: 形式（literal: 会在取密钥阶段直接失败，fetch 根本不会发生）
-  api_key_ref: 'env:TEST_PROVIDER_KEY',
-  display_name: '测试',
-  models: [{
-    id: 'test-model',
-    context_window: 32_000,
-    max_output: 4096,
-    supports_vision: false,
-    supports_tools: true,
-    cost_per_1k_input: 0,
-    cost_per_1k_output: 0,
-  }],
+  api_key_ref: "env:TEST_PROVIDER_KEY",
+  display_name: "测试",
+  models: [
+    {
+      id: "test-model",
+      context_window: 32_000,
+      max_output: 4096,
+      supports_vision: false,
+      supports_tools: true,
+      cost_per_1k_input: 0,
+      cost_per_1k_output: 0,
+    },
+  ],
 } as never;
 
-process.env.TEST_PROVIDER_KEY = 'test-key';
+process.env.TEST_PROVIDER_KEY = "test-key";
 
-describe('OpenAIProvider 流式工具调用增量（回归）', () => {
+describe("OpenAIProvider 流式工具调用增量（回归）", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('★ tool_calls 增量被透传为 chunk.tool_call_delta（此前被丢弃）', async () => {
+  it("★ tool_calls 增量被透传为 chunk.tool_call_delta（此前被丢弃）", async () => {
     const events = [
       // 第一个增量：给出 id + 函数名（无参数）
-      toolDelta({ index: 0, id: 'call_abc', type: 'function', function: { name: 'file.write' } }),
+      toolDelta({
+        index: 0,
+        id: "call_abc",
+        type: "function",
+        function: { name: "FileWrite" },
+      }),
       // 后续增量：参数分片
       toolDelta({ index: 0, function: { arguments: '{"path":"d.txt",' } }),
       toolDelta({ index: 0, function: { arguments: '"content":"hi"}' } }),
       // 文本增量（同一响应里也可能先出文本）
-      sse({ choices: [{ delta: { content: '正在写入' } }] }),
-      'data: [DONE]\n\n',
+      sse({ choices: [{ delta: { content: "正在写入" } }] }),
+      "data: [DONE]\n\n",
     ];
-    vi.stubGlobal('fetch', vi.fn(async () => sseResponse(events)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse(events)),
+    );
 
     const provider = new OpenAIProvider(TEST_CONFIG);
 
     const chunks: StreamChunk[] = [];
     const result = await provider.chatStream(
-      { model: 'test-model', messages: [{ role: 'user', content: '写文件' }] } as never,
+      {
+        model: "test-model",
+        messages: [{ role: "user", content: "写文件" }],
+      } as never,
       (c: StreamChunk) => chunks.push(c),
     );
 
@@ -93,42 +109,65 @@ describe('OpenAIProvider 流式工具调用增量（回归）', () => {
     // ② 首个增量要带 id 与函数名 → 前端据此立刻建出"生成中"的工具行
     const first = deltas[0]!.tool_call_delta![0]!;
     expect(first.index).toBe(0);
-    expect(first.id).toBe('call_abc');
-    expect(first.name).toBe('file.write');
+    expect(first.id).toBe("call_abc");
+    expect(first.name).toBe("FileWrite");
 
     // ③ 参数分片也要透传（保证前端能显示"准备写入…"而不仅仅是空行）
     const argFragments = deltas
       .flatMap((c) => c.tool_call_delta ?? [])
-      .map((d) => d.argumentsDelta ?? '')
-      .join('');
+      .map((d) => d.argumentsDelta ?? "")
+      .join("");
     expect(argFragments).toBe('{"path":"d.txt","content":"hi"}');
 
     // ④ 文本增量不受影响
-    expect(chunks.some((c) => c.delta === '正在写入')).toBe(true);
+    expect(chunks.some((c) => c.delta === "正在写入")).toBe(true);
 
     // ⑤ 最终累积结果仍然完整（不因透传而破坏原有解析）
     if (result.ok) {
-      const toolCalls = (result.value as unknown as { tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> }).tool_calls;
-      expect(toolCalls?.[0]?.id).toBe('call_abc');
-      expect(toolCalls?.[0]?.function.name).toBe('file.write');
-      expect(toolCalls?.[0]?.function.arguments).toBe('{"path":"d.txt","content":"hi"}');
+      const toolCalls = (
+        result.value as unknown as {
+          tool_calls?: Array<{
+            id: string;
+            function: { name: string; arguments: string };
+          }>;
+        }
+      ).tool_calls;
+      expect(toolCalls?.[0]?.id).toBe("call_abc");
+      expect(toolCalls?.[0]?.function.name).toBe("FileWrite");
+      expect(toolCalls?.[0]?.function.arguments).toBe(
+        '{"path":"d.txt","content":"hi"}',
+      );
     }
   });
 
-  it('纯工具调用增量（无文本）也必须触发回调（此前被 if (delta || reasoning) 拦掉）', async () => {
+  it("纯工具调用增量（无文本）也必须触发回调（此前被 if (delta || reasoning) 拦掉）", async () => {
     const events = [
-      toolDelta({ index: 0, id: 'call_x', type: 'function', function: { name: 'todo.write' } }),
-      'data: [DONE]\n\n',
+      toolDelta({
+        index: 0,
+        id: "call_x",
+        type: "function",
+        function: { name: "TodoWrite" },
+      }),
+      "data: [DONE]\n\n",
     ];
-    vi.stubGlobal('fetch', vi.fn(async () => sseResponse(events)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse(events)),
+    );
 
     const provider = new OpenAIProvider(TEST_CONFIG);
 
     const chunks: StreamChunk[] = [];
-    await provider.chatStream({ model: 'test-model', messages: [{ role: 'user', content: 'x' }] } as never, (c) => chunks.push(c));
+    await provider.chatStream(
+      {
+        model: "test-model",
+        messages: [{ role: "user", content: "x" }],
+      } as never,
+      (c) => chunks.push(c),
+    );
 
     expect(chunks.length).toBeGreaterThan(0);
-    expect(chunks[0]!.delta).toBe('');
-    expect(chunks[0]!.tool_call_delta?.[0]?.name).toBe('todo.write');
+    expect(chunks[0]!.delta).toBe("");
+    expect(chunks[0]!.tool_call_delta?.[0]?.name).toBe("TodoWrite");
   });
 });

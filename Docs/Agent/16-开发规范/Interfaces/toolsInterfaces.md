@@ -15,7 +15,7 @@
 | `Src/Tools/Builtin/Plan/todoWriter.ts` → 头部 import（`todoWriter` 定义之前） | `../../../Services/Planning/todoStore.js`（`replaceTodos` / `listTodosForAgent` / `MAX_TODOS_PER_AGENT` / `TodoStatus`） | 同规则 **1 error**（**2026-10-03 校准新增**：差别清单 T-12 仅记 agentRecruiter，此处为第二处破口） |
 
 - 现状合计 **2 个文件 / 3 处越层 import**；`npx eslint Src/Tools` 实测 `✖ 20 problems (3 errors, 17 warnings)`，error 级为 **CI 阻断项**。
-- 【需人工裁定】T-12 待办（三选一，未裁决）：①把 `agent.recruit` 类工具上移到 Services/Core 侧；②经 `Src/Core/index.ts` 门面 + 依赖注入解耦（`todo.write` 同理，把 todoStore 读写交回调用方注入）；③调整门禁 zone 承认“工具直连业务模块”并同步改写本文档的依赖方向声明。
+- 【需人工裁定】T-12 待办（三选一，未裁决）：①把 `AgentRecruit` 类工具上移到 Services/Core 侧；②经 `Src/Core/index.ts` 门面 + 依赖注入解耦（`TodoWrite` 同理，把 todoStore 读写交回调用方注入）；③调整门禁 zone 承认“工具直连业务模块”并同步改写本文档的依赖方向声明。
 
 > **✅ 已裁决并修复（2026-10-04，FE-064~072 批次收口）**：采纳**方案②（依赖注入解耦）**——新增 `Src/Tools/Registry/toolServicePorts.ts`（Tools 层端口接口 + `configure/get/reset`），组合根 `Src/main.ts` ⑫.6 启动时注入真实实现（`toolResultCache`/`dispatchHook`/`todoStore`/`memoryRetrieverFactory`/`recruitment`/`review`）；未注入时增强项（缓存/Hook）静默跳过、工具项如实 `NOT_ENABLED`（不伪造成功）。门禁 zone 红线**未放宽**：`npx eslint Src/` 实测 **0 errors**（218 warnings）。上述两个文件（`agentRecruiter.ts`/`todoWriter.ts`）及 `submitForReview.ts`/`vectorSearch.ts`/`toolDispatcher.ts` 均已改为经端口访问上层能力；`Infra/Db/Repositories/*` 对 `Services/AccountScope` 的直连也随属主上下文下移 `Src/Infra/AccountScope/activeAccount.ts` 一并消除（详见缺陷清单第四批分层修正段）。
 - 入站消费面（**下行方向，合规**，2026-10-03 校准登记）：`Services/LoopControl/middleware/toolSafetyGate.ts` 用 `getTool`；`Interface/RestApi/toolsApi.ts` 用 `getAllToolSpecs`；`Core/Loop/runIteration.ts` 用 `dispatchToolCall` + `buildToolHeader`；`Src/main.ts` 用 `setToolHeaderConfig`。
@@ -53,7 +53,7 @@
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `dispatchToolCall` | `({ toolName, arguments, context, iteration? }) → Promise<DispatchOutcome>` | 所有工具调用的实际入口（`runIteration` 与元工具 `tool.execute` 均走此处） |
+| `dispatchToolCall` | `({ toolName, arguments, context, iteration? }) → Promise<DispatchOutcome>` | 所有工具调用的实际入口（`runIteration` 与元工具 `ToolExecute` 均走此处） |
 | `DispatchOutcome` | `{ result: ToolResult; text: string; durationMs: number; errorClass?: string }` | `errorClass` ∈ `DISPATCH_REJECTED`（`TOOL_NOT_FOUND`/`ROLE_FORBIDDEN`/`INVALID_INPUT`）\| `TOOL_TIMEOUT` \| `EXECUTION_ERROR`；成功为 `undefined` |
 | `normalizeToolContent` | `(content: unknown) → string` | `null`/`undefined` → `''`；字符串原样；对象 → `JSON.stringify`（异常退化 `String()`） |
 
@@ -66,11 +66,11 @@
 | 符号 | 签名 | 说明 |
 |---|---|---|
 | `buildToolHeader` | `(role: UserRole, options?: ToolHeaderOptions) → ToolSpec[]` | 只含热工具 + 元工具、按名称排序、按 `requiredRoles` 过滤；超出 `maxHeaderTools` 时截断（元工具恒保留） |
-| `listDiscoverableSpecs` | `(role: UserRole, options?) → ToolSpec[]` | 头部之外、该角色可探索（需经 `tool.search` 发现）的工具集 |
-| `searchToolSpecs` | `(query: string, role: UserRole, limit = 5) → Array<{ name; description; dangerLevel; parameters; inHeader }>` | 名称/描述/类别子串检索，空查询返回前 N 个；`tool.search` 的实现底座 |
+| `listDiscoverableSpecs` | `(role: UserRole, options?) → ToolSpec[]` | 头部之外、该角色可探索（需经 `ToolSearch` 发现）的工具集 |
+| `searchToolSpecs` | `(query: string, role: UserRole, limit = 5) → Array<{ name; description; dangerLevel; parameters; inHeader }>` | 名称/描述/类别子串检索，空查询返回前 N 个；`ToolSearch` 的实现底座 |
 | `setToolHeaderConfig` | `(cfg: { hotTools?; maxHeaderTools? }) → void` | 启动期注入（`Src/main.ts` 调用，源 `Configs/tools.json → tools.hot` / `tools.maxHeaderTools = 12`）；**会话运行中禁止调用**（否则头部抖动） |
 | `resetToolHeaderConfig` | `() → void` | 测试/诊断：清除注入配置，回退默认 |
-| `DEFAULT_HOT_TOOLS` / `META_TOOLS` | `readonly string[]` | 热工具 10 项；元工具恒为 `['tool.search', 'tool.execute']` |
+| `DEFAULT_HOT_TOOLS` / `META_TOOLS` | `readonly string[]` | 热工具 10 项；元工具恒为 `['ToolSearch', 'ToolExecute']` |
 
 > ⚠️ 同样未进门面导出桶（`main.ts` / `toolSearcher.ts` 走深路径 import）。
 
@@ -144,7 +144,7 @@
 | `agentId` | `string` | 调用者 Agent |
 | `agentRole` | `UserRole` | 参与 `requiredRoles` 硬校验 |
 | `loopId?` | `string` | EffectJournal 归属 |
-| `sessionId?` | `string` | 会话归属（`todo.write` 据此落库；会话未绑定为 `undefined`） |
+| `sessionId?` | `string` | 会话归属（`TodoWrite` 据此落库；会话未绑定为 `undefined`） |
 | `traceId?` | `string` | trace_id |
 | `workDir?` | `string` | 任务工作目录，路径型工具据此收敛（缺省退化为全局 `pathGuard`；配套守卫在 `Infra/Security/workspaceGuard`） |
 | `signal?` | `AbortSignal` | ⚠️ **未实现/目标态**：`executeTool` 未将其透传给 `execute`，中止目前仅靠 `timeoutMs` 竞速 |
@@ -177,28 +177,35 @@
 
 > **2026-09-22 校准**：§1"缺字段拒注"的实际执行者为 `Traits/specValidator.ts`。
 >
-> **2026-10-03 校准（T-11）**：工具实现位于 `Builtin/`（`Read` / `Write` / `Execute` / `System` / `Plan` / `Search` 六个子目录 + 共享模板 `_shared.ts`）与 `Custom/`，由 `Src/Tools/builtinLoader.ts` 的 `BUILTIN_TOOLS` 聚合、`registerBuiltinTools()` 经 `registerTools` 批量注册（启动 ⑫ 步调用）。聚合数量为 **14 个 `ToolDefinition`**（差别清单记 12，此后代码新增 `todoWriter` 等已追平并越过该数字）。⚠️ `builtinLoader.ts` 中 `// Custom (stub)` 注释对 `agentRecruiter` 已过期（该工具已实装落库），代码侧注释漂移可另提 issue。
+> **2026-10-03 校准（T-11）**：工具实现位于 `Builtin/`（`Read` / `Write` / `Execute` / `System` / `Plan` / `Search` 六个子目录 + 共享模板 `_shared.ts`）与 `Custom/`，由 `Src/Tools/builtinLoader.ts` 的 `BUILTIN_TOOLS` 聚合、`registerBuiltinTools()` 经 `registerTools` 批量注册（启动 ⑫ 步调用）。当时聚合数量为 **14 个 `ToolDefinition`**（差别清单记 12，此后代码新增 `todoWriter` 等已追平并越过该数字）。⚠️ `builtinLoader.ts` 中 `// Custom (stub)` 注释对 `agentRecruiter` 已过期（该工具已实装落库），代码侧注释漂移可另提 issue。
+>
+> **2026-10-15 校准**：`BUILTIN_TOOLS` 现为 **19 个**（下表）。本轮新增 `MemoryWrite`（此前漏记）与编排类 `OrchestratorCompose` / `OrchestratorSelect`，随后补齐兄弟账本链路的 `AgentSplit` / `AgentMerge`。四类工具与其余消费上层能力的工具同形：**只经 `Registry/toolServicePorts.ts` 的端口**取能力，由组合根注入；端口未注入时**如实返回 `NOT_ENABLED`**，不假成功。
 
-### 3.2 当前注册工具清单（14 个，2026-10-03 校准补录）
+### 3.2 当前注册工具清单（19 个，2026-10-15 校准）
 
 | 工具名 | 危险级 | 实现位置（文件 → 符号） | 实现状态 |
 |---|---|---|---|
-| `file.read` | SAFE | `Builtin/Read/fileReader.ts` → `fileReader` | 实装 |
-| `dir.list` | SAFE | `Builtin/Read/dirLister.ts` → `dirLister` | 实装 |
-| `file.grep` | SAFE | `Builtin/Read/grepTool.ts` → `grepTool` | 实装 |
-| `file.write` | CONTROLLED | `Builtin/Write/fileWriter.ts` → `fileWriter` | 实装 |
-| `file.edit` | CONTROLLED | `Builtin/Write/fileEditor.ts` → `fileEditor` | 实装 |
-| `shell.exec` | DANGEROUS | `Builtin/Execute/shellRunner.ts` → `shellRunner` | 实装（命令黑名单经 `Infra/Security/whitelist.isCommandForbidden`） |
-| `code.eval` | DANGEROUS | `Builtin/Execute/codeSandbox.ts` → `codeSandbox` | 实装 |
-| `tool.search` | SAFE | `Builtin/System/toolSearcher.ts` → `toolSearcher` | 实装（元工具，恒在头部；底座 `toolHeader.searchToolSpecs` / `listDiscoverableSpecs`） |
-| `tool.execute` | CONTROLLED | `Builtin/System/toolExecutor.ts` → `toolExecutor` | 实装；**拒绝 DANGEROUS / FORBIDDEN 借壳执行**（须出现在头部以便审批） |
-| `todo.write` | SAFE | `Builtin/Plan/todoWriter.ts` → `todoWriter` | 实装；⚠️ 越层 import Services（见 §0） |
-| `web.search` | SAFE | `Builtin/Search/webSearch.ts` → `webSearch` | ⚠️ 桩实现（返回占位结果，待 S9 接入真实搜索引擎） |
-| `vector.search` | SAFE | `Builtin/Search/vectorSearch.ts` → `vectorSearch` | ⚠️ 桩实现（待 S8 接入 Embedding + 向量存储） |
-| `agent.recruit` | DANGEROUS | `Custom/agentRecruiter.ts` → `agentRecruiter` | 实装（2026-10-03 接线：招募与约束落库；返回值 `dispatch: 'pending'` 为语义标注——编排调度链路已随 FE-050 于 2026-10-04 落地）；⚠️ 越层 import Services/Core（见 §0） |
-| `agent.submit_review` | CONTROLLED | `Custom/submitForReview.ts` → `submitForReview` | 实装（2026-10-04 FE-050：提交 → 独立 Reviewer → 规则审核 → `subtasks` 台账回写；requiredRoles 放宽为 `worker/partner/assembly_node`） |
+| `FileRead` | SAFE | `Builtin/Read/fileReader.ts` → `fileReader` | 实装 |
+| `DirList` | SAFE | `Builtin/Read/dirLister.ts` → `dirLister` | 实装 |
+| `FileGrep` | SAFE | `Builtin/Read/grepTool.ts` → `grepTool` | 实装 |
+| `FileWrite` | CONTROLLED | `Builtin/Write/fileWriter.ts` → `fileWriter` | 实装 |
+| `FileEdit` | CONTROLLED | `Builtin/Write/fileEditor.ts` → `fileEditor` | 实装 |
+| `ShellExec` | DANGEROUS | `Builtin/Execute/shellRunner.ts` → `shellRunner` | 实装（命令黑名单经 `Infra/Security/whitelist.isCommandForbidden`） |
+| `CodeEval` | DANGEROUS | `Builtin/Execute/codeSandbox.ts` → `codeSandbox` | 实装 |
+| `ToolSearch` | SAFE | `Builtin/System/toolSearcher.ts` → `toolSearcher` | 实装（元工具，恒在头部；底座 `toolHeader.searchToolSpecs` / `listDiscoverableSpecs`） |
+| `ToolExecute` | CONTROLLED | `Builtin/System/toolExecutor.ts` → `toolExecutor` | 实装；**拒绝 DANGEROUS / FORBIDDEN 借壳执行**（须出现在头部以便审批） |
+| `TodoWrite` | SAFE | `Builtin/Plan/todoWriter.ts` → `todoWriter` | 实装；⚠️ 越层 import Services（见 §0） |
+| `WebSearch` | SAFE | `Builtin/Search/webSearch.ts` → `webSearch` | ⚠️ 桩实现（返回占位结果，待 S9 接入真实搜索引擎） |
+| `VectorSearch` | SAFE | `Builtin/Search/vectorSearch.ts` → `vectorSearch` | ⚠️ 桩实现（待 S8 接入 Embedding + 向量存储） |
+| `AgentRecruit` | DANGEROUS | `Custom/agentRecruiter.ts` → `agentRecruiter` | 实装（2026-10-03 接线：招募与约束落库；返回值 `dispatch: 'pending'` 为语义标注——编排调度链路已随 FE-050 于 2026-10-04 落地）；⚠️ 越层 import Services/Core（见 §0） |
+| `AgentSubmitReview` | CONTROLLED | `Custom/submitForReview.ts` → `submitForReview` | 实装（2026-10-04 FE-050：提交 → 独立 Reviewer → 规则审核 → `subtasks` 台账回写；requiredRoles 放宽为 `worker/partner/assembly_node`） |
+| `MemoryWrite` | SAFE | `Builtin/Memory/memoryWrite.ts` → `memoryWrite` | 实装（2026-10-14 裁定 (a)：写实现由组合根接入 `toolServicePorts.memoryWrite` 端口；未注入 ⇒ `NOT_ENABLED`） |
+| `OrchestratorCompose` | DANGEROUS | `Custom/orchestratorCompose.ts` → `orchestratorCompose` | 实装（2026-10-15，C6 的工具身份）：仅 `prime_director`；只做入参形状校验 + 白名单搬运，**合法性判定全在检查树（C7）**，拒绝时带回"判据 + 定位"。端口实现 `Core/Orchestration/orchestrationToolPort.ts`；生产侧 `orchestration` 端口**尚未注入** ⇒ 如实 `NOT_ENABLED`（装配归 composition root） |
+| `OrchestratorSelect` | CONTROLLED | `Custom/orchestratorSelect.ts` → `orchestratorSelect` | 实装（同上）：提名**必须 ∈ 当前组装体**，否则拒绝并区分"在目录未组装（先 compose）/ 未注册（悬空）"；提名一次性、不改结构不落盘 |
+| `AgentSplit` | DANGEROUS | `Custom/agentSplit.ts` → `agentSplit` | 实装（2026-10-15，兄弟账本链路）：召唤 **1 个同级 L1**（`inputSchema` 无批量入口 ⇒ "每次 1 个"由形状层挡住），产出的对端登记进**域账本**、**不进下级账本**（端口依赖里没有 `ChildRegistry`，构造上不可见）；`requiredRoles: prime_director/partner`。端口实现 `Core/Orchestration/splitMergeToolPort.ts`；2026-10-16 起经 `toolServicePorts.splitMergeFor(agentId)` **按身份**取该 L1 私有的端口（解析件 `Core/Orchestration/l1HostRegistry.ts`），身份未登记为宿主 ⇒ 如实 `NOT_ENABLED` |
+| `AgentMerge` | CONTROLLED | `Custom/agentMerge.ts` → `agentMerge` | 实装（同上）：**只向监管提交合并请求**，成功返回恒带 `merged: false` —— 改域结构的唯一入口是 `DomainLedger.resolveMerge`（监管裁决侧）；`evidence` 必填（工具与账本**两侧各有独立负向测试**）；同一对不得有两条未裁决请求 |
 
-> 头部冻结集为上述 14 个中的 10 个（`DEFAULT_HOT_TOOLS`，可被 `Configs/tools.json → tools.hot` 覆盖）：`file.read`、`file.write`、`file.edit`、`dir.list`、`file.grep`、`shell.exec`、`todo.write`、`web.search`、`tool.search`、`tool.execute`；其余 4 个（`code.eval`、`vector.search`、`agent.recruit`、`agent.submit_review`）需经 `tool.search` 探索后以工具结果形式追加到消息尾部。
+> 头部冻结集为上述 19 个中的 10 个（`DEFAULT_HOT_TOOLS`，可被 `Configs/tools.json → tools.hot` 覆盖）：`FileRead`、`FileWrite`、`FileEdit`、`DirList`、`FileGrep`、`ShellExec`、`TodoWrite`、`WebSearch`、`ToolSearch`、`ToolExecute`；其余 9 个（`CodeEval`、`VectorSearch`、`MemoryWrite`、`AgentRecruit`、`AgentSubmitReview`、`OrchestratorCompose`、`OrchestratorSelect`、`AgentSplit`、`AgentMerge`）需经 `ToolSearch` 探索后以工具结果形式追加到消息尾部。**编排/兄弟链路的四个工具（compose/select/split/merge）都不进头部** —— 头部是每轮常驻的提示词成本，它们是按需发现的动作。
 
 ---
 
@@ -208,3 +215,6 @@
 |------|------|
 | 2026-09-22 | 文档-代码对账校准：ToolSpec 必填字段表补全至 11 项（含 idempotencyKeyFields 条件必填、FORBIDDEN 拒注规则）；ToolResult 补录 effects/artifacts；§3 Factory 三函数签名更正并补 `getVisibleToolsForRole`；补录 specValidator/Builtin/Custom/builtinLoader |
 | 2026-10-03 | 依 `Docs/Dev/Agent-16-开发规范接口契约-差别清单.md` Tools 层条目 T-01～T-12 逐条复核后回写：必填口径 11→**12 项 + 1 项条件必填**（T-01）；绝对行号全部改为"文件 + 函数/符号名"定位（T-02）；删除"结构递归校验"误述并新增"校验细则"（T-03，附 `validateInput` 与两条文件头声明未落地 ⚠️）；补 `rateLimitPerAgent?` 并把 `inputSchema`/`outputSchema` 改 `JsonSchema`、`requiredRoles` 改 `UserRole[]`、`dangerLevel` 补 Infra 出处（T-04/T-06）；ToolResult 行号改符号并按声明序重排，新增 ToolExecutionContext 字段表（T-05）；§1 Registry 补录 5 个门面导出 + `executeTool` 四条分支与错误码，新增 `toolDispatcher` / `toolHeader` 两节（T-07）；`getToolsByDangerLevel` 同名双源登记为【需人工裁定】+ 待办（T-08）；Factory 补 `getVisibleToolNames`、更正 `runIteration` 消费者已迁出的现状（T-09/T-10）；装载链更正为 14 个 `ToolDefinition` 并新增"当前注册工具清单"含实现状态列（T-11）；文首新增 §0"依赖方向现状与待办"，登记 **2 文件 / 3 处越层 import**（较清单新增 `todoWriter`）并为【需人工裁定】项（T-12）。复查通过、未改动项：`sandboxMode` 枚举双点、Factory 三行签名、ToolResult 字段名/类型、Registry 原 5 函数签名 |
+| 2026-10-15 | 装载链数字复核并回写：`BUILTIN_TOOLS` 实测 **17 个**（2026-10-03 记的 14 漏了 `MemoryWrite`，其后新增两个编排工具）；§3.2 补 `MemoryWrite` 并新增 `OrchestratorCompose`（DANGEROUS，仅 `prime_director`，C6 的工具身份）/ `OrchestratorSelect`（CONTROLLED，提名必须 ∈ 当前组装体）两行，二者均经 `toolServicePorts.orchestration` 端口取能力、未注入即 `NOT_ENABLED`；头部/可探索划分同步为 10 + 7 |
+| 2026-10-15（兄弟账本链路） | `BUILTIN_TOOLS` 增至 **19 个**：新增 `AgentSplit`（DANGEROUS，**入参无批量入口** ⇒ 每次 1 个同级 L1）与 `AgentMerge`（CONTROLLED，只提交请求、成功返回恒 `merged: false`），二者经 `toolServicePorts.splitMerge` 取能力、未注入即 `NOT_ENABLED`；头部/可探索划分同步为 **10 + 9**（四个编排/兄弟工具均不进头部）。取证：`Tests/Tools/agentSplitMerge.spec` 27 条 + `Tests/Core/ledgers.spec` 32 条 + 变异 **15 项全杀**；`Tools+Core` 全量 44 文件 / 576 条通过。设计缺口登记见 `Docs/Dev/L1编排设计/28-设计实现覆盖清点.md` §6.1（兄弟数量无上限 / 根被并入后账本作废） |
+| 2026-10-16（端口按身份解析） | 端口容器字段 `splitMerge?: SplitMergePort` **改为** `splitMergeFor?: (agentId: string) => SplitMergePort \| undefined` —— 域账本属于**每个 L1 实例**，而端口容器是进程级单例，共享注入会让两个 L1 写进同一本账。`agentSplit` / `agentMerge` 两侧改取 `splitMergeFor?.(context.agentId)`，解析不到即 `NOT_ENABLED`（文案带 agentId）。新增解析件 `Core/Orchestration/l1HostRegistry.ts`：登记期拒「空 agentId」「同一身份双宿主」「`rootId ≠ agentId`」，恢复 `reopen` 整批校验后整批落位（不做半恢复），端口**每次现取不缓存**（宿主 close/reopen 后不交陈旧账本）。取证：`Tests/Core/l1HostRegistry.spec` **12** 条 + `agentSplitMerge.spec` 增至 **31** 条（新增"双宿主各写各域 / 未登记身份 / B 的请求只进 B 的域"）+ 变异 **10 项全杀**（M10 首轮**存活**，因 merge 侧的身份绑定没被取证 → 补上述用例后 killed）；`Tools+Core` 全量 **45 文件 / 592 条**通过、`tsc --noEmit` 干净。⚠️ `orchestration` 端口**仍是共享单例**，同族缺陷登记为设计缺口 **D4**，本批未动 |

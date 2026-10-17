@@ -10,7 +10,7 @@
   "agentRole": "worker",
   "clockSkewProbe": { "rewindMs": 60000 },
   "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
-  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
       { "kind": "text", "content": "任务完成。" }

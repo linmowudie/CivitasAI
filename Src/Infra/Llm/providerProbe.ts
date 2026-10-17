@@ -34,7 +34,7 @@ export interface DiscoveredModel {
 // 本函数只负责校验，不做导入。
 
 /** 单个模型的可用性结论 */
-export type ModelAvailability = 'available' | 'unavailable' | 'unknown';
+export type ModelAvailability = "available" | "unavailable" | "unknown";
 
 export interface ModelVerification {
   id: string;
@@ -57,14 +57,31 @@ export interface VerifyModelsInput {
 
 export interface VerifyModelsResult {
   results: ModelVerification[];
-  summary: { total: number; available: number; unavailable: number; unknown: number };
+  summary: {
+    total: number;
+    available: number;
+    unavailable: number;
+    unknown: number;
+  };
 }
 
 /** 明确表示"这个模型不可用"的错误特征（模型不存在 / 未开通 / 无权限） */
 const MODEL_UNAVAILABLE_PATTERNS = [
-  'model_not_found', 'model not exist', 'model not found', 'no such model',
-  'does not exist', 'not supported', 'unsupported', 'invalid model',
-  'permission', 'not authorized', 'access denied', 'not enabled', '未开通', '无权限', '模型不存在',
+  "model_not_found",
+  "model not exist",
+  "model not found",
+  "no such model",
+  "does not exist",
+  "not supported",
+  "unsupported",
+  "invalid model",
+  "permission",
+  "not authorized",
+  "access denied",
+  "not enabled",
+  "未开通",
+  "无权限",
+  "模型不存在",
 ];
 
 /**
@@ -76,79 +93,128 @@ const MODEL_UNAVAILABLE_PATTERNS = [
  * - 限流/超时/网络/5xx/鉴权失败 → `unknown`（**不能**判定为"这个模型不可用"，
  *   否则一次限流就会把好模型全标死；鉴权失败时整批都会 unknown，由上层提示先修 Key）。
  */
-export async function verifyModels(input: VerifyModelsInput): Promise<VerifyModelsResult> {
+export async function verifyModels(
+  input: VerifyModelsInput,
+): Promise<VerifyModelsResult> {
   const baseUrl = normalizeBaseUrl(input.base_url);
-  const { key: apiKey } = normalizeApiKey(input.api_key ?? '');
-  const ids = [...new Set((input.models ?? []).filter((id) => typeof id === 'string' && id.length > 0))];
+  const { key: apiKey } = normalizeApiKey(input.api_key ?? "");
+  const ids = [
+    ...new Set(
+      (input.models ?? []).filter(
+        (id) => typeof id === "string" && id.length > 0,
+      ),
+    ),
+  ];
   const concurrency = Math.min(Math.max(input.concurrency ?? 4, 1), 8);
   const timeoutMs = input.timeoutMs ?? 15_000;
 
   const results: ModelVerification[] = [];
-  const classify = (id: string, status: number, body: string): ModelVerification => {
+  const classify = (
+    id: string,
+    status: number,
+    body: string,
+  ): ModelVerification => {
     const providerMessage = extractProviderMessage(body);
-    const haystack = `${providerMessage ?? ''} ${body}`.toLowerCase();
-    const definitive = MODEL_UNAVAILABLE_PATTERNS.some((p) => haystack.includes(p.toLowerCase()));
+    const haystack = `${providerMessage ?? ""} ${body}`.toLowerCase();
+    const definitive = MODEL_UNAVAILABLE_PATTERNS.some((p) =>
+      haystack.includes(p.toLowerCase()),
+    );
 
     if (status === 401 || status === 403) {
       // 鉴权问题与"模型不可用"是两回事：整批不可判
-      return { id, status: 'unknown', errorKind: 'auth', providerMessage };
+      return { id, status: "unknown", errorKind: "auth", providerMessage };
     }
     if (status === 429) {
-      return { id, status: 'unknown', errorKind: 'http', providerMessage: providerMessage ?? '触发供应商限流（429）' };
+      return {
+        id,
+        status: "unknown",
+        errorKind: "http",
+        providerMessage: providerMessage ?? "触发供应商限流（429）",
+      };
     }
     if (status >= 500) {
-      return { id, status: 'unknown', errorKind: 'http', providerMessage };
+      return { id, status: "unknown", errorKind: "http", providerMessage };
     }
     if ((status === 400 || status === 404 || status === 405) && definitive) {
-      return { id, status: 'unavailable', errorKind: 'http', providerMessage };
+      return { id, status: "unavailable", errorKind: "http", providerMessage };
     }
     if (status === 400 || status === 404) {
       // 400/404 但错误文案看不出"模型不存在"：仍按不可用处理，但保留原话供核对
-      return { id, status: 'unavailable', errorKind: 'http', providerMessage };
+      return { id, status: "unavailable", errorKind: "http", providerMessage };
     }
-    return { id, status: 'unknown', errorKind: 'http', providerMessage };
+    return { id, status: "unknown", errorKind: "http", providerMessage };
   };
 
   if (!baseUrl || !apiKey || ids.length === 0) {
     for (const id of ids) {
-      results.push({ id, status: 'unknown', errorKind: 'invalid_input' });
+      results.push({ id, status: "unknown", errorKind: "invalid_input" });
     }
-    const summary = { total: ids.length, available: 0, unavailable: 0, unknown: ids.length };
+    const summary = {
+      total: ids.length,
+      available: 0,
+      unavailable: 0,
+      unknown: ids.length,
+    };
     return { results, summary };
   }
 
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, ids.length) }, async () => {
-    while (true) {
-      const index = cursor++;
-      if (index >= ids.length) return;
-      const id = ids[index]!;
-      const startedAt = Date.now();
-      try {
-        const call = await fetchWithTimeout(
-          `${baseUrl}/chat/completions`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: id, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false }),
-          },
-          timeoutMs,
-        );
-        if (!call.ok) {
-          results.push({ id, status: 'unknown', errorKind: call.kind, providerMessage: call.message });
-          continue;
+  const workers = Array.from(
+    { length: Math.min(concurrency, ids.length) },
+    async () => {
+      while (true) {
+        const index = cursor++;
+        if (index >= ids.length) return;
+        const id = ids[index]!;
+        const startedAt = Date.now();
+        try {
+          const call = await fetchWithTimeout(
+            `${baseUrl}/chat/completions`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: id,
+                messages: [{ role: "user", content: "ping" }],
+                max_tokens: 1,
+                stream: false,
+              }),
+            },
+            timeoutMs,
+          );
+          if (!call.ok) {
+            results.push({
+              id,
+              status: "unknown",
+              errorKind: call.kind,
+              providerMessage: call.message,
+            });
+            continue;
+          }
+          if (call.response.ok) {
+            results.push({
+              id,
+              status: "available",
+              latencyMs: Date.now() - startedAt,
+            });
+            continue;
+          }
+          const body = await call.response.text().catch(() => "");
+          results.push(classify(id, call.response.status, body));
+        } catch (e) {
+          results.push({
+            id,
+            status: "unknown",
+            errorKind: "unknown",
+            providerMessage: e instanceof Error ? e.message : String(e),
+          });
         }
-        if (call.response.ok) {
-          results.push({ id, status: 'available', latencyMs: Date.now() - startedAt });
-          continue;
-        }
-        const body = await call.response.text().catch(() => '');
-        results.push(classify(id, call.response.status, body));
-      } catch (e) {
-        results.push({ id, status: 'unknown', errorKind: 'unknown', providerMessage: e instanceof Error ? e.message : String(e) });
       }
-    }
-  });
+    },
+  );
   await Promise.all(workers);
 
   // 保持与入参一致的顺序（并发完成顺序不定，UI 要稳定）
@@ -157,14 +223,15 @@ export async function verifyModels(input: VerifyModelsInput): Promise<VerifyMode
 
   const summary = {
     total: results.length,
-    available: results.filter((r) => r.status === 'available').length,
-    unavailable: results.filter((r) => r.status === 'unavailable').length,
-    unknown: results.filter((r) => r.status === 'unknown').length,
+    available: results.filter((r) => r.status === "available").length,
+    unavailable: results.filter((r) => r.status === "unavailable").length,
+    unknown: results.filter((r) => r.status === "unknown").length,
   };
   return { results, summary };
 }
 
-export type ProbeErrorKind = 'auth' | 'http' | 'network' | 'timeout' | 'invalid_input' | 'unknown';
+export type ProbeErrorKind =
+  "auth" | "http" | "network" | "timeout" | "invalid_input" | "unknown";
 
 export interface ProbeInput {
   base_url: string;
@@ -175,6 +242,20 @@ export interface ProbeInput {
   timeoutMs?: number;
   /** 是否执行第 2 步对话探测（默认 true；只校验 Key 时可关掉） */
   chatProbe?: boolean;
+  /**
+   * `/models` 不可用（404/405）时的**候选模型**（厂商内置已知模型 / 用户手填）。
+   *
+   * 背景（2026-10-17）：华为云 MaaS Token Plan 的 base_url 是
+   * `https://api.modelarts-maas.com/plan/v2`，该端点**不提供** `GET /models`
+   * （实测 404 `APIG.0101: The API does not exist or has not been published`）。
+   * 此时列表为空、没有候选，第 2 步对话探测根本发不出去，整条引导/设置流程
+   * 卡死在"拉不到模型列表"——而该 Key 与端点其实是好的（同端点
+   * `POST /chat/completions` 实测 200）。
+   *
+   * 给了候选就能继续探测；结果里 `modelsFromFallback=true` 如实标注
+   * "这些不是端点返回的列表"，界面据此提示用户逐个校验后再导入。
+   */
+  fallbackModels?: string[];
 }
 
 export interface ProbeResult {
@@ -215,6 +296,11 @@ export interface ProbeResult {
   chatCandidates?: string[];
   /** 对话探测实际发起次数（>1 表示自动换模型重试过） */
   chatAttempts?: number;
+  /**
+   * `models` 来自 `fallbackModels`（端点不提供 /models / 列表为空）而非端点响应。
+   * 界面必须据此说明"这是内置/手填候选，不是账号可见列表"，并引导逐个校验。
+   */
+  modelsFromFallback?: boolean;
 }
 
 /** 发现模型时的占位规格（真实规格由用户在引导页确认或后续编辑） */
@@ -231,7 +317,7 @@ export function defaultModelSpec(id: string): DiscoveredModel {
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
-  return (baseUrl ?? '').trim().replace(/\/+$/, '');
+  return (baseUrl ?? "").trim().replace(/\/+$/, "");
 }
 
 /**
@@ -245,26 +331,29 @@ function normalizeBaseUrl(baseUrl: string): string {
  *
  * 返回清理后的 Key 与"改了什么"的说明，由引导页如实展示——不静默改动用户数据。
  */
-export function normalizeApiKey(raw: string): { key: string; changes: string[] } {
+export function normalizeApiKey(raw: string): {
+  key: string;
+  changes: string[];
+} {
   const changes: string[] = [];
-  let key = raw ?? '';
+  let key = raw ?? "";
 
   const before = key;
   key = key
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')      // 零宽字符
-    .replace(/[\u00A0\u3000]/g, ' ')            // 不间断/全角空格 → 普通空格
-    .replace(/[\r\n\t]+/g, '')                  // 换行/制表（粘贴多行时）
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // 零宽字符
+    .replace(/[\u00A0\u3000]/g, " ") // 不间断/全角空格 → 普通空格
+    .replace(/[\r\n\t]+/g, "") // 换行/制表（粘贴多行时）
     .trim();
-  if (key !== before) changes.push('去除首尾空白或不可见字符');
+  if (key !== before) changes.push("去除首尾空白或不可见字符");
 
   const quoted = key.match(/^(['"`])([\s\S]*)\1$/);
   if (quoted) {
     key = quoted[2]!.trim();
-    changes.push('去除外层引号');
+    changes.push("去除外层引号");
   }
 
   if (/^Bearer\s+/i.test(key)) {
-    key = key.replace(/^Bearer\s+/i, '').trim();
+    key = key.replace(/^Bearer\s+/i, "").trim();
     changes.push('去除 "Bearer " 前缀');
   }
 
@@ -273,15 +362,42 @@ export function normalizeApiKey(raw: string): { key: string; changes: string[] }
 
 /** 明确不是"对话"用途的模型特征（DashScope 等端点会把它们和对话模型混在一个 /models 列表里） */
 const NON_CHAT_HINTS = [
-  'embedding', 'embed', 'rerank', 'tts', 'asr', 'audio', 'speech',
-  'image', 'wanx', 'stable-diffusion', 'ocr', 'moderation', 'dall',
-  'vision-ocr', 'voice', 'realtime',
+  "embedding",
+  "embed",
+  "rerank",
+  "tts",
+  "asr",
+  "audio",
+  "speech",
+  "image",
+  "wanx",
+  "stable-diffusion",
+  "ocr",
+  "moderation",
+  "dall",
+  "vision-ocr",
+  "voice",
+  "realtime",
 ];
 
 /** 常见对话模型前缀（优先尝试，避免拿列表里第一个非对话模型去探测） */
 const CHAT_PREFIX_HINTS = [
-  'qwen', 'gpt', 'claude', 'deepseek', 'glm', 'ernie', 'moonshot',
-  'abab', 'gemini', 'llama', 'mistral', 'yi-', 'hunyuan', 'spark', 'doubao', 'minimax',
+  "qwen",
+  "gpt",
+  "claude",
+  "deepseek",
+  "glm",
+  "ernie",
+  "moonshot",
+  "abab",
+  "gemini",
+  "llama",
+  "mistral",
+  "yi-",
+  "hunyuan",
+  "spark",
+  "doubao",
+  "minimax",
 ];
 
 /**
@@ -294,7 +410,9 @@ const CHAT_PREFIX_HINTS = [
  * 策略：排除明显的非对话模型 → 优先常见对话前缀 → 最多取 5 个作为重试候选。
  */
 export function pickChatCandidates(models: DiscoveredModel[]): string[] {
-  const ids = models.map((m) => m.id).filter((id) => typeof id === 'string' && id.length > 0);
+  const ids = models
+    .map((m) => m.id)
+    .filter((id) => typeof id === "string" && id.length > 0);
   const isChatLike = (id: string): boolean => {
     const lower = id.toLowerCase();
     return !NON_CHAT_HINTS.some((hint) => lower.includes(hint));
@@ -303,7 +421,9 @@ export function pickChatCandidates(models: DiscoveredModel[]): string[] {
   const chatLike = ids.filter(isChatLike);
   const preferred = chatLike.filter((id) => {
     const lower = id.toLowerCase();
-    return CHAT_PREFIX_HINTS.some((p) => lower.startsWith(p) || lower.includes(`/${p}`));
+    return CHAT_PREFIX_HINTS.some(
+      (p) => lower.startsWith(p) || lower.includes(`/${p}`),
+    );
   });
   const rest = chatLike.filter((id) => !preferred.includes(id));
 
@@ -313,8 +433,28 @@ export function pickChatCandidates(models: DiscoveredModel[]): string[] {
   return finalList.slice(0, 5);
 }
 
-/** 从供应商的错误响应体里提取可读信息（如 `invalid_api_key`、余额不足等） */export function extractProviderMessage(text: string): string | undefined {
-  const trimmed = (text ?? '').trim();
+/**
+ * 归一化调用方给出的候选模型名（`fallbackModels`）。
+ *
+ * 与 `pickChatCandidates` 的区别：**不做对话/非对话过滤**——这批名字是调用方
+ * （厂商内置清单或用户手填）明确指定的，过滤反而会默默丢掉用户想用的模型。
+ * 只做去空白、去重与数量上限（5，与候选重试上限一致，避免把探测变成压测）。
+ */
+function dedupeModelIds(ids: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of ids ?? []) {
+    const id = typeof raw === "string" ? raw.trim() : "";
+    if (!id || out.includes(id)) continue;
+    out.push(id);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+/** 从供应商的错误响应体里提取可读信息（如 `invalid_api_key`、余额不足等） */ export function extractProviderMessage(
+  text: string,
+): string | undefined {
+  const trimmed = (text ?? "").trim();
   if (!trimmed) return undefined;
   try {
     const body = JSON.parse(trimmed) as {
@@ -322,7 +462,7 @@ export function pickChatCandidates(models: DiscoveredModel[]): string[] {
       message?: string;
       code?: string;
     };
-    if (typeof body.error === 'string') return body.error.slice(0, 300);
+    if (typeof body.error === "string") return body.error.slice(0, 300);
     const message = body.error?.message ?? body.message;
     const code = body.error?.code ?? body.error?.type ?? body.code;
     if (message && code) return `${message}（${code}）`.slice(0, 300);
@@ -335,23 +475,23 @@ export function pickChatCandidates(models: DiscoveredModel[]): string[] {
 }
 
 function classifyHttpStatus(status: number): ProbeErrorKind {
-  return status === 401 || status === 403 ? 'auth' : 'http';
+  return status === 401 || status === 403 ? "auth" : "http";
 }
 
 function hintFor(kind: ProbeErrorKind | undefined, status?: number): string {
   switch (kind) {
-    case 'auth':
-      return 'API Key 无效或无权访问该端点：请确认 Key 是否正确、是否已开通对应模型。';
-    case 'http':
-      return `端点返回 HTTP ${status ?? ''}：请确认 Base URL 是否包含版本路径（如 /v1），以及模型是否可用。`;
-    case 'timeout':
-      return '请求超时：请检查网络/代理，或换一个更近的端点。';
-    case 'network':
-      return '网络不可达：请检查本机网络、代理设置或企业防火墙。';
-    case 'invalid_input':
-      return '请先填写 Base URL 与 API Key。';
+    case "auth":
+      return "API Key 无效或无权访问该端点：请确认 Key 是否正确、是否已开通对应模型。";
+    case "http":
+      return `端点返回 HTTP ${status ?? ""}：请确认 Base URL 是否包含版本路径（如 /v1），以及模型是否可用。`;
+    case "timeout":
+      return "请求超时：请检查网络/代理，或换一个更近的端点。";
+    case "network":
+      return "网络不可达：请检查本机网络、代理设置或企业防火墙。";
+    case "invalid_input":
+      return "请先填写 Base URL 与 API Key。";
     default:
-      return '未能确认连通性：请检查 Base URL、API Key 与所选模型。';
+      return "未能确认连通性：请检查 Base URL、API Key 与所选模型。";
   }
 }
 
@@ -359,17 +499,28 @@ async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<{ ok: true; response: Response } | { ok: false; kind: ProbeErrorKind; message: string }> {
+): Promise<
+  | { ok: true; response: Response }
+  | { ok: false; kind: ProbeErrorKind; message: string }
+> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     return { ok: true, response };
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      return { ok: false, kind: 'timeout', message: `请求超时（${timeoutMs}ms）` };
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return {
+        ok: false,
+        kind: "timeout",
+        message: `请求超时（${timeoutMs}ms）`,
+      };
     }
-    return { ok: false, kind: 'network', message: e instanceof Error ? e.message : String(e) };
+    return {
+      ok: false,
+      kind: "network",
+      message: e instanceof Error ? e.message : String(e),
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -380,12 +531,16 @@ async function fetchWithTimeout(
  *
  * 不抛异常：所有失败都映射为 `ok:false` + `errorKind` + `hint`，便于引导页直接渲染。
  */
-export async function probeProviderConnection(input: ProbeInput): Promise<ProbeResult> {
+export async function probeProviderConnection(
+  input: ProbeInput,
+): Promise<ProbeResult> {
   const baseUrl = normalizeBaseUrl(input.base_url);
-  const { key: apiKey, changes: keyChanges } = normalizeApiKey(input.api_key ?? '');
+  const { key: apiKey, changes: keyChanges } = normalizeApiKey(
+    input.api_key ?? "",
+  );
   const timeoutMs = input.timeoutMs ?? 12_000;
   const authHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
   };
 
@@ -401,9 +556,9 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
   };
 
   if (!baseUrl || !apiKey) {
-    result.error = '缺少 Base URL 或 API Key';
-    result.errorKind = 'invalid_input';
-    result.hint = hintFor('invalid_input');
+    result.error = "缺少 Base URL 或 API Key";
+    result.errorKind = "invalid_input";
+    result.hint = hintFor("invalid_input");
     return result;
   }
 
@@ -414,14 +569,19 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
   const badChars = apiKey.match(/[^\x20-\x7E]/g);
   if (badChars) {
     result.error = `API Key 含非 ASCII/控制字符（${badChars.length} 个，例如 U+${badChars[0]!.codePointAt(0)!.toString(16).toUpperCase()}）`;
-    result.errorKind = 'invalid_input';
-    result.hint = '请回到百炼/供应商控制台重新复制 Key（不要从聊天记录或截图中抄写），再粘贴测试。';
+    result.errorKind = "invalid_input";
+    result.hint =
+      "请回到百炼/供应商控制台重新复制 Key（不要从聊天记录或截图中抄写），再粘贴测试。";
     return result;
   }
 
   // ── 第 1 步：拉模型列表 ────────────────────────────────────────────
   result.listAttempted = true;
-  const listCall = await fetchWithTimeout(`${baseUrl}/models`, { method: 'GET', headers: authHeaders }, timeoutMs);
+  const listCall = await fetchWithTimeout(
+    `${baseUrl}/models`,
+    { method: "GET", headers: authHeaders },
+    timeoutMs,
+  );
   if (!listCall.ok) {
     result.error = listCall.message;
     result.errorKind = listCall.kind;
@@ -433,10 +593,12 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
   result.listStatus = listResponse.status;
   if (listResponse.ok) {
     try {
-      const body = (await listResponse.json()) as { data?: Array<{ id?: string }> };
+      const body = (await listResponse.json()) as {
+        data?: Array<{ id?: string }>;
+      };
       result.models = (body.data ?? [])
         .map((m) => m?.id)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
         .map((id) => defaultModelSpec(id));
       result.listOk = true;
     } catch {
@@ -446,48 +608,71 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
   } else if (listResponse.status === 401 || listResponse.status === 403) {
     // 关键：把供应商的原话带出来（invalid_api_key / 余额不足 / 未开通 …），
     // 用户才能自己判断是"Key 抄错"还是"账号问题"。
-    const body = await listResponse.text().catch(() => '');
+    const body = await listResponse.text().catch(() => "");
     result.providerMessage = extractProviderMessage(body);
     result.error = `鉴权失败（HTTP ${listResponse.status}）`;
-    result.errorKind = 'auth';
+    result.errorKind = "auth";
     // 供应商原话 + 可执行建议都给（原话用于自查，建议用于下一步动作）
     result.hint = result.providerMessage
-      ? `供应商原话：${result.providerMessage}；${hintFor('auth')}`
-      : hintFor('auth');
+      ? `供应商原话：${result.providerMessage}；${hintFor("auth")}`
+      : hintFor("auth");
     return result;
   } else if (listResponse.status === 404 || listResponse.status === 405) {
     // 端点明确不提供 /models：正常情况，继续对话探测
     result.listNotProvided = true;
   } else {
     // 其它状态码（5xx/429/400…）：记下原话但继续尝试对话探测
-    const body = await listResponse.text().catch(() => '');
+    const body = await listResponse.text().catch(() => "");
     result.providerMessage = extractProviderMessage(body);
   }
-
-  result.suggestedModel = input.model?.trim() || pickChatCandidates(result.models)[0] || result.models[0]?.id;
 
   // ── 第 2 步：最小对话探测（多候选模型，逐个尝试）────────────────────
   // 显式指定就用指定模型；否则从列表里**挑对话可用**的模型（排除 embedding/tts/asr/image…），
   // 失败自动换下一个候选——早期实现只试 models[0]，首位是 embedding 时会"Key 正确但对话失败"。
   const explicitModel = input.model?.trim();
-  const candidates = explicitModel ? [explicitModel] : pickChatCandidates(result.models);
+  let candidates = explicitModel
+    ? [explicitModel]
+    : pickChatCandidates(result.models);
+
+  if (candidates.length === 0 && !explicitModel) {
+    // `/models` 不提供（404/405，如华为云 MaaS Token Plan 的 `/plan/v2`）或列表为空：
+    // 没有候选就发不出第 2 步请求，用户看到的是"未能列出模型，且未指定用于对话探测的模型"，
+    // 而 Key 与端点其实可能是好的。用调用方给的候选继续探测，并**如实标注**其来源。
+    const fallback = dedupeModelIds(input.fallbackModels);
+    if (fallback.length > 0) {
+      candidates = fallback;
+      result.models = fallback.map(defaultModelSpec);
+      result.modelsFromFallback = true;
+    }
+  }
+
   result.chatCandidates = candidates;
+  result.suggestedModel =
+    explicitModel || candidates[0] || result.models[0]?.id;
 
   if (input.chatProbe === false || candidates.length === 0) {
     result.ok = result.listOk;
-    result.suggestedModel = explicitModel || result.models[0]?.id;
     if (!result.ok) {
-      result.error = candidates.length === 0
-        ? '未能列出模型，且未指定用于对话探测的模型'
-        : '已按 chatProbe=false 跳过对话探测';
-      result.errorKind = 'unknown';
-      result.hint = hintFor('unknown');
+      result.error =
+        candidates.length === 0
+          ? "未能列出模型，且未指定用于对话探测的模型"
+          : "已按 chatProbe=false 跳过对话探测";
+      result.errorKind = "unknown";
+      // 端点不提供 /models 是**已知的常见情况**（华为云 Token Plan 等），
+      // 提示必须可执行：手填一个模型名即可继续，而不是让人反复怀疑 Key。
+      result.hint =
+        candidates.length === 0
+          ? "该端点可能不提供模型列表（GET /models 返回 404/405）：请手动填写一个模型名后再测试。"
+          : hintFor("unknown");
     }
     return result;
   }
 
   let lastFailure: {
-    error: string; errorKind: ProbeErrorKind; providerMessage?: string; model: string;
+    error: string;
+    errorKind: ProbeErrorKind;
+    providerMessage?: string;
+    model: string;
   } | null = null;
 
   for (let i = 0; i < candidates.length; i++) {
@@ -499,11 +684,11 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
     const chatCall = await fetchWithTimeout(
       `${baseUrl}/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
           model,
-          messages: [{ role: 'user', content: 'ping' }],
+          messages: [{ role: "user", content: "ping" }],
           max_tokens: 1,
           stream: false,
         }),
@@ -529,10 +714,18 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
       result.ok = true;
       result.chatModelUsed = model;
       result.suggestedModel = model;
+      if (result.modelsFromFallback) {
+        result.hint = result.listNotProvided
+          ? `该端点不提供模型列表（GET /models 返回 ${result.listStatus ?? 404}），` +
+            `以下 ${result.models.length} 个是内置/手填的候选模型名；请点「校验可用性」逐个确认后再勾选导入。`
+          : // 端点存在但清单为空（较少见）：同样如实说明"这些不是端点给的"
+            `该端点未返回任何模型（GET /models 返回 ${result.listStatus ?? "—"}），` +
+            `已改用内置/手填候选 ${result.models.length} 个；请点「校验可用性」逐个确认后再勾选导入。`;
+      }
       return result;
     }
 
-    const text = await chatResponse.text().catch(() => '');
+    const text = await chatResponse.text().catch(() => "");
     lastFailure = {
       error: `对话失败（HTTP ${chatResponse.status}）（model=${model}）`,
       errorKind: classifyHttpStatus(chatResponse.status),
@@ -545,21 +738,32 @@ export async function probeProviderConnection(input: ProbeInput): Promise<ProbeR
 
   if (lastFailure) {
     result.chatModelUsed = lastFailure.model;
-    result.providerMessage = lastFailure.providerMessage ?? result.providerMessage;
+    result.providerMessage =
+      lastFailure.providerMessage ?? result.providerMessage;
     result.error = lastFailure.error;
     result.errorKind = lastFailure.errorKind;
     const triedAll = (result.chatAttempts ?? 0) >= candidates.length;
     const advice = result.listOk
-      ? `模型列表可读，但对话失败：请确认模型 "${lastFailure.model}" 是否有权限/是否已开通，以及 Base URL 是否需要 /v1。`
-        + (triedAll && candidates.length > 1 ? `（已依次尝试 ${candidates.length} 个候选模型）` : '')
-      : hintFor(lastFailure.errorKind);
+      ? `模型列表可读，但对话失败：请确认模型 "${lastFailure.model}" 是否有权限/是否已开通，以及 Base URL 是否需要 /v1。` +
+        (triedAll && candidates.length > 1
+          ? `（已依次尝试 ${candidates.length} 个候选模型）`
+          : "")
+      : result.modelsFromFallback
+        ? // Key 是否有效已由 401/403 分支区分；走到这里多半是**模型名不对**，
+          // 所以要把"这批名字是候选、不是端点列表"讲清楚，否则用户只会反复怀疑 Key。
+          `已用内置/手填候选 "${lastFailure.model}" 探测但失败：` +
+          "请确认模型名拼写、是否已在该账号开通，以及 Base URL 是否需要版本路径。" +
+          (triedAll && candidates.length > 1
+            ? `（已依次尝试 ${candidates.length} 个候选模型）`
+            : "")
+        : hintFor(lastFailure.errorKind);
     result.hint = result.providerMessage
       ? `供应商原话：${result.providerMessage}；${advice}`
       : advice;
   } else {
-    result.error = '对话探测未取得结果';
-    result.errorKind = 'unknown';
-    result.hint = hintFor('unknown');
+    result.error = "对话探测未取得结果";
+    result.errorKind = "unknown";
+    result.hint = hintFor("unknown");
   }
   return result;
 }

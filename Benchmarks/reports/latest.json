@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T05:01:21.913Z",
+  "generatedAt": "2026-10-17T11:28:26.338Z",
   "layer1": "实验矩阵（准入）",
   "layer2": "打分矩阵（评分）",
   "scoringMatrix": "Benchmarks/scoringMatrix.json",
@@ -12,15 +12,15 @@
           "governance",
           "security"
         ],
-        "startedAt": "2026-10-15T05:01:19.557Z",
-        "durationMs": 156,
+        "startedAt": "2026-10-17T11:28:20.558Z",
+        "durationMs": 167,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "publish-change"
                 }
@@ -29,8 +29,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 201,
+            "tokensConsumed": 251,
             "promptMessageCount": 2
           },
           {
@@ -38,14 +39,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 11,
-            "tokensConsumed": 196,
+            "tokensConsumed": 246,
             "exitReason": "success",
             "promptMessageCount": 4
           }
         ],
         "totalIterations": 2,
-        "totalTokensConsumed": 397,
+        "totalTokensConsumed": 497,
         "totalToolCalls": 1,
         "controlTriggers": {
           "stopRules_evaluated": 2,
@@ -65,12 +67,12 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -78,7 +80,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.echo": 1
+          "BenchEcho": 1
         },
         "eventTypes": {
           "middleware:before_model": 4,
@@ -110,7 +112,7 @@
           "exitReason": "success",
           "maxIterations": 4,
           "mustCallTools": [
-            "bench.echo"
+            "BenchEcho"
           ],
           "minToolResults": 1,
           "forbidDiagnoses": [
@@ -123,7 +125,15 @@
           ]
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 3,
+          "llm": 2,
+          "tool": 1,
+          "traceIds": [
+            "bench-trace-scn-approval-gate"
+          ]
+        }
       },
       "checks": [
         {
@@ -146,8 +156,8 @@
         {
           "id": "CHK-REQUIRED-TOOLS",
           "passed": true,
-          "detail": "已调用：bench.echo",
-          "observed": "bench.echo"
+          "detail": "已调用：BenchEcho",
+          "observed": "BenchEcho"
         },
         {
           "id": "CHK-TOOL-RESULTS",
@@ -164,6 +174,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=2 / tool=1 / trace=1）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -210,7 +225,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "2 轮（上限 4），Token 397",
+          "reason": "2 轮（上限 4），Token 497",
           "applicable": true
         },
         {
@@ -246,22 +261,23 @@
           "assembly",
           "real-call"
         ],
-        "startedAt": "2026-10-15T05:01:19.728Z",
-        "durationMs": 103,
+        "startedAt": "2026-10-17T11:28:20.741Z",
+        "durationMs": 136,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 12,
-            "tokensConsumed": 176,
+            "tokensConsumed": 227,
             "exitReason": "max_iterations",
             "promptMessageCount": 2
           }
         ],
         "totalIterations": 1,
-        "totalTokensConsumed": 176,
+        "totalTokensConsumed": 227,
         "totalToolCalls": 0,
         "controlTriggers": {
           "stopRules_evaluated": 1,
@@ -281,7 +297,7 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -300,7 +316,7 @@
           {
             "id": "TOOL-FORBIDDEN-REGISTER",
             "passed": true,
-            "detail": "registerTool 拒绝注册 FORBIDDEN 工具（真实调用，读到 Result.error）"
+            "detail": "registerTool 因 FORBIDDEN 规则拒绝（真实调用）：工具 BenchProbeForbidden 验证失败: FORBIDDEN 级别工具不允许注册"
           },
           {
             "id": "AGENT-ILLEGAL-TRANSITION",
@@ -352,13 +368,26 @@
           ]
         },
         "exitReason": "max_iterations",
-        "exitMessage": "达到最大迭代数 1"
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-assembly-probes"
+          ]
+        }
       },
       "checks": [
         {
           "id": "CHK-NO-FATAL",
           "passed": true,
           "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（6）"
         },
         {
           "id": "CHK-EXIT-REASON-ONE-OF",
@@ -375,6 +404,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
         }
       ],
       "admitted": true,
@@ -405,7 +439,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "1 轮（上限 1），Token 176",
+          "reason": "1 轮（上限 1），Token 227",
           "applicable": true
         },
         {
@@ -441,15 +475,15 @@
           "cost",
           "convergence"
         ],
-        "startedAt": "2026-10-15T05:01:19.841Z",
-        "durationMs": 108,
+        "startedAt": "2026-10-17T11:28:20.891Z",
+        "durationMs": 139,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-1"
                 }
@@ -458,8 +492,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 199,
+            "tokensConsumed": 250,
             "promptMessageCount": 2
           },
           {
@@ -467,7 +502,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-2"
                 }
@@ -476,8 +511,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 219,
+            "tokensConsumed": 269,
             "promptMessageCount": 4
           },
           {
@@ -485,7 +521,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-3"
                 }
@@ -494,35 +530,18 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 239,
-            "promptMessageCount": 6
-          },
-          {
-            "index": 4,
-            "stepOrderOk": true,
-            "toolCalls": [
-              {
-                "name": "bench.echo",
-                "arguments": {
-                  "text": "step-4"
-                }
-              }
-            ],
-            "toolResultStatuses": [
-              "success"
-            ],
-            "outputChars": 0,
-            "tokensConsumed": 259,
+            "tokensConsumed": 289,
             "exitReason": "budget_exhausted",
-            "promptMessageCount": 8
+            "promptMessageCount": 6
           }
         ],
-        "totalIterations": 4,
-        "totalTokensConsumed": 916,
-        "totalToolCalls": 4,
+        "totalIterations": 3,
+        "totalTokensConsumed": 808,
+        "totalToolCalls": 3,
         "controlTriggers": {
-          "stopRules_evaluated": 4,
+          "stopRules_evaluated": 3,
           "approval_gate_invoked": 0,
           "rate_limit_checked": 0,
           "fingerprint_hit": 0,
@@ -539,36 +558,30 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
-          },
-          {
-            "index": 4,
-            "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
           false,
           false,
-          false,
           false
         ],
         "toolExecutions": {
-          "bench.echo": 4
+          "BenchEcho": 3
         },
         "eventTypes": {
-          "middleware:before_model": 8,
-          "loop:budget_warming": 1,
+          "middleware:before_model": 6,
+          "loop:budget_soft_reached": 1,
           "loop:budget_hard_reached": 1
         },
         "eventSequence": [
@@ -576,9 +589,7 @@
           "middleware:before_model",
           "middleware:before_model",
           "middleware:before_model",
-          "loop:budget_warming",
-          "middleware:before_model",
-          "middleware:before_model",
+          "loop:budget_soft_reached",
           "middleware:before_model",
           "middleware:before_model",
           "loop:budget_hard_reached"
@@ -603,7 +614,15 @@
           "ledgerClean": true
         },
         "exitReason": "budget_exhausted",
-        "exitMessage": "Token 硬预算耗尽 (916/700)"
+        "exitMessage": "Token 硬预算耗尽 (808/700)",
+        "spans": {
+          "total": 6,
+          "llm": 3,
+          "tool": 3,
+          "traceIds": [
+            "bench-trace-scn-budget-discipline"
+          ]
+        }
       },
       "checks": [
         {
@@ -620,8 +639,8 @@
         {
           "id": "CHK-CONVERGENCE",
           "passed": true,
-          "detail": "轮数 4 ≤ 上限 8",
-          "observed": 4
+          "detail": "轮数 3 ≤ 上限 8",
+          "observed": 3
         },
         {
           "id": "CHK-TOOL-PAIRING",
@@ -632,6 +651,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=3 / tool=3 / trace=1）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -672,14 +696,14 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 8），Token 916",
+          "reason": "3 轮（上限 8），Token 808",
           "applicable": true
         },
         {
           "dimension": "observability",
           "score": 0.75,
           "weight": 0.15,
-          "reason": "StopRules 评估 4 次；非零计数器 1 个；事件类型 3 种",
+          "reason": "StopRules 评估 3 次；非零计数器 1 个；事件类型 3 种",
           "applicable": true
         },
         {
@@ -708,22 +732,23 @@
           "chaos",
           "reliability"
         ],
-        "startedAt": "2026-10-15T05:01:19.958Z",
-        "durationMs": 101,
+        "startedAt": "2026-10-17T11:28:21.039Z",
+        "durationMs": 122,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 5,
-            "tokensConsumed": 176,
+            "tokensConsumed": 226,
             "exitReason": "success",
             "promptMessageCount": 2
           }
         ],
         "totalIterations": 1,
-        "totalTokensConsumed": 176,
+        "totalTokensConsumed": 226,
         "totalToolCalls": 0,
         "controlTriggers": {
           "stopRules_evaluated": 1,
@@ -743,7 +768,7 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -780,7 +805,15 @@
           "clockSkewDetected": true
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-clock-rewind"
+          ]
+        }
       },
       "checks": [
         {
@@ -809,6 +842,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
         },
         {
           "id": "CHK-CLOCK-SKEW",
@@ -844,7 +882,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "1 轮（上限 3），Token 176",
+          "reason": "1 轮（上限 3），Token 226",
           "applicable": true
         },
         {
@@ -880,15 +918,15 @@
           "convergence",
           "tool-use"
         ],
-        "startedAt": "2026-10-15T05:01:20.068Z",
-        "durationMs": 108,
+        "startedAt": "2026-10-17T11:28:21.172Z",
+        "durationMs": 127,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/notes.txt"
                 }
@@ -897,8 +935,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 202,
+            "tokensConsumed": 252,
             "promptMessageCount": 2
           },
           {
@@ -906,14 +945,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 27,
-            "tokensConsumed": 210,
+            "tokensConsumed": 260,
             "exitReason": "success",
             "promptMessageCount": 4
           }
         ],
         "totalIterations": 2,
-        "totalTokensConsumed": 412,
+        "totalTokensConsumed": 512,
         "totalToolCalls": 1,
         "controlTriggers": {
           "stopRules_evaluated": 2,
@@ -933,12 +973,12 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -946,7 +986,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.read": 1
+          "BenchRead": 1
         },
         "eventTypes": {
           "middleware:before_model": 4
@@ -972,12 +1012,20 @@
           "exitReason": "success",
           "maxIterations": 3,
           "mustCallTools": [
-            "bench.read"
+            "BenchRead"
           ],
           "minToolResults": 1
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 3,
+          "llm": 2,
+          "tool": 1,
+          "traceIds": [
+            "bench-trace-scn-convergence-basic"
+          ]
+        }
       },
       "checks": [
         {
@@ -1000,8 +1048,8 @@
         {
           "id": "CHK-REQUIRED-TOOLS",
           "passed": true,
-          "detail": "已调用：bench.read",
-          "observed": "bench.read"
+          "detail": "已调用：BenchRead",
+          "observed": "BenchRead"
         },
         {
           "id": "CHK-TOOL-RESULTS",
@@ -1018,6 +1066,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=2 / tool=1 / trace=1）"
         }
       ],
       "admitted": true,
@@ -1047,7 +1100,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "2 轮（上限 3），Token 412",
+          "reason": "2 轮（上限 3），Token 512",
           "applicable": true
         },
         {
@@ -1083,15 +1136,15 @@
           "chaos",
           "durability"
         ],
-        "startedAt": "2026-10-15T05:01:20.185Z",
-        "durationMs": 115,
+        "startedAt": "2026-10-17T11:28:21.311Z",
+        "durationMs": 140,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-1"
                 }
@@ -1100,8 +1153,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 200,
+            "tokensConsumed": 250,
             "promptMessageCount": 2
           },
           {
@@ -1109,7 +1163,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-2"
                 }
@@ -1118,8 +1172,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 219,
+            "tokensConsumed": 270,
             "promptMessageCount": 4
           },
           {
@@ -1127,7 +1182,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "step-3"
                 }
@@ -1136,8 +1191,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 239,
+            "tokensConsumed": 289,
             "promptMessageCount": 6
           },
           {
@@ -1145,14 +1201,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 14,
-            "tokensConsumed": 235,
+            "tokensConsumed": 285,
             "exitReason": "success",
             "promptMessageCount": 8
           }
         ],
         "totalIterations": 4,
-        "totalTokensConsumed": 893,
+        "totalTokensConsumed": 1094,
         "totalToolCalls": 3,
         "controlTriggers": {
           "stopRules_evaluated": 4,
@@ -1172,22 +1229,22 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 4,
             "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -1197,7 +1254,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.echo": 3
+          "BenchEcho": 3
         },
         "eventTypes": {
           "middleware:before_model": 8
@@ -1220,8 +1277,10 @@
           "injected": true,
           "logFiles": 2,
           "matchedLines": [
-            "{\"timestamp\":\"2026-10-15T05:01:20.298Z\",\"epochMs\":1792040480298,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败（快照外键将不满足）（数据库未初始化，按纯内存运行）\",\"source\":\"loopRepository/ensureLoopRow\",\"data\":{\"fallback\":\"返回 false（本轮无 checkpoints 父行，崩溃恢复不可用）\",\"loopId\":\"bench-scn-db-unavailable\"}}",
-            "{\"timestamp\":\"2026-10-15T05:01:20.299Z\",\"epochMs\":1792040480299,\"level\":\"warn\",\"track\":\"business\",\"message\":\"迭代快照写入失败（崩溃恢复能力降级）（数据库未初始化，按纯内存运行）\",\"source\":\"iterationCheckpoint/writeIterationCheckpoint\",\"data\":{\"fallback\":\"本轮无快照（恢复回退到上一轮）\",\"loopId\":\"bench-scn-db-unavailable\",\"iteration\":1}}"
+            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败（快照外键将不满足）（数据库未初始化，按纯内存运行）\",\"source\":\"loopRepository/ensureLoopRow\",\"data\":{\"fallback\":\"返回 false（本轮无 checkpoints 父行，崩溃恢复不可用）\",\"loopId\":\"bench-scn-db-unavailable\"}}",
+            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"迭代快照写入失败（崩溃恢复能力降级）（数据库未初始化，按纯内存运行）\",\"source\":\"iterationCheckpoint/writeIterationCheckpoint\",\"data\":{\"fallback\":\"本轮无快照（恢复回退到上一轮）\",\"loopId\":\"bench-scn-db-unavailable\",\"iteration\":1}}",
+            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"事件落库失败（跨进程回放降级；仅告警一次）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"eventBus/persistDomainEvent\",\"data\":{\"error\":\"数据库未初始化，请先调用 initDatabase()\"}}",
+            "{\"timestamp\":\"2026-10-17T11:28:21.448Z\",\"epochMs\":1792236501448,\"level\":\"warn\",\"track\":\"business\",\"message\":\"Agent 载入失败（数据库未初始化，按纯内存运行）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"agentRepository/loadAgents\",\"data\":{\"fallback\":\"返回空列表（启动回灌会读成\\\"库里没有 Agent\\\"）\",\"includeDestroyed\":false}}"
           ]
         },
         "clockSkew": null,
@@ -1235,7 +1294,15 @@
           ]
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 7,
+          "llm": 4,
+          "tool": 3,
+          "traceIds": [
+            "bench-trace-scn-db-unavailable"
+          ]
+        }
       },
       "checks": [
         {
@@ -1266,6 +1333,11 @@
           "detail": "十步序列未被破坏"
         },
         {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=4 / tool=3 / trace=1）"
+        },
+        {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
           "passed": true,
           "detail": "未出现被禁止的问题形态（false_success）"
@@ -1273,8 +1345,8 @@
         {
           "id": "CHK-DB-FAILURE-LOGGED",
           "passed": true,
-          "detail": "已留痕 2 行（日志文件 2 个）：{\"timestamp\":\"2026-10-15T05:01:20.298Z\",\"epochMs\":1792040480298,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败",
-          "observed": 2
+          "detail": "已留痕 4 行（日志文件 2 个）：{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败",
+          "observed": 4
         }
       ],
       "admitted": true,
@@ -1304,7 +1376,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 5），Token 893",
+          "reason": "4 轮（上限 5），Token 1094",
           "applicable": true
         },
         {
@@ -1334,19 +1406,1494 @@
     },
     {
       "trace": {
-        "scenarioId": "scn-frozen-agent",
-        "scenarioTitle": "治理行为：被审计冻结的 Agent 必须被前置监管拒绝",
+        "scenarioId": "scn-design-probes-governance",
+        "scenarioTitle": "设计契约探针·监管：冻结持久化 / 审计哈希链 / 死锁接线",
         "tags": [
-          "governance"
+          "design-contract",
+          "real-call"
         ],
-        "startedAt": "2026-10-15T05:01:20.317Z",
-        "durationMs": 102,
+        "startedAt": "2026-10-17T11:28:21.481Z",
+        "durationMs": 159,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "governance:action_recorded": 3,
+          "token:wallet_frozen": 1,
+          "arbitration:deadlock": 1,
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "governance:action_recorded",
+          "token:wallet_frozen",
+          "governance:action_recorded",
+          "governance:action_recorded",
+          "arbitration:deadlock",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "SUP-SEC-FREEZEPERSIST",
+            "passed": true,
+            "detail": "冻结状态经落库+回灌后跨重启存活"
+          },
+          {
+            "id": "SUP-SEC-AUDITCHAIN",
+            "passed": true,
+            "detail": "审计链完整且内容篡改可检出"
+          },
+          {
+            "id": "SUP-ENV-DEADLOCKWIRE",
+            "passed": true,
+            "detail": "死锁看门：环检测有效、运行期入口检出（a → b → a）、审批阻塞真实登记/清理等待边"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "SUP-SEC-FREEZEPERSIST",
+            "SUP-SEC-AUDITCHAIN",
+            "SUP-ENV-DEADLOCKWIRE"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-governance"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（3）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 4 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0.4,
+          "weight": 0.15,
+          "reason": "审批门触发 0 次；治理事件 governance:action_recorded×3",
+          "applicable": true
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.8406,
+      "grade": "B"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-memory",
+        "scenarioTitle": "设计契约探针·记忆：投毒隔离 / 分区接线 / 恢复含对话 / 读侧鉴权 / 记忆引用 / 事件订阅 / 版本冲突",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:21.663Z",
+        "durationMs": 181,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "memory:written": 2,
+          "a2a:message_blocked": 4,
+          "memory:version_conflict": 1,
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "memory:written",
+          "a2a:message_blocked",
+          "a2a:message_blocked",
+          "a2a:message_blocked",
+          "a2a:message_blocked",
+          "memory:written",
+          "memory:version_conflict",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "AG-SEC-POISON",
+            "passed": true,
+            "detail": "被取代记忆从召回结果中消失（污染隔离生效）"
+          },
+          {
+            "id": "MEM1-GAP-PARTITION",
+            "passed": true,
+            "detail": "分区装配生效：H 区超上限丢 16 条、S 区保留、总量 500/1000"
+          },
+          {
+            "id": "MEM1-GAP-RESTORE",
+            "passed": true,
+            "detail": "checkpoint 往返后带完整对话内容（2 条）"
+          },
+          {
+            "id": "MEMN-SEC-READAUTH",
+            "passed": true,
+            "detail": "读侧 agent 级鉴权生效：他人条目不可见、自己的条目可见"
+          },
+          {
+            "id": "MEMN-SEC-MEMREF",
+            "passed": true,
+            "detail": "memoryRefs 存在性/版本校验生效（缺校验器/不存在/版本不符均拒）"
+          },
+          {
+            "id": "MEMN-GAP-EVENTSUB",
+            "passed": true,
+            "detail": "MEMORY_WRITTEN 有 1 个订阅者，且事件确实驱动消费（0→1）"
+          },
+          {
+            "id": "MEMN-SEC-VERSION",
+            "passed": true,
+            "detail": "版本冲突被拒"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "AG-SEC-POISON",
+            "MEM1-GAP-PARTITION",
+            "MEM1-GAP-RESTORE",
+            "MEMN-SEC-READAUTH",
+            "MEMN-SEC-MEMREF",
+            "MEMN-GAP-EVENTSUB",
+            "MEMN-SEC-VERSION"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-memory"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（7）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 4 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9423,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-observability",
+        "scenarioTitle": "设计契约探针·可观测与多模态：视觉能力位 / span 接线 / 事件表写入 / 内容块 / sightUse",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:21.855Z",
+        "durationMs": 218,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "memory:written": 1,
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "memory:written",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "MM-GAP-VISION",
+            "passed": true,
+            "detail": "路由按 supports_vision 判定（读到能力位）"
+          },
+          {
+            "id": "MM-GAP-TRACE",
+            "passed": true,
+            "detail": "span 上下文传播可用且存在检索面（listSpans/getTraceSpans/exportTrace）"
+          },
+          {
+            "id": "MM-GAP-EVENTSTABLE",
+            "passed": true,
+            "detail": "事件已落库并可回放（trace=probe-events-1792236502048，回放 1 条）"
+          },
+          {
+            "id": "MM-DECL-MULTIMODAL",
+            "passed": true,
+            "detail": "内容块原样进入 wire payload（image_url 数组）"
+          },
+          {
+            "id": "MM-DECL-SIGHTUSE",
+            "passed": true,
+            "detail": "视觉工具 SightUse 已注册且契约完整（image/prompt 必填，SAFE）"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "MM-GAP-VISION",
+            "MM-GAP-TRACE",
+            "MM-GAP-EVENTSTABLE",
+            "MM-DECL-MULTIMODAL",
+            "MM-DECL-SIGHTUSE"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-observability"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（5）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 2 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9423,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-retrieval",
+        "scenarioTitle": "设计契约探针·检索：嵌入不可用回落",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:22.088Z",
+        "durationMs": 168,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "RET-ENV-EMBDOWN",
+            "passed": true,
+            "detail": "无嵌入时检索正常返回（回落路径）"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "RET-ENV-EMBDOWN"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-retrieval"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（1）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 1 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9423,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-split",
+        "scenarioTitle": "设计契约探针·Agent 分裂：血缘/继承/深度/授权/可见性/自分裂/自合并/相似度/闭环/冲突域/同级/每步一个/合并形态",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:22.267Z",
+        "durationMs": 139,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "governance:action_recorded": 1,
+          "delegation:assigned": 1,
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "governance:action_recorded",
+          "delegation:assigned",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "SPLIT-SEM-BLOODLINE",
+            "passed": true,
+            "detail": "血缘链（根→本节点）含深度与 rootId"
+          },
+          {
+            "id": "SPLIT-SEM-INHERIT",
+            "passed": true,
+            "detail": "派生策略：继承目标、重置预算"
+          },
+          {
+            "id": "SPLIT-SEM-DEPTH",
+            "passed": true,
+            "detail": "深度模型可用（上限 2，当前 0）"
+          },
+          {
+            "id": "SPLIT-SEM-AUTH",
+            "passed": true,
+            "detail": "分裂授权单已登记（split-approval-mvcbc7su-1）"
+          },
+          {
+            "id": "SPLIT-SEM-VISIBILITY",
+            "passed": true,
+            "detail": "可见性收窄到本分片"
+          },
+          {
+            "id": "SPLIT-SEM-SELFSPLIT",
+            "passed": true,
+            "detail": "自分裂按分片创建同级 Agent"
+          },
+          {
+            "id": "SPLIT-SEM-SELFMERGE",
+            "passed": true,
+            "detail": "自合并拒绝无关 Agent（仅同级/同根可申请）"
+          },
+          {
+            "id": "SPLIT-SEM-SIMILARITY",
+            "passed": true,
+            "detail": "相似度可用（同文 1，无关 0）"
+          },
+          {
+            "id": "SPLIT-SEM-CLOSURE",
+            "passed": true,
+            "detail": "闭环校验可识别未覆盖要件"
+          },
+          {
+            "id": "SPLIT-SEM-CONFLICTDOMAIN",
+            "passed": true,
+            "detail": "冲突域检出共享可写路径"
+          },
+          {
+            "id": "SPLIT-SEM-PEER",
+            "passed": true,
+            "detail": "同级判定语义成立（反例不误判）"
+          },
+          {
+            "id": "SPLIT-SEM-ONEPERSTEP",
+            "passed": true,
+            "detail": "每步至多一次分裂"
+          },
+          {
+            "id": "SPLIT-SEM-MERGEKIND",
+            "passed": true,
+            "detail": "合并形态判定：self_merge / none"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "SPLIT-SEM-BLOODLINE",
+            "SPLIT-SEM-INHERIT",
+            "SPLIT-SEM-DEPTH",
+            "SPLIT-SEM-AUTH",
+            "SPLIT-SEM-VISIBILITY",
+            "SPLIT-SEM-SELFSPLIT",
+            "SPLIT-SEM-SELFMERGE",
+            "SPLIT-SEM-SIMILARITY",
+            "SPLIT-SEM-CLOSURE",
+            "SPLIT-SEM-CONFLICTDOMAIN",
+            "SPLIT-SEM-PEER",
+            "SPLIT-SEM-ONEPERSTEP",
+            "SPLIT-SEM-MERGEKIND"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-split"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（13）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 3 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0.4,
+          "weight": 0.15,
+          "reason": "审批门触发 0 次；治理事件 governance:action_recorded×1",
+          "applicable": true
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.8406,
+      "grade": "B"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-subagent",
+        "scenarioTitle": "设计契约探针·子 Agent / 单 Agent：派生深度 / 工具权限 / 提交门 / checkpoint 续跑",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:22.421Z",
+        "durationMs": 153,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "SUB-SEC-DEPTH",
+            "passed": true,
+            "detail": "派生深度模型生效：根 0 / 孙代 2，超限招募被拒"
+          },
+          {
+            "id": "SUB-SEC-TOOLPERM",
+            "passed": true,
+            "detail": "allowed_tools 执行侧强制生效：清单外拒绝（TOOL_NOT_ALLOWED）、清单内放行"
+          },
+          {
+            "id": "AGENT-ENV-SUBMITGATE",
+            "passed": true,
+            "detail": "未提交评审的 Agent 不被判成功"
+          },
+          {
+            "id": "AG-BEN-RESUME",
+            "passed": true,
+            "detail": "断点恢复可用：API 往返 + 恢复执行器真实消费（轮次/对话均带回）"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "SUB-SEC-DEPTH",
+            "SUB-SEC-TOOLPERM",
+            "AGENT-ENV-SUBMITGATE",
+            "AG-BEN-RESUME"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-subagent"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（4）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 1 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9423,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-design-probes-tools",
+        "scenarioTitle": "设计契约探针·工具：sandboxMode 执行方",
+        "tags": [
+          "design-contract",
+          "real-call"
+        ],
+        "startedAt": "2026-10-17T11:28:22.588Z",
+        "durationMs": 126,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 16,
+            "tokensConsumed": 232,
+            "exitReason": "max_iterations",
+            "promptMessageCount": 2
+          }
+        ],
+        "totalIterations": 1,
+        "totalTokensConsumed": 232,
+        "totalToolCalls": 0,
+        "controlTriggers": {
+          "stopRules_evaluated": 1,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false
+        ],
+        "toolExecutions": {},
+        "eventTypes": {
+          "middleware:before_model": 2
+        },
+        "eventSequence": [
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [
+          {
+            "id": "TOOL-SEC-SANDBOX",
+            "passed": true,
+            "detail": "执行链按 sandboxMode 切换：不可用 fail-closed（SANDBOX_UNAVAILABLE）、可用即执行"
+          }
+        ],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "success",
+            "max_iterations"
+          ],
+          "assertProbesMustPass": [
+            "TOOL-SEC-SANDBOX"
+          ]
+        },
+        "exitReason": "max_iterations",
+        "exitMessage": "达到最大迭代数 1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-design-probes-tools"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-ASSERT-PROBES",
+          "passed": true,
+          "detail": "真实调用探针全部通过（1）"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {success, max_iterations}，实际 max_iterations",
+          "observed": "max_iterations"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "no_progress",
+          "severity": "warning",
+          "detail": "跑满主循环迭代上限仍未收敛",
+          "evidence": "1 轮后以 max_iterations 终止"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "1 轮（上限 1），Token 232",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 1 次；非零计数器 1 个；事件类型 1 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9423,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-frozen-agent",
+        "scenarioTitle": "治理行为：被审计冻结的 Agent 必须被前置监管拒绝",
+        "tags": [
+          "governance"
+        ],
+        "startedAt": "2026-10-17T11:28:22.728Z",
+        "durationMs": 119,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 0,
             "tokensConsumed": 0,
             "exitReason": "pre_supervision",
@@ -1396,14 +2943,20 @@
           "exitReason": "pre_supervision",
           "maxIterations": 1,
           "forbiddenTools": [
-            "bench.echo"
+            "BenchEcho"
           ],
           "forbidDiagnoses": [
             "false_success"
           ]
         },
         "exitReason": "pre_supervision",
-        "exitMessage": "Pre-supervision rejected: AGENT_FROZEN: bench-agent 处于审计冻结期（到期自动解冻或经治理解冻）"
+        "exitMessage": "Pre-supervision rejected: AGENT_FROZEN: bench-agent 处于审计冻结期（到期自动解冻或经治理解冻）",
+        "spans": {
+          "total": 0,
+          "llm": 0,
+          "tool": 0,
+          "traceIds": []
+        }
       },
       "checks": [
         {
@@ -1437,6 +2990,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=0 / tool=0 / trace=0）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -1507,15 +3065,15 @@
           "constraint-retention",
           "governance"
         ],
-        "startedAt": "2026-10-15T05:01:20.428Z",
-        "durationMs": 108,
+        "startedAt": "2026-10-17T11:28:22.861Z",
+        "durationMs": 146,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/notes.txt"
                 }
@@ -1524,8 +3082,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 205,
+            "tokensConsumed": 255,
             "promptMessageCount": 2
           },
           {
@@ -1533,7 +3092,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/config.json"
                 }
@@ -1542,8 +3101,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 254,
+            "tokensConsumed": 303,
             "promptMessageCount": 5
           },
           {
@@ -1551,7 +3111,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "consolidate"
                 }
@@ -1560,8 +3120,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 269,
+            "tokensConsumed": 319,
             "promptMessageCount": 6
           },
           {
@@ -1569,14 +3130,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 40,
-            "tokensConsumed": 270,
+            "tokensConsumed": 321,
             "exitReason": "success",
             "promptMessageCount": 8
           }
         ],
         "totalIterations": 4,
-        "totalTokensConsumed": 998,
+        "totalTokensConsumed": 1198,
         "totalToolCalls": 3,
         "controlTriggers": {
           "stopRules_evaluated": 4,
@@ -1596,22 +3158,22 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 5,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 4,
             "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -1621,8 +3183,8 @@
           false
         ],
         "toolExecutions": {
-          "bench.read": 2,
-          "bench.echo": 1
+          "BenchRead": 2,
+          "BenchEcho": 1
         },
         "eventTypes": {
           "middleware:before_model": 8
@@ -1652,7 +3214,7 @@
           "exitReason": "success",
           "maxIterations": 5,
           "mustCallTools": [
-            "bench.read"
+            "BenchRead"
           ],
           "requestMustContain": [
             "【任务原始目标"
@@ -1660,7 +3222,15 @@
           "goalMustBeIntact": true
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 7,
+          "llm": 4,
+          "tool": 3,
+          "traceIds": [
+            "bench-trace-scn-goal-reanchor"
+          ]
+        }
       },
       "checks": [
         {
@@ -1683,8 +3253,8 @@
         {
           "id": "CHK-REQUIRED-TOOLS",
           "passed": true,
-          "detail": "已调用：bench.read",
-          "observed": "bench.read,bench.echo"
+          "detail": "已调用：BenchRead",
+          "observed": "BenchRead,BenchEcho"
         },
         {
           "id": "CHK-TOOL-PAIRING",
@@ -1695,6 +3265,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=4 / tool=3 / trace=1）"
         },
         {
           "id": "CHK-REQUEST-CONTAINS",
@@ -1734,7 +3309,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 5），Token 998",
+          "reason": "4 轮（上限 5），Token 1198",
           "applicable": true
         },
         {
@@ -1770,15 +3345,15 @@
           "recovery",
           "durability"
         ],
-        "startedAt": "2026-10-15T05:01:20.545Z",
-        "durationMs": 108,
+        "startedAt": "2026-10-17T11:28:23.026Z",
+        "durationMs": 257,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "write-conclusion"
                 }
@@ -1787,8 +3362,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 205,
+            "tokensConsumed": 255,
             "promptMessageCount": 2
           },
           {
@@ -1796,7 +3372,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "write-conclusion"
                 }
@@ -1805,8 +3381,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 227,
+            "tokensConsumed": 277,
             "promptMessageCount": 4
           },
           {
@@ -1814,14 +3391,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 11,
-            "tokensConsumed": 221,
+            "tokensConsumed": 271,
             "exitReason": "success",
             "promptMessageCount": 6
           }
         ],
         "totalIterations": 3,
-        "totalTokensConsumed": 653,
+        "totalTokensConsumed": 803,
         "totalToolCalls": 2,
         "controlTriggers": {
           "stopRules_evaluated": 3,
@@ -1841,17 +3419,17 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -1860,7 +3438,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.echo": 1
+          "BenchEcho": 1
         },
         "eventTypes": {
           "middleware:before_model": 6
@@ -1888,11 +3466,11 @@
           "exitReason": "success",
           "maxIterations": 4,
           "mustCallTools": [
-            "bench.echo"
+            "BenchEcho"
           ],
           "minToolResults": 2,
           "idempotentReplay": {
-            "tool": "bench.echo",
+            "tool": "BenchEcho",
             "maxExecutions": 1
           },
           "forbidDiagnoses": [
@@ -1900,7 +3478,15 @@
           ]
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 5,
+          "llm": 3,
+          "tool": 2,
+          "traceIds": [
+            "bench-trace-scn-idempotent-replay"
+          ]
+        }
       },
       "checks": [
         {
@@ -1923,8 +3509,8 @@
         {
           "id": "CHK-REQUIRED-TOOLS",
           "passed": true,
-          "detail": "已调用：bench.echo",
-          "observed": "bench.echo"
+          "detail": "已调用：BenchEcho",
+          "observed": "BenchEcho"
         },
         {
           "id": "CHK-TOOL-RESULTS",
@@ -1943,6 +3529,11 @@
           "detail": "十步序列未被破坏"
         },
         {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=3 / tool=2 / trace=1）"
+        },
+        {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
           "passed": true,
           "detail": "未出现被禁止的问题形态（false_success）"
@@ -1950,7 +3541,7 @@
         {
           "id": "CHK-IDEMPOTENT-REPLAY",
           "passed": true,
-          "detail": "bench.echo 执行体仅被调用 1 次（≤ 1）—— 重复副作用被挡住",
+          "detail": "BenchEcho 执行体仅被调用 1 次（≤ 1）—— 重复副作用被挡住",
           "observed": 1
         }
       ],
@@ -1981,7 +3572,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "3 轮（上限 4），Token 653",
+          "reason": "3 轮（上限 4），Token 803",
           "applicable": true
         },
         {
@@ -2017,21 +3608,21 @@
           "security",
           "tool-use"
         ],
-        "startedAt": "2026-10-15T05:01:20.661Z",
-        "durationMs": 105,
+        "startedAt": "2026-10-17T11:28:23.305Z",
+        "durationMs": 240,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/untrusted.txt"
                 }
               },
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/untrusted-en.txt"
                 }
@@ -2041,8 +3632,9 @@
               "success",
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 236,
+            "tokensConsumed": 287,
             "promptMessageCount": 2
           },
           {
@@ -2050,6 +3642,7 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 0,
             "tokensConsumed": 0,
             "exitReason": "pre_supervision",
@@ -2057,7 +3650,7 @@
           }
         ],
         "totalIterations": 2,
-        "totalTokensConsumed": 236,
+        "totalTokensConsumed": 287,
         "totalToolCalls": 2,
         "controlTriggers": {
           "stopRules_evaluated": 1,
@@ -2077,14 +3670,14 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
           false
         ],
         "toolExecutions": {
-          "bench.read": 2
+          "BenchRead": 2
         },
         "eventTypes": {
           "middleware:before_model": 2
@@ -2113,7 +3706,15 @@
           "minToolResults": 2
         },
         "exitReason": "pre_supervision",
-        "exitMessage": "Pre-supervision rejected: PROMPT_INJECTION_DETECTED: tool-result"
+        "exitMessage": "Pre-supervision rejected: PROMPT_INJECTION_DETECTED: tool-result",
+        "spans": {
+          "total": 3,
+          "llm": 1,
+          "tool": 2,
+          "traceIds": [
+            "bench-trace-scn-indirect-injection"
+          ]
+        }
       },
       "checks": [
         {
@@ -2150,6 +3751,11 @@
           "detail": "十步序列未被破坏"
         },
         {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=2 / trace=1）"
+        },
+        {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
           "passed": true,
           "detail": "未出现被禁止的问题形态（false_success）"
@@ -2182,7 +3788,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "2 轮（上限 5），Token 236",
+          "reason": "2 轮（上限 5），Token 287",
           "applicable": true
         },
         {
@@ -2219,16 +3825,17 @@
           "governance",
           "security"
         ],
-        "startedAt": "2026-10-15T05:01:20.774Z",
-        "durationMs": 106,
+        "startedAt": "2026-10-17T11:28:23.575Z",
+        "durationMs": 257,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 170,
+            "tokensConsumed": 221,
             "promptMessageCount": 2
           },
           {
@@ -2236,14 +3843,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 18,
-            "tokensConsumed": 174,
+            "tokensConsumed": 225,
             "exitReason": "success",
             "promptMessageCount": 2
           }
         ],
         "totalIterations": 2,
-        "totalTokensConsumed": 344,
+        "totalTokensConsumed": 446,
         "totalToolCalls": 0,
         "controlTriggers": {
           "stopRules_evaluated": 2,
@@ -2263,12 +3871,12 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -2317,8 +3925,9 @@
           },
           {
             "id": "MP-INT-04",
-            "rejected": false,
-            "stored": true
+            "rejected": true,
+            "stored": false,
+            "error": "写入被拒（乐观锁版本冲突）：key \"task.summary\" expected=0 actual=1"
           }
         ],
         "assertProbes": [],
@@ -2363,7 +3972,15 @@
           ]
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 2,
+          "llm": 2,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-memory-governance"
+          ]
+        }
       },
       "checks": [
         {
@@ -2394,6 +4011,11 @@
           "detail": "十步序列未被破坏"
         },
         {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=2 / tool=0 / trace=1）"
+        },
+        {
           "id": "CHK-MEM-MP-INT-01",
           "passed": true,
           "detail": "已拒绝：key \"goal\" 禁止写入 GlobalWorkspace"
@@ -2415,11 +4037,11 @@
         },
         {
           "id": "CHK-MEM-MP-INT-04",
-          "passed": false,
-          "detail": "未被拒绝 —— 红线/乐观锁未生效"
+          "passed": true,
+          "detail": "已拒绝：写入被拒（乐观锁版本冲突）：key \"task.summary\" expected=0 actual=1"
         }
       ],
-      "admitted": false,
+      "admitted": true,
       "diagnoses": [
         {
           "type": "none",
@@ -2446,7 +4068,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "2 轮（上限 3），Token 344",
+          "reason": "2 轮（上限 3），Token 446",
           "applicable": true
         },
         {
@@ -2471,8 +4093,8 @@
           "applicable": false
         }
       ],
-      "totalScore": null,
-      "grade": null
+      "totalScore": 0.8406,
+      "grade": "B"
     },
     {
       "trace": {
@@ -2482,14 +4104,15 @@
           "recovery",
           "diagnosis"
         ],
-        "startedAt": "2026-10-15T05:01:20.889Z",
-        "durationMs": 100,
+        "startedAt": "2026-10-17T11:28:23.862Z",
+        "durationMs": 216,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 0,
             "tokensConsumed": 0,
             "exitReason": "model_error",
@@ -2517,7 +4140,7 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -2553,7 +4176,15 @@
           ]
         },
         "exitReason": "model_error",
-        "exitMessage": "Model call failed: server_error: mock 5xx #1"
+        "exitMessage": "Model call failed: server_error: mock 5xx #1",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-model-error-honest"
+          ]
+        }
       },
       "checks": [
         {
@@ -2582,6 +4213,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -2653,15 +4289,15 @@
           "convergence",
           "diagnosis"
         ],
-        "startedAt": "2026-10-15T05:01:20.997Z",
-        "durationMs": 187,
+        "startedAt": "2026-10-17T11:28:24.099Z",
+        "durationMs": 227,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "attempt-1"
                 }
@@ -2670,8 +4306,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 203,
+            "tokensConsumed": 253,
             "promptMessageCount": 2
           },
           {
@@ -2679,7 +4316,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "attempt-2"
                 }
@@ -2688,8 +4325,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 223,
+            "tokensConsumed": 274,
             "promptMessageCount": 4
           },
           {
@@ -2697,7 +4335,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "attempt-3"
                 }
@@ -2706,8 +4344,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 244,
+            "tokensConsumed": 294,
             "promptMessageCount": 6
           },
           {
@@ -2715,7 +4354,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "attempt-4"
                 }
@@ -2724,14 +4363,15 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 264,
+            "tokensConsumed": 315,
             "exitReason": "max_iterations",
             "promptMessageCount": 8
           }
         ],
         "totalIterations": 4,
-        "totalTokensConsumed": 934,
+        "totalTokensConsumed": 1136,
         "totalToolCalls": 4,
         "controlTriggers": {
           "stopRules_evaluated": 4,
@@ -2751,22 +4391,22 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 4,
             "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -2776,7 +4416,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.echo": 4
+          "BenchEcho": 4
         },
         "eventTypes": {
           "middleware:before_model": 8
@@ -2812,7 +4452,15 @@
           ]
         },
         "exitReason": "max_iterations",
-        "exitMessage": "达到最大迭代数 4"
+        "exitMessage": "达到最大迭代数 4",
+        "spans": {
+          "total": 8,
+          "llm": 4,
+          "tool": 4,
+          "traceIds": [
+            "bench-trace-scn-no-progress-spin"
+          ]
+        }
       },
       "checks": [
         {
@@ -2835,6 +4483,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=4 / tool=4 / trace=1）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -2870,7 +4523,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 4），Token 934",
+          "reason": "4 轮（上限 4），Token 1136",
           "applicable": true
         },
         {
@@ -2906,15 +4559,15 @@
           "recovery",
           "resilience"
         ],
-        "startedAt": "2026-10-15T05:01:21.198Z",
-        "durationMs": 112,
+        "startedAt": "2026-10-17T11:28:24.347Z",
+        "durationMs": 222,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.fail",
+                "name": "BenchFail",
                 "arguments": {
                   "text": "try-1"
                 }
@@ -2923,8 +4576,11 @@
             "toolResultStatuses": [
               "error"
             ],
+            "toolResultCodes": [
+              "PROBE_ALWAYS_FAIL"
+            ],
             "outputChars": 0,
-            "tokensConsumed": 201,
+            "tokensConsumed": 251,
             "promptMessageCount": 2
           },
           {
@@ -2932,7 +4588,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.fail",
+                "name": "BenchFail",
                 "arguments": {
                   "text": "try-2"
                 }
@@ -2941,8 +4597,11 @@
             "toolResultStatuses": [
               "error"
             ],
+            "toolResultCodes": [
+              "PROBE_ALWAYS_FAIL"
+            ],
             "outputChars": 0,
-            "tokensConsumed": 220,
+            "tokensConsumed": 276,
             "promptMessageCount": 4
           },
           {
@@ -2950,7 +4609,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.read",
+                "name": "BenchRead",
                 "arguments": {
                   "path": "src/config.json"
                 }
@@ -2959,8 +4618,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 241,
+            "tokensConsumed": 303,
             "promptMessageCount": 6
           },
           {
@@ -2968,14 +4628,15 @@
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 24,
-            "tokensConsumed": 250,
+            "tokensConsumed": 313,
             "exitReason": "success",
             "promptMessageCount": 8
           }
         ],
         "totalIterations": 4,
-        "totalTokensConsumed": 912,
+        "totalTokensConsumed": 1143,
         "totalToolCalls": 3,
         "controlTriggers": {
           "stopRules_evaluated": 4,
@@ -2995,22 +4656,22 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 4,
             "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -3020,8 +4681,8 @@
           false
         ],
         "toolExecutions": {
-          "bench.fail": 2,
-          "bench.read": 1
+          "BenchFail": 2,
+          "BenchRead": 1
         },
         "eventTypes": {
           "middleware:before_model": 8
@@ -3051,8 +4712,8 @@
           "exitReason": "success",
           "maxIterations": 5,
           "mustCallTools": [
-            "bench.fail",
-            "bench.read"
+            "BenchFail",
+            "BenchRead"
           ],
           "minToolResults": 3,
           "forbidDiagnoses": [
@@ -3064,7 +4725,15 @@
           ]
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 7,
+          "llm": 4,
+          "tool": 3,
+          "traceIds": [
+            "bench-trace-scn-recovery-tool-failure"
+          ]
+        }
       },
       "checks": [
         {
@@ -3087,8 +4756,8 @@
         {
           "id": "CHK-REQUIRED-TOOLS",
           "passed": true,
-          "detail": "已调用：bench.fail, bench.read",
-          "observed": "bench.fail,bench.read"
+          "detail": "已调用：BenchFail, BenchRead",
+          "observed": "BenchFail,BenchRead"
         },
         {
           "id": "CHK-TOOL-RESULTS",
@@ -3105,6 +4774,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=4 / tool=3 / trace=1）"
         },
         {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
@@ -3140,7 +4814,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 5），Token 912",
+          "reason": "4 轮（上限 5），Token 1143",
           "applicable": true
         },
         {
@@ -3176,22 +4850,23 @@
           "retrieval",
           "memory"
         ],
-        "startedAt": "2026-10-15T05:01:21.320Z",
-        "durationMs": 463,
+        "startedAt": "2026-10-17T11:28:24.588Z",
+        "durationMs": 907,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [],
             "toolResultStatuses": [],
+            "toolResultCodes": [],
             "outputChars": 9,
-            "tokensConsumed": 181,
+            "tokensConsumed": 231,
             "exitReason": "success",
             "promptMessageCount": 2
           }
         ],
         "totalIterations": 1,
-        "totalTokensConsumed": 181,
+        "totalTokensConsumed": 231,
         "totalToolCalls": 0,
         "controlTriggers": {
           "stopRules_evaluated": 1,
@@ -3211,7 +4886,7 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -3251,7 +4926,7 @@
                 "gm-020",
                 "gm-019",
                 "gm-018",
-                "gm-016"
+                "gm-017"
               ],
               "recallAtK": 1,
               "reciprocalRank": 1
@@ -3864,7 +5539,15 @@
           }
         },
         "exitReason": "success",
-        "exitMessage": "Agent produced final output without tool calls"
+        "exitMessage": "Agent produced final output without tool calls",
+        "spans": {
+          "total": 1,
+          "llm": 1,
+          "tool": 0,
+          "traceIds": [
+            "bench-trace-scn-retrieval-golden"
+          ]
+        }
       },
       "checks": [
         {
@@ -3893,6 +5576,11 @@
           "id": "CHK-STEP-ORDER",
           "passed": true,
           "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=1 / tool=0 / trace=1）"
         },
         {
           "id": "CHK-RETRIEVAL-RECALL",
@@ -3934,7 +5622,7 @@
           "dimension": "efficiency",
           "score": 1,
           "weight": 0.2,
-          "reason": "1 轮（上限 2），Token 181",
+          "reason": "1 轮（上限 2），Token 231",
           "applicable": true
         },
         {
@@ -3971,15 +5659,15 @@
           "tool-use",
           "diagnosis"
         ],
-        "startedAt": "2026-10-15T05:01:21.792Z",
-        "durationMs": 110,
+        "startedAt": "2026-10-17T11:28:25.520Z",
+        "durationMs": 231,
         "iterations": [
           {
             "index": 1,
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "list-todos"
                 }
@@ -3988,8 +5676,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 198,
+            "tokensConsumed": 248,
             "promptMessageCount": 2
           },
           {
@@ -3997,7 +5686,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "list-todos"
                 }
@@ -4006,8 +5695,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 219,
+            "tokensConsumed": 269,
             "promptMessageCount": 4
           },
           {
@@ -4015,7 +5705,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "list-todos"
                 }
@@ -4024,8 +5714,9 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 239,
+            "tokensConsumed": 290,
             "promptMessageCount": 6
           },
           {
@@ -4033,7 +5724,7 @@
             "stepOrderOk": true,
             "toolCalls": [
               {
-                "name": "bench.echo",
+                "name": "BenchEcho",
                 "arguments": {
                   "text": "list-todos"
                 }
@@ -4042,14 +5733,15 @@
             "toolResultStatuses": [
               "success"
             ],
+            "toolResultCodes": [],
             "outputChars": 0,
-            "tokensConsumed": 260,
+            "tokensConsumed": 310,
             "exitReason": "no_progress",
             "promptMessageCount": 8
           }
         ],
         "totalIterations": 4,
-        "totalTokensConsumed": 916,
+        "totalTokensConsumed": 1117,
         "totalToolCalls": 4,
         "controlTriggers": {
           "stopRules_evaluated": 4,
@@ -4069,22 +5761,22 @@
           {
             "index": 1,
             "messageCount": 2,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 2,
             "messageCount": 4,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 3,
             "messageCount": 6,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           },
           {
             "index": 4,
             "messageCount": 8,
-            "toolSchemaCount": 0
+            "toolSchemaCount": 10
           }
         ],
         "reanchorPerCall": [
@@ -4094,7 +5786,7 @@
           false
         ],
         "toolExecutions": {
-          "bench.echo": 1
+          "BenchEcho": 1
         },
         "eventTypes": {
           "middleware:before_model": 8
@@ -4121,14 +5813,30 @@
         "clockSkew": null,
         "goalIntact": true,
         "expect": {
-          "exitReason": "success",
-          "maxIterations": 3,
-          "forbidDiagnoses": [
+          "exitReasonOneOf": [
+            "no_progress",
+            "max_iterations"
+          ],
+          "requiredDiagnoses": [
             "tool_loop"
+          ],
+          "allowDiagnoses": [
+            "tool_loop"
+          ],
+          "forbidDiagnoses": [
+            "false_success"
           ]
         },
         "exitReason": "no_progress",
-        "exitMessage": "连续 3 轮无进展 (delta=0.0000 < 0.05)"
+        "exitMessage": "连续 3 轮无进展 (delta=0.0000 < 0.05)",
+        "spans": {
+          "total": 8,
+          "llm": 4,
+          "tool": 4,
+          "traceIds": [
+            "bench-trace-scn-tool-loop"
+          ]
+        }
       },
       "checks": [
         {
@@ -4137,16 +5845,10 @@
           "detail": "无运行期异常"
         },
         {
-          "id": "CHK-EXIT-REASON",
-          "passed": false,
-          "detail": "期望 exitReason=success，实际 no_progress",
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {no_progress, max_iterations}，实际 no_progress",
           "observed": "no_progress"
-        },
-        {
-          "id": "CHK-CONVERGENCE",
-          "passed": false,
-          "detail": "轮数 4 ≤ 上限 3",
-          "observed": 4
         },
         {
           "id": "CHK-TOOL-PAIRING",
@@ -4159,40 +5861,50 @@
           "detail": "十步序列未被破坏"
         },
         {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=4 / tool=4 / trace=1）"
+        },
+        {
           "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
-          "passed": false,
-          "detail": "出现被禁止的问题形态：tool_loop"
+          "passed": true,
+          "detail": "未出现被禁止的问题形态（false_success）"
+        },
+        {
+          "id": "CHK-REQUIRED-DIAGNOSIS",
+          "passed": true,
+          "detail": "已诊断出期望的问题形态（tool_loop）"
         }
       ],
-      "admitted": false,
+      "admitted": true,
       "diagnoses": [
         {
           "type": "tool_loop",
-          "severity": "warning",
-          "detail": "同一工具调用重复 4 次（极限环特征）",
-          "evidence": "bench.echo:{\"text\":\"list-todos\"}"
+          "severity": "info",
+          "detail": "（场景预期内）同一工具调用重复 4 次（极限环特征）",
+          "evidence": "BenchEcho:{\"text\":\"list-todos\"}"
         }
       ],
       "scores": [
         {
           "dimension": "correctness",
-          "score": 0.5,
+          "score": 1,
           "weight": 0.3,
-          "reason": "退出类别不一致、十步正常、调用配对完整",
+          "reason": "退出类别一致、十步正常、调用配对完整",
           "applicable": true
         },
         {
           "dimension": "resilience",
           "score": 1,
           "weight": 0.2,
-          "reason": "本场景未注入任何故障 → 恢复力未被压到，不参与评分",
-          "applicable": false
+          "reason": "注入了故障（工具失败/短路/场景声明）且未产生运行期异常",
+          "applicable": true
         },
         {
           "dimension": "efficiency",
-          "score": 0.6666666666666667,
+          "score": 1,
           "weight": 0.2,
-          "reason": "4 轮（上限 3），Token 916",
+          "reason": "4 轮（上限 4），Token 1117",
           "applicable": true
         },
         {
@@ -4217,8 +5929,451 @@
           "applicable": false
         }
       ],
-      "totalScore": null,
-      "grade": null
+      "totalScore": 0.9559,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-tool-misuse",
+        "scenarioTitle": "伪成功：末轮含错误结果时不得以 success 退出",
+        "tags": [
+          "correctness",
+          "false-success"
+        ],
+        "startedAt": "2026-10-17T11:28:25.766Z",
+        "durationMs": 201,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [
+              {
+                "name": "BenchFail",
+                "arguments": {
+                  "text": "fail"
+                }
+              }
+            ],
+            "toolResultStatuses": [
+              "error"
+            ],
+            "toolResultCodes": [
+              "PROBE_ALWAYS_FAIL"
+            ],
+            "outputChars": 0,
+            "tokensConsumed": 251,
+            "promptMessageCount": 2
+          },
+          {
+            "index": 2,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 5,
+            "tokensConsumed": 250,
+            "exitReason": "no_progress",
+            "promptMessageCount": 4
+          }
+        ],
+        "totalIterations": 2,
+        "totalTokensConsumed": 501,
+        "totalToolCalls": 1,
+        "controlTriggers": {
+          "stopRules_evaluated": 2,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          },
+          {
+            "index": 2,
+            "messageCount": 4,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false,
+          false
+        ],
+        "toolExecutions": {
+          "BenchFail": 1
+        },
+        "eventTypes": {
+          "middleware:before_model": 4
+        },
+        "eventSequence": [
+          "middleware:before_model",
+          "middleware:before_model",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "max_iterations",
+            "pre_supervision",
+            "no_progress",
+            "model_error",
+            "risk",
+            "budget_exhausted"
+          ],
+          "forbidDiagnoses": [
+            "false_success"
+          ]
+        },
+        "exitReason": "no_progress",
+        "exitMessage": "末轮工具结果含错误，拒绝以 success 退出（伪成功护栏）",
+        "spans": {
+          "total": 3,
+          "llm": 2,
+          "tool": 1,
+          "traceIds": [
+            "bench-trace-scn-tool-misuse"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {max_iterations, pre_supervision, no_progress, model_error, risk, budget_exhausted}，实际 no_progress",
+          "observed": "no_progress"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=2 / tool=1 / trace=1）"
+        },
+        {
+          "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
+          "passed": true,
+          "detail": "未出现被禁止的问题形态（false_success）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "none",
+          "severity": "info",
+          "detail": "未发现 Agent 层面的问题"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "注入了故障（工具失败/短路/场景声明）且未产生运行期异常",
+          "applicable": true
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "2 轮（上限 2），Token 501",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 2 次；非零计数器 1 个；事件类型 1 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9559,
+      "grade": "A"
+    },
+    {
+      "trace": {
+        "scenarioId": "scn-tool-timeout",
+        "scenarioTitle": "工具超时：返回 TOOL_TIMEOUT 且主循环继续，不悬挂",
+        "tags": [
+          "tool-use",
+          "resilience",
+          "timeout"
+        ],
+        "startedAt": "2026-10-17T11:28:25.992Z",
+        "durationMs": 330,
+        "iterations": [
+          {
+            "index": 1,
+            "stepOrderOk": true,
+            "toolCalls": [
+              {
+                "name": "BenchEcho",
+                "arguments": {
+                  "text": "slow-op"
+                }
+              }
+            ],
+            "toolResultStatuses": [
+              "error"
+            ],
+            "toolResultCodes": [
+              "TOOL_TIMEOUT"
+            ],
+            "outputChars": 0,
+            "tokensConsumed": 254,
+            "promptMessageCount": 2
+          },
+          {
+            "index": 2,
+            "stepOrderOk": true,
+            "toolCalls": [],
+            "toolResultStatuses": [],
+            "toolResultCodes": [],
+            "outputChars": 15,
+            "tokensConsumed": 254,
+            "exitReason": "no_progress",
+            "promptMessageCount": 4
+          }
+        ],
+        "totalIterations": 2,
+        "totalTokensConsumed": 508,
+        "totalToolCalls": 1,
+        "controlTriggers": {
+          "stopRules_evaluated": 2,
+          "approval_gate_invoked": 0,
+          "rate_limit_checked": 0,
+          "fingerprint_hit": 0,
+          "anomaly_poll_invoked": 0,
+          "middleware_registered_failed": 0,
+          "goal_reanchor_injected": 0,
+          "pause_observed": 0,
+          "verifier_pipeline_invoked": 0,
+          "middleware_short_circuit": 0,
+          "ledger_mismatch": 0,
+          "injection_detected": 0
+        },
+        "modelCalls": [
+          {
+            "index": 1,
+            "messageCount": 2,
+            "toolSchemaCount": 10
+          },
+          {
+            "index": 2,
+            "messageCount": 4,
+            "toolSchemaCount": 10
+          }
+        ],
+        "reanchorPerCall": [
+          false,
+          false
+        ],
+        "toolExecutions": {
+          "BenchEcho": 1
+        },
+        "eventTypes": {
+          "middleware:before_model": 4
+        },
+        "eventSequence": [
+          "middleware:before_model",
+          "middleware:before_model",
+          "middleware:before_model",
+          "middleware:before_model"
+        ],
+        "memoryProbes": [],
+        "assertProbes": [],
+        "memoryWriteResults": [],
+        "retrieval": null,
+        "dbFailureEvidence": {
+          "injected": false,
+          "logFiles": 0,
+          "matchedLines": []
+        },
+        "clockSkew": null,
+        "goalIntact": true,
+        "expect": {
+          "exitReasonOneOf": [
+            "no_progress",
+            "max_iterations"
+          ],
+          "forbidDiagnoses": [
+            "false_success"
+          ],
+          "maxIterations": 2,
+          "minToolResults": 1,
+          "toolErrorCodes": [
+            "TOOL_TIMEOUT"
+          ]
+        },
+        "exitReason": "no_progress",
+        "exitMessage": "末轮工具结果含错误，拒绝以 success 退出（伪成功护栏）",
+        "spans": {
+          "total": 3,
+          "llm": 2,
+          "tool": 1,
+          "traceIds": [
+            "bench-trace-scn-tool-timeout"
+          ]
+        }
+      },
+      "checks": [
+        {
+          "id": "CHK-NO-FATAL",
+          "passed": true,
+          "detail": "无运行期异常"
+        },
+        {
+          "id": "CHK-EXIT-REASON-ONE-OF",
+          "passed": true,
+          "detail": "期望 exitReason ∈ {no_progress, max_iterations}，实际 no_progress",
+          "observed": "no_progress"
+        },
+        {
+          "id": "CHK-CONVERGENCE",
+          "passed": true,
+          "detail": "轮数 2 ≤ 上限 2",
+          "observed": 2
+        },
+        {
+          "id": "CHK-TOOL-RESULTS",
+          "passed": true,
+          "detail": "工具结果 1 ≥ 1",
+          "observed": 1
+        },
+        {
+          "id": "CHK-TOOL-ERROR-CODES",
+          "passed": true,
+          "detail": "已出现期望的工具错误码（TOOL_TIMEOUT）"
+        },
+        {
+          "id": "CHK-TOOL-PAIRING",
+          "passed": true,
+          "detail": "每轮工具调用与结果成对"
+        },
+        {
+          "id": "CHK-STEP-ORDER",
+          "passed": true,
+          "detail": "十步序列未被破坏"
+        },
+        {
+          "id": "CHK-SPAN-WIRING",
+          "passed": true,
+          "detail": "真实运行留下 span（llm=2 / tool=1 / trace=1）"
+        },
+        {
+          "id": "CHK-NO-FORBIDDEN-DIAGNOSIS",
+          "passed": true,
+          "detail": "未出现被禁止的问题形态（false_success）"
+        }
+      ],
+      "admitted": true,
+      "diagnoses": [
+        {
+          "type": "none",
+          "severity": "info",
+          "detail": "未发现 Agent 层面的问题"
+        }
+      ],
+      "scores": [
+        {
+          "dimension": "correctness",
+          "score": 1,
+          "weight": 0.3,
+          "reason": "退出类别一致、十步正常、调用配对完整",
+          "applicable": true
+        },
+        {
+          "dimension": "resilience",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "注入了故障（工具失败/短路/场景声明）且未产生运行期异常",
+          "applicable": true
+        },
+        {
+          "dimension": "efficiency",
+          "score": 1,
+          "weight": 0.2,
+          "reason": "2 轮（上限 2），Token 508",
+          "applicable": true
+        },
+        {
+          "dimension": "observability",
+          "score": 0.75,
+          "weight": 0.15,
+          "reason": "StopRules 评估 2 次；非零计数器 1 个；事件类型 1 种",
+          "applicable": true
+        },
+        {
+          "dimension": "governance",
+          "score": 0,
+          "weight": 0.15,
+          "reason": "本场景未触及治理链路（无危险工具/审批）→ 不参与评分",
+          "applicable": false
+        },
+        {
+          "dimension": "maintainability",
+          "score": 0,
+          "weight": 0,
+          "reason": "无自动化测量手段（权重 0，不参与分母）",
+          "applicable": false
+        }
+      ],
+      "totalScore": 0.9559,
+      "grade": "A"
     }
   ]
 }

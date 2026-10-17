@@ -6,21 +6,32 @@
  * 消息落 DB（main 库 chat_sessions / chat_messages 表，migration v18/v19）。
  */
 
-import { v4 as uuidv4 } from 'uuid';
-import { resolve } from 'node:path';
+import { v4 as uuidv4 } from "uuid";
+import { resolve } from "node:path";
 
-import { getMainDb } from '../../Infra/Db/index.js';
-import { publish, createEvent } from '../../Services/EventBus/eventBus.js';
-import { EventType } from '../../Services/EventBus/eventTypes.js';
-import { getRegisteredModels } from '../../Infra/Llm/Router/modelRouter.js';
-import { defaultWorkspaceDir, ensureWorkspaceDir } from '../../Infra/Security/workspaceGuard.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+import { getMainDb } from "../../Infra/Db/index.js";
+import { publish, createEvent } from "../../Services/EventBus/eventBus.js";
+import { EventType } from "../../Services/EventBus/eventTypes.js";
+import { getRegisteredModels } from "../../Infra/Llm/Router/modelRouter.js";
+import {
+  defaultWorkspaceDir,
+  ensureWorkspaceDir,
+} from "../../Infra/Security/workspaceGuard.js";
+import { setWorkspaceRoot } from "../../Infra/Security/pathGuard.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
 
-import { json, apiError, registerRoute } from './router.js';
-import { getActiveOwner } from '../../Services/AccountScope/activeAccount.js';
-import { listAiEvents, type PersistedAiEvent } from '../EventStore/aiEventStore.js';
-import { listTodosBySession, listAllTodos, clearTodos } from '../../Services/Planning/todoStore.js';
+import { json, apiError, registerRoute } from "./router.js";
+import { getActiveOwner } from "../../Services/AccountScope/activeAccount.js";
+import {
+  listAiEvents,
+  type PersistedAiEvent,
+} from "../EventStore/aiEventStore.js";
+import {
+  listTodosBySession,
+  listAllTodos,
+  clearTodos,
+} from "../../Services/Planning/todoStore.js";
 
 /** 事件 payload 反序列化（损坏数据回退为空对象，避免整个回放失败） */
 function safeParse(raw: string): unknown {
@@ -36,7 +47,7 @@ function safeParse(raw: string): unknown {
 export interface ChatSessionRow {
   session_id: string;
   title: string;
-  status: 'active' | 'archived' | 'closed';
+  status: "active" | "archived" | "closed";
   created_at: number;
   updated_at: number;
   /** 任务工作目录（工具与 shell 的路径根） */
@@ -48,7 +59,7 @@ export interface ChatSessionRow {
 export interface ChatMessageRow {
   message_id: string;
   session_id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   model?: string;
   tokens_used?: number;
@@ -92,19 +103,26 @@ export interface MessageRichPayload {
  * 归档（2026-10-03 新增）：`archived_at` 非空表示已归档。
  * 归档是**软状态**：不删除任何消息，任务仍可打开、可取消归档，也会继续参与同步/备份。
  */
-export function listSessions(options: { archived?: boolean | 'all' } = {}): ChatSessionRow[] {
+export function listSessions(
+  options: { archived?: boolean | "all" } = {},
+): ChatSessionRow[] {
   const db = getMainDb();
   const archived = options.archived ?? false;
-  if (archived === 'all') {
-    return db.prepare('SELECT * FROM chat_sessions WHERE owner_user_id = ? ORDER BY updated_at DESC')
+  if (archived === "all") {
+    return db
+      .prepare(
+        "SELECT * FROM chat_sessions WHERE owner_user_id = ? ORDER BY updated_at DESC",
+      )
       .all(getActiveOwner()) as ChatSessionRow[];
   }
-  return db.prepare(
-    `SELECT * FROM chat_sessions
+  return db
+    .prepare(
+      `SELECT * FROM chat_sessions
      WHERE owner_user_id = ? AND (archived_at IS NOT NULL) = ?
      ORDER BY updated_at DESC`,
-    // 注意：better-sqlite3 不接受布尔值绑定，必须显式转 0/1
-  ).all(getActiveOwner(), archived ? 1 : 0) as ChatSessionRow[];
+      // 注意：better-sqlite3 不接受布尔值绑定，必须显式转 0/1
+    )
+    .all(getActiveOwner(), archived ? 1 : 0) as ChatSessionRow[];
 }
 
 /**
@@ -112,20 +130,26 @@ export function listSessions(options: { archived?: boolean | 'all' } = {}): Chat
  *
  * 属主限定：只能操作当前账号名下的任务（他人任务视为不存在）。
  */
-export function archiveSession(sessionId: string, archived: boolean): Result<ChatSessionRow> {
+export function archiveSession(
+  sessionId: string,
+  archived: boolean,
+): Result<ChatSessionRow> {
   const db = getMainDb();
   const owner = getActiveOwner();
   const session = getSession(sessionId);
-  if (!session) return err(`会话不存在: ${sessionId}`, 'ERROR');
+  if (!session) return err(`会话不存在: ${sessionId}`, "ERROR");
 
   const now = Date.now();
   db.prepare(
     `UPDATE chat_sessions SET archived_at = ?, updated_at = ? WHERE session_id = ? AND owner_user_id = ?`,
   ).run(archived ? now : null, now, sessionId, owner);
 
-  const updated = db.prepare('SELECT * FROM chat_sessions WHERE session_id = ? AND owner_user_id = ?')
+  const updated = db
+    .prepare(
+      "SELECT * FROM chat_sessions WHERE session_id = ? AND owner_user_id = ?",
+    )
     .get(sessionId, owner) as ChatSessionRow | undefined;
-  return updated ? ok(updated) : err(`归档后读取失败: ${sessionId}`, 'ERROR');
+  return updated ? ok(updated) : err(`归档后读取失败: ${sessionId}`, "ERROR");
 }
 
 /**
@@ -138,23 +162,37 @@ export function archiveSession(sessionId: string, archived: boolean): Result<Cha
  * - 指定 `workDir` → 目录不存在则创建；
  * - 无工作目录的任务因此始终有一个空文件夹作为工作根，工具不会越出。
  */
-export function createSession(title?: string, workDir?: string): ChatSessionRow {
+export function createSession(
+  title?: string,
+  workDir?: string,
+): ChatSessionRow {
   const db = getMainDb();
   const sessionId = `sess-${uuidv4().slice(0, 8)}`;
   const now = Date.now();
 
-  const workspace = ensureWorkspaceDir(workDir && workDir.trim() !== '' ? workDir : defaultWorkspaceDir(sessionId));
-  const workDirValue = workspace.ok ? workspace.value : defaultWorkspaceDir(sessionId);
+  const workspace = ensureWorkspaceDir(
+    workDir && workDir.trim() !== "" ? workDir : defaultWorkspaceDir(sessionId),
+  );
+  const workDirValue = workspace.ok
+    ? workspace.value
+    : defaultWorkspaceDir(sessionId);
 
   db.prepare(
     `INSERT INTO chat_sessions (session_id, title, status, created_at, updated_at, work_dir, owner_user_id)
      VALUES (?, ?, 'active', ?, ?, ?, ?)`,
-  ).run(sessionId, title ?? 'New Chat', now, now, workDirValue, getActiveOwner());
+  ).run(
+    sessionId,
+    title ?? "New Chat",
+    now,
+    now,
+    workDirValue,
+    getActiveOwner(),
+  );
 
   return {
     session_id: sessionId,
-    title: title ?? 'New Chat',
-    status: 'active',
+    title: title ?? "New Chat",
+    status: "active",
     created_at: now,
     updated_at: now,
     work_dir: workDirValue,
@@ -168,7 +206,9 @@ export function createSession(title?: string, workDir?: string): ChatSessionRow 
  */
 export function hasConversation(sessionId: string): boolean {
   const row = getMainDb()
-    .prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id = ? AND owner_user_id = ?')
+    .prepare(
+      "SELECT COUNT(*) AS n FROM chat_messages WHERE session_id = ? AND owner_user_id = ?",
+    )
     .get(sessionId, getActiveOwner()) as { n: number } | undefined;
   return (row?.n ?? 0) > 0;
 }
@@ -180,14 +220,19 @@ export function hasConversation(sessionId: string): boolean {
  * 避免"路由先放行、领域层再拒绝"这类双份规则漂移。
  * 幂等情形（目标 == 当前）不视为锁定，重复提交同一目录不报错。
  */
-export function isWorkDirLocked(sessionId: string, nextDir: string | null): boolean {
+export function isWorkDirLocked(
+  sessionId: string,
+  nextDir: string | null,
+): boolean {
   const session = getSession(sessionId);
   if (!session) return false;
-  const target = nextDir && nextDir.trim() !== '' ? nextDir : defaultWorkspaceDir(sessionId);
+  const target =
+    nextDir && nextDir.trim() !== "" ? nextDir : defaultWorkspaceDir(sessionId);
   const next = resolve(target);
-  const current = session.work_dir && session.work_dir.trim() !== ''
-    ? resolve(session.work_dir)
-    : null;
+  const current =
+    session.work_dir && session.work_dir.trim() !== ""
+      ? resolve(session.work_dir)
+      : null;
   if (current !== null && current === next) return false;
   return hasConversation(sessionId);
 }
@@ -208,31 +253,47 @@ export function updateSessionWorkDir(
   options?: { allowLocked?: boolean },
 ): Result<ChatSessionRow> {
   const session = getSession(sessionId);
-  if (!session) return err(`会话不存在: ${sessionId}`, 'ERROR');
+  if (!session) return err(`会话不存在: ${sessionId}`, "ERROR");
 
   if (!options?.allowLocked && isWorkDirLocked(sessionId, workDir)) {
-    return err(WORK_DIR_LOCKED_MESSAGE, 'ERROR');
+    return err(WORK_DIR_LOCKED_MESSAGE, "ERROR");
   }
 
-  const target = workDir && workDir.trim() !== '' ? workDir : defaultWorkspaceDir(sessionId);
+  const target =
+    workDir && workDir.trim() !== "" ? workDir : defaultWorkspaceDir(sessionId);
   const workspace = ensureWorkspaceDir(target);
-  if (!workspace.ok) return err(workspace.error, 'ERROR');
+  if (!workspace.ok) return err(workspace.error, "ERROR");
+
+  // ★ 用户选定的工作目录 = **当前任务的信任边界**（2026-10-16 用户裁定）。
+  //   该目录可能在项目根之外（如 F:\TestAgent）：此前 pathGuard 只认 projectRoot + 白名单，
+  //   于是 workspaceGuard 判"在工作目录内、合法"、pathGuard 判"越界"，工具直接失败
+  //   （PATH_DENIED：路径越界：… 不在允许的根目录内）。
+  //   正解不是"把该目录追加进全局白名单"，而是让**当前工作空间**成为包含性检查的根。
+  setWorkspaceRoot(workspace.value);
 
   getMainDb()
-    .prepare('UPDATE chat_sessions SET work_dir = ?, updated_at = ? WHERE session_id = ? AND owner_user_id = ?')
+    .prepare(
+      "UPDATE chat_sessions SET work_dir = ?, updated_at = ? WHERE session_id = ? AND owner_user_id = ?",
+    )
     .run(workspace.value, Date.now(), sessionId, getActiveOwner());
 
   return ok({ ...session, work_dir: workspace.value, updated_at: Date.now() });
 }
 
 /** 工作目录锁定的用户可见文案（领域层与接口层共用，避免两处措辞漂移） */
-export const WORK_DIR_LOCKED_MESSAGE = '该任务已有对话，工作目录不可更改；如需更换请新建任务';
+export const WORK_DIR_LOCKED_MESSAGE =
+  "该任务已有对话，工作目录不可更改；如需更换请新建任务";
 
 /** 读取会话工作目录（缺省时补齐默认目录并落库，兼容迁移前创建的会话） */
 export function ensureSessionWorkDir(sessionId: string): string | null {
   const session = getSession(sessionId);
   if (!session) return null;
-  if (session.work_dir && session.work_dir.trim() !== '') return session.work_dir;
+  if (session.work_dir && session.work_dir.trim() !== "") {
+    // 既有会话（含重启后首次使用）：把它设为**当前工作空间根**，
+    // 否则"上次选的项目外目录"在本次进程里依旧会被 pathGuard 拒绝。
+    setWorkspaceRoot(session.work_dir);
+    return session.work_dir;
+  }
   // 内部回填：老会话 work_dir 为空但可能已有对话 → 绕过锁定判据
   const updated = updateSessionWorkDir(sessionId, null, { allowLocked: true });
   return updated.ok ? (updated.value.work_dir ?? null) : null;
@@ -240,15 +301,19 @@ export function ensureSessionWorkDir(sessionId: string): string | null {
 
 export function getSession(sessionId: string): ChatSessionRow | undefined {
   const db = getMainDb();
-  return db.prepare('SELECT * FROM chat_sessions WHERE session_id = ? AND owner_user_id = ?')
+  return db
+    .prepare(
+      "SELECT * FROM chat_sessions WHERE session_id = ? AND owner_user_id = ?",
+    )
     .get(sessionId, getActiveOwner()) as ChatSessionRow | undefined;
 }
 
 /** 更新会话标题（用于自动命名） */
 export function updateSessionTitle(sessionId: string, title: string): void {
   const db = getMainDb();
-  db.prepare('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE session_id = ? AND owner_user_id = ?')
-    .run(title, Date.now(), sessionId, getActiveOwner());
+  db.prepare(
+    "UPDATE chat_sessions SET title = ?, updated_at = ? WHERE session_id = ? AND owner_user_id = ?",
+  ).run(title, Date.now(), sessionId, getActiveOwner());
 }
 
 // ── 消息操作 ────────────────────────────────────────────────────────
@@ -259,18 +324,22 @@ export function listMessages(sessionId: string, limit = 50): ChatMessageRow[] {
   // 原实现为 ORDER BY created_at ASC LIMIT ?，会话超过 limit 条时会截断掉**最新**消息，
   // 导致上下文装配拿不到当前提问（模型只能看到很久以前的对话）。
   // rowid 作为同毫秒内的次序 tiebreaker。
-  const rows = db.prepare(
-    'SELECT * FROM chat_messages WHERE session_id = ? AND owner_user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?',
-  ).all(sessionId, getActiveOwner(), limit) as ChatMessageRow[];
+  const rows = db
+    .prepare(
+      "SELECT * FROM chat_messages WHERE session_id = ? AND owner_user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+    )
+    .all(sessionId, getActiveOwner(), limit) as ChatMessageRow[];
   return rows.reverse();
 }
 
 export function addMessage(
   sessionId: string,
-  role: 'user' | 'assistant' | 'system',
+  role: "user" | "assistant" | "system",
   content: string,
   extra?: {
-    model?: string; tokens_used?: number; trace_id?: string;
+    model?: string;
+    tokens_used?: number;
+    trace_id?: string;
     rich?: MessageRichPayload;
   },
 ): ChatMessageRow {
@@ -279,7 +348,8 @@ export function addMessage(
   const now = Date.now();
   // 属主取**会话自身的属主**（而非当前全局属主）：
   // 运行中的任务若在切换账号之后才落库，也不会把消息写进另一个账号的命名空间。
-  const sessionRow = db.prepare('SELECT owner_user_id FROM chat_sessions WHERE session_id = ?')
+  const sessionRow = db
+    .prepare("SELECT owner_user_id FROM chat_sessions WHERE session_id = ?")
     .get(sessionId) as { owner_user_id?: string } | undefined;
   const owner = sessionRow?.owner_user_id ?? getActiveOwner();
   const rich = extra?.rich;
@@ -289,35 +359,54 @@ export function addMessage(
         reasoning, tool_calls_json, segments_json, total_iterations, error, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    messageId, sessionId, role, content, extra?.model ?? null, extra?.tokens_used ?? null, extra?.trace_id ?? null, now, owner,
+    messageId,
+    sessionId,
+    role,
+    content,
+    extra?.model ?? null,
+    extra?.tokens_used ?? null,
+    extra?.trace_id ?? null,
+    now,
+    owner,
     rich?.reasoning ?? null,
     rich?.toolCalls !== undefined ? JSON.stringify(rich.toolCalls) : null,
     rich?.segments !== undefined ? JSON.stringify(rich.segments) : null,
     rich?.totalIterations ?? null,
     rich?.error ?? null,
-    rich?.status ?? 'complete',
+    rich?.status ?? "complete",
   );
 
   // 更新会话时间戳（同样限定属主）
-  db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE session_id = ? AND owner_user_id = ?')
-    .run(now, sessionId, owner);
+  db.prepare(
+    "UPDATE chat_sessions SET updated_at = ? WHERE session_id = ? AND owner_user_id = ?",
+  ).run(now, sessionId, owner);
 
   // 发布事件（前端可订阅 agent:chat_message 增量推送）
-  publish(createEvent({
-    eventType: EventType.AGENT_CHAT_MESSAGE,
-    source: 'chatApi/addMessage',
-    payload: { messageId, sessionId, role, content },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.AGENT_CHAT_MESSAGE,
+      source: "chatApi/addMessage",
+      payload: { messageId, sessionId, role, content },
+    }),
+  );
 
   return {
-    message_id: messageId, session_id: sessionId, role, content,
-    model: extra?.model, tokens_used: extra?.tokens_used, trace_id: extra?.trace_id, created_at: now,
+    message_id: messageId,
+    session_id: sessionId,
+    role,
+    content,
+    model: extra?.model,
+    tokens_used: extra?.tokens_used,
+    trace_id: extra?.trace_id,
+    created_at: now,
     reasoning: rich?.reasoning ?? null,
-    tool_calls_json: rich?.toolCalls !== undefined ? JSON.stringify(rich.toolCalls) : null,
-    segments_json: rich?.segments !== undefined ? JSON.stringify(rich.segments) : null,
+    tool_calls_json:
+      rich?.toolCalls !== undefined ? JSON.stringify(rich.toolCalls) : null,
+    segments_json:
+      rich?.segments !== undefined ? JSON.stringify(rich.segments) : null,
     total_iterations: rich?.totalIterations ?? null,
     error: rich?.error ?? null,
-    status: rich?.status ?? 'complete',
+    status: rich?.status ?? "complete",
   };
 }
 
@@ -328,12 +417,18 @@ export function addMessage(
  * 而**思考/工具卡片/分段**只存在于前端运行态（由事件累积），
  * 所以由前端在运行结束后回填——否则重启后只剩纯文本。
  */
-export function updateMessageRich(messageId: string, rich: MessageRichPayload): Result<ChatMessageRow> {
+export function updateMessageRich(
+  messageId: string,
+  rich: MessageRichPayload,
+): Result<ChatMessageRow> {
   const db = getMainDb();
   const owner = getActiveOwner();
-  const existing = db.prepare('SELECT * FROM chat_messages WHERE message_id = ? AND owner_user_id = ?')
+  const existing = db
+    .prepare(
+      "SELECT * FROM chat_messages WHERE message_id = ? AND owner_user_id = ?",
+    )
     .get(messageId, owner) as ChatMessageRow | undefined;
-  if (!existing) return err(`消息不存在: ${messageId}`, 'ERROR');
+  if (!existing) return err(`消息不存在: ${messageId}`, "ERROR");
 
   db.prepare(
     `UPDATE chat_messages SET
@@ -357,11 +452,15 @@ export function updateMessageRich(messageId: string, rich: MessageRichPayload): 
     rich.model ?? null,
     rich.tokensUsed ?? null,
     rich.traceId ?? null,
-    messageId, owner,
+    messageId,
+    owner,
   );
-  const updated = db.prepare('SELECT * FROM chat_messages WHERE message_id = ? AND owner_user_id = ?')
+  const updated = db
+    .prepare(
+      "SELECT * FROM chat_messages WHERE message_id = ? AND owner_user_id = ?",
+    )
     .get(messageId, owner) as ChatMessageRow | undefined;
-  return updated ? ok(updated) : err(`更新后读取失败: ${messageId}`, 'ERROR');
+  return updated ? ok(updated) : err(`更新后读取失败: ${messageId}`, "ERROR");
 }
 
 /**
@@ -372,17 +471,19 @@ export function updateMessageRich(messageId: string, rich: MessageRichPayload): 
  */
 export function upsertRichMessage(
   sessionId: string,
-  role: 'user' | 'assistant' | 'system',
+  role: "user" | "assistant" | "system",
   content: string,
   rich: MessageRichPayload,
 ): Result<ChatMessageRow> {
   const db = getMainDb();
   const owner = getActiveOwner();
-  const row = db.prepare(
-    `SELECT * FROM chat_messages
+  const row = db
+    .prepare(
+      `SELECT * FROM chat_messages
      WHERE session_id = ? AND owner_user_id = ? AND role = ? AND content = ?
      ORDER BY created_at DESC LIMIT 1`,
-  ).get(sessionId, owner, role, content) as ChatMessageRow | undefined;
+    )
+    .get(sessionId, owner, role, content) as ChatMessageRow | undefined;
 
   if (row) return updateMessageRich(row.message_id, rich);
   return ok(addMessage(sessionId, role, content, { rich }));
@@ -392,25 +493,27 @@ export function upsertRichMessage(
 
 export function registerChatRoutes(): void {
   // GET /api/sessions — 会话列表（?archived=false|true|all；默认仅未归档）
-  registerRoute('GET', '/api/sessions', async (req) => {
-    const raw = req.query['archived'];
-    const archived: boolean | 'all' = raw === 'all' ? 'all' : raw === 'true' || raw === '1' ? true : false;
+  registerRoute("GET", "/api/sessions", async (req) => {
+    const raw = req.query["archived"];
+    const archived: boolean | "all" =
+      raw === "all" ? "all" : raw === "true" || raw === "1" ? true : false;
     return json(listSessions({ archived }));
   });
 
   // POST /api/sessions/:sessionId/archive — 归档 / 取消归档（软状态）
-  registerRoute('POST', '/api/sessions/:sessionId/archive', async (req) => {
+  registerRoute("POST", "/api/sessions/:sessionId/archive", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const archived = req.body?.archived;
-    if (typeof archived !== 'boolean') return apiError('archived 必须是布尔值', 400);
+    if (typeof archived !== "boolean")
+      return apiError("archived 必须是布尔值", 400);
     const result = archiveSession(sessionId, archived);
     if (!result.ok) return apiError(result.error, 404);
     return json(result.value);
   });
 
   // POST /api/sessions — 创建会话（可选 workDir；缺省生成 Data/workspaces/<sessionId>/ 空目录）
-  registerRoute('POST', '/api/sessions', async (req) => {
+  registerRoute("POST", "/api/sessions", async (req) => {
     const title = req.body?.title as string | undefined;
     const workDir = req.body?.workDir as string | undefined;
     const session = createSession(title, workDir);
@@ -418,41 +521,47 @@ export function registerChatRoutes(): void {
   });
 
   // GET /api/sessions/:sessionId/messages — 消息列表
-  registerRoute('GET', '/api/sessions/:sessionId/messages', async (req) => {
+  registerRoute("GET", "/api/sessions/:sessionId/messages", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const session = getSession(sessionId);
-    if (!session) return apiError('Session not found', 404);
+    if (!session) return apiError("Session not found", 404);
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
     return json(listMessages(sessionId, limit));
   });
 
   // POST /api/sessions/:sessionId/messages — 发送消息
-  registerRoute('POST', '/api/sessions/:sessionId/messages', async (req) => {
+  registerRoute("POST", "/api/sessions/:sessionId/messages", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const session = getSession(sessionId);
-    if (!session) return apiError('Session not found', 404);
+    if (!session) return apiError("Session not found", 404);
 
-    const role = (req.body?.role as string) ?? 'user';
+    const role = (req.body?.role as string) ?? "user";
     const content = req.body?.content as string;
-    if (!content) return apiError('content is required');
-    if (!['user', 'assistant', 'system'].includes(role)) return apiError('role must be user|assistant|system');
+    if (!content) return apiError("content is required");
+    if (!["user", "assistant", "system"].includes(role))
+      return apiError("role must be user|assistant|system");
 
-    const msg = addMessage(sessionId, role as 'user' | 'assistant' | 'system', content, {
-      model: req.body?.model as string | undefined,
-      tokens_used: req.body?.tokens_used as number | undefined,
-      trace_id: req.body?.trace_id as string | undefined,
-    });
+    const msg = addMessage(
+      sessionId,
+      role as "user" | "assistant" | "system",
+      content,
+      {
+        model: req.body?.model as string | undefined,
+        tokens_used: req.body?.tokens_used as number | undefined,
+        trace_id: req.body?.trace_id as string | undefined,
+      },
+    );
     return json(msg, 201);
   });
 
   // PATCH /api/sessions/:sessionId — 更新会话（标题 / 工作目录）
-  registerRoute('PATCH', '/api/sessions/:sessionId', async (req) => {
+  registerRoute("PATCH", "/api/sessions/:sessionId", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const session = getSession(sessionId);
-    if (!session) return apiError('Session not found', 404);
+    if (!session) return apiError("Session not found", 404);
 
     const title = req.body?.title as string | undefined;
     if (title !== undefined) {
@@ -460,9 +569,12 @@ export function registerChatRoutes(): void {
     }
 
     // workDir 支持显式修改；传 null/'' 表示重置为默认工作目录
-    if (req.body !== undefined && 'workDir' in (req.body as Record<string, unknown>)) {
-      const raw = (req.body as Record<string, unknown>)['workDir'];
-      const next = typeof raw === 'string' ? raw : null;
+    if (
+      req.body !== undefined &&
+      "workDir" in (req.body as Record<string, unknown>)
+    ) {
+      const raw = (req.body as Record<string, unknown>)["workDir"];
+      const next = typeof raw === "string" ? raw : null;
       // 已有对话 → 锁定（409 Conflict：前端据此提示"新建任务后再选目录"）
       if (isWorkDirLocked(sessionId, next)) {
         return apiError(WORK_DIR_LOCKED_MESSAGE, 409);
@@ -477,20 +589,25 @@ export function registerChatRoutes(): void {
 
   // GET /api/models — 获取可用模型列表
   // PATCH /api/messages/:messageId — 回填消息富结构（AI 组件族重建）
-  registerRoute('PATCH', '/api/messages/:messageId', async (req) => {
+  registerRoute("PATCH", "/api/messages/:messageId", async (req) => {
     const messageId = req.params.messageId;
-    if (!messageId) return apiError('messageId is required', 400);
+    if (!messageId) return apiError("messageId is required", 400);
     const body = (req.body ?? {}) as Record<string, unknown>;
     const result = updateMessageRich(messageId, {
-      reasoning: typeof body.reasoning === 'string' ? body.reasoning : undefined,
+      reasoning:
+        typeof body.reasoning === "string" ? body.reasoning : undefined,
       toolCalls: body.toolCalls,
       segments: body.segments,
-      totalIterations: typeof body.totalIterations === 'number' ? body.totalIterations : undefined,
-      error: typeof body.error === 'string' ? body.error : undefined,
-      status: typeof body.status === 'string' ? body.status : undefined,
-      model: typeof body.model === 'string' ? body.model : undefined,
-      tokensUsed: typeof body.tokensUsed === 'number' ? body.tokensUsed : undefined,
-      traceId: typeof body.traceId === 'string' ? body.traceId : undefined,
+      totalIterations:
+        typeof body.totalIterations === "number"
+          ? body.totalIterations
+          : undefined,
+      error: typeof body.error === "string" ? body.error : undefined,
+      status: typeof body.status === "string" ? body.status : undefined,
+      model: typeof body.model === "string" ? body.model : undefined,
+      tokensUsed:
+        typeof body.tokensUsed === "number" ? body.tokensUsed : undefined,
+      traceId: typeof body.traceId === "string" ? body.traceId : undefined,
     });
     if (!result.ok) return apiError(result.error, 404);
     return json(result.value);
@@ -502,40 +619,55 @@ export function registerChatRoutes(): void {
    * 前端不知道后端生成的 message_id（后端在流式结束时自行落库），
    * 因此以"会话 + 角色 + 正文"定位并回填组件数据（思考/工具卡/分段）。
    */
-  registerRoute('POST', '/api/sessions/:sessionId/messages/rich', async (req) => {
-    const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
-    if (!getSession(sessionId)) return apiError('Session not found', 404);
+  registerRoute(
+    "POST",
+    "/api/sessions/:sessionId/messages/rich",
+    async (req) => {
+      const sessionId = req.params.sessionId;
+      if (!sessionId) return apiError("sessionId is required", 400);
+      if (!getSession(sessionId)) return apiError("Session not found", 404);
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const role = (body.role as string) ?? 'assistant';
-    if (!['user', 'assistant', 'system'].includes(role)) return apiError('role must be user|assistant|system');
-    const content = typeof body.content === 'string' ? body.content : '';
-    if (content.length === 0 && body.segments === undefined) {
-      return apiError('content 或 segments 至少需要一个', 400);
-    }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const role = (body.role as string) ?? "assistant";
+      if (!["user", "assistant", "system"].includes(role))
+        return apiError("role must be user|assistant|system");
+      const content = typeof body.content === "string" ? body.content : "";
+      if (content.length === 0 && body.segments === undefined) {
+        return apiError("content 或 segments 至少需要一个", 400);
+      }
 
-    const result = upsertRichMessage(sessionId, role as 'user' | 'assistant' | 'system', content, {
-      reasoning: typeof body.reasoning === 'string' ? body.reasoning : undefined,
-      toolCalls: body.toolCalls,
-      segments: body.segments,
-      totalIterations: typeof body.totalIterations === 'number' ? body.totalIterations : undefined,
-      error: typeof body.error === 'string' ? body.error : undefined,
-      status: typeof body.status === 'string' ? body.status : undefined,
-      model: typeof body.model === 'string' ? body.model : undefined,
-      tokensUsed: typeof body.tokensUsed === 'number' ? body.tokensUsed : undefined,
-      traceId: typeof body.traceId === 'string' ? body.traceId : undefined,
-    });
-    if (!result.ok) return apiError(result.error, 500);
-    return json(result.value, 201);
-  });
+      const result = upsertRichMessage(
+        sessionId,
+        role as "user" | "assistant" | "system",
+        content,
+        {
+          reasoning:
+            typeof body.reasoning === "string" ? body.reasoning : undefined,
+          toolCalls: body.toolCalls,
+          segments: body.segments,
+          totalIterations:
+            typeof body.totalIterations === "number"
+              ? body.totalIterations
+              : undefined,
+          error: typeof body.error === "string" ? body.error : undefined,
+          status: typeof body.status === "string" ? body.status : undefined,
+          model: typeof body.model === "string" ? body.model : undefined,
+          tokensUsed:
+            typeof body.tokensUsed === "number" ? body.tokensUsed : undefined,
+          traceId: typeof body.traceId === "string" ? body.traceId : undefined,
+        },
+      );
+      if (!result.ok) return apiError(result.error, 500);
+      return json(result.value, 201);
+    },
+  );
 
   /**
    * GET /api/sessions/:sessionId/ai-events — 会话内 AI 组件事件流（重启后回放重建）
    */
-  registerRoute('GET', '/api/sessions/:sessionId/ai-events', async (req) => {
+  registerRoute("GET", "/api/sessions/:sessionId/ai-events", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const sinceTs = req.query.since ? parseInt(req.query.since, 10) : 0;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 2000;
     const events = listAiEvents(sessionId, { sinceTs, limit });
@@ -552,18 +684,22 @@ export function registerChatRoutes(): void {
 
   // GET /api/sessions/:sessionId/todos — Agent 计划清单（**按来源 agent 分组**）
   //   多 agent 且部分平级：每个 agent 各有一张计划表，前端面板按 agent 展示与切换。
-  registerRoute('GET', '/api/sessions/:sessionId/todos', async (req) => {
+  registerRoute("GET", "/api/sessions/:sessionId/todos", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const groups = listTodosBySession(sessionId);
-    return json({ sessionId, groups, total: groups.reduce((n, g) => n + g.todos.length, 0) });
+    return json({
+      sessionId,
+      groups,
+      total: groups.reduce((n, g) => n + g.todos.length, 0),
+    });
   });
 
   // DELETE /api/sessions/:sessionId/todos[?agentId=xxx] — 清空计划
   //   不带 agentId 清空该会话全部 agent；带 agentId 只清空指定 agent。
-  registerRoute('DELETE', '/api/sessions/:sessionId/todos', async (req) => {
+  registerRoute("DELETE", "/api/sessions/:sessionId/todos", async (req) => {
     const sessionId = req.params.sessionId;
-    if (!sessionId) return apiError('sessionId is required', 400);
+    if (!sessionId) return apiError("sessionId is required", 400);
     const agentId = req.query.agentId || undefined;
     const result = clearTodos(sessionId, agentId);
     if (!result.ok) return apiError(result.error, 500);
@@ -571,12 +707,12 @@ export function registerChatRoutes(): void {
   });
 
   // GET /api/todos — 全部计划（跨会话/跨 agent；备份包携带用）
-  registerRoute('GET', '/api/todos', async () => {
+  registerRoute("GET", "/api/todos", async () => {
     const items = listAllTodos();
     return json({ items, total: items.length });
   });
 
-  registerRoute('GET', '/api/models', async () => {
+  registerRoute("GET", "/api/models", async () => {
     const models = getRegisteredModels();
     return json(models);
   });

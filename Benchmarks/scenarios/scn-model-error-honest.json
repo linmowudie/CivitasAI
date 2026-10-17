@@ -9,7 +9,7 @@
   },
   "agentRole": "worker",
   "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
-  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
       { "kind": "error", "category": "server_error", "message": "mock 5xx #1" },

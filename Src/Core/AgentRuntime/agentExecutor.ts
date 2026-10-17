@@ -3,7 +3,7 @@
  * @description
  * Agent 任务执行入口（FE-072 实装）——把"已登记任务"的 Agent 真正驱动起来。
  *
- * 修复背景：`agent.recruit`（及编排）创建的 Agent 登记 `lastTaskId` 后**无执行驱动**
+ * 修复背景：`AgentRecruit`（及编排）创建的 Agent 登记 `lastTaskId` 后**无执行驱动**
  * （recruit 工具返回值自陈 `dispatch: 'pending'`——"派发执行由编排调度负责"，而该链路缺失）。
  * 现提供最小执行链路：构造 Loop 配置与状态 → `executeLoop` 真实执行 → 状态回写。
  *
@@ -76,6 +76,18 @@ export async function executeAssignedTask(params: {
   maxIterations?: number;
   tokenBudget?: number;
   timeLimitMs?: number;
+  /**
+   * 恢复续跑：从断点快照带回的对话内容（AG-BEN-RESUME / 崩溃恢复）。
+   * 提供时 Loop 以该历史为起点继续，而不是重新从一句 instruction 开始。
+   */
+  chatMessages?: Array<{
+    role: "system" | "user" | "assistant" | "tool";
+    content: string;
+    tool_call_id?: string;
+    tool_calls?: unknown;
+  }>;
+  /** 恢复续跑：断点轮次（用于说明与审计） */
+  resumedFromIteration?: number;
 }): Promise<Result<AgentExecutionResult>> {
   const agent = getAgent(params.agentId);
   if (!agent) return err(`Agent ${params.agentId} 不存在`);
@@ -147,8 +159,10 @@ export async function executeAssignedTask(params: {
 
   const instruction =
     params.instruction ??
-    `执行你被分配的任务（taskId=${assignedTaskId}）。` +
-      "若任务详情不可见，请基于你的角色职责与已登记约束继续。";
+    (params.resumedFromIteration !== undefined
+      ? `从第 ${params.resumedFromIteration} 轮断点继续执行未完成任务；保持原目标不变。`
+      : `执行你被分配的任务（taskId=${assignedTaskId}）。` +
+        "若任务详情不可见，请基于你的角色职责与已登记约束继续。");
 
   const loopState = createLoopState({
     loopId,
@@ -163,7 +177,11 @@ export async function executeAssignedTask(params: {
     agentId: params.agentId,
     agentRole: agent.role,
     config: configResult.value,
-    chatMessages: [{ role: "user", content: instruction }],
+    // 恢复续跑：有断点对话就以它为起点（真正"接着说"），否则从一句 instruction 开始
+    chatMessages:
+      params.chatMessages && params.chatMessages.length > 0
+        ? (params.chatMessages as never)
+        : [{ role: "user", content: instruction }],
     recentCallTimestamps: [],
     // ── P1-10：**进展信号发布方** ──
     // 修复前 `EventType.TASK_PROGRESS` 只有订阅方（progressTracker）没有发布方，

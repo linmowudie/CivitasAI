@@ -13,12 +13,13 @@ import React from 'react';
 
 // IPC 层在 jsdom 下无 Electron，统一打桩（本测试只关心表单行为）
 const addProvider = vi.fn().mockResolvedValue({ ok: true });
+const fetchModels = vi.fn().mockResolvedValue({ ok: true, data: [] });
 vi.mock('@/services/ipcApi', () => ({
   ipcVerifyModels: vi.fn().mockResolvedValue({ ok: true, data: { results: [] } }),
   ipcGetProviders: vi.fn().mockResolvedValue([]),
   ipcAddProvider: (...args: unknown[]) => addProvider(...args),
   ipcRemoveProvider: vi.fn().mockResolvedValue({ ok: true }),
-  ipcFetchProviderModels: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  ipcFetchProviderModels: (...args: unknown[]) => fetchModels(...args),
   ipcGetRouting: vi.fn().mockResolvedValue(null),
   ipcUpdateRouting: vi.fn().mockResolvedValue({ ok: true }),
   ipcGetModels: vi.fn().mockResolvedValue([]),
@@ -27,6 +28,16 @@ vi.mock('@/services/ipcApi', () => ({
 }));
 
 import ModelProviderPanel from '../../Client/src/components/Settings/ModelProviderPanel';
+
+const MODEL_SPEC = (id: string) => ({
+  id,
+  context_window: 128000,
+  max_output: 8192,
+  supports_vision: false,
+  supports_tools: true,
+  cost_per_1k_input: 0,
+  cost_per_1k_output: 0,
+});
 
 async function openForm() {
   render(<ModelProviderPanel />);
@@ -39,8 +50,20 @@ async function openForm() {
   };
 }
 
+/** 选华为云 MaaS 预设 → 地址自动填充 → 填 Key（端点不提供 /models 的真实场景） */
+async function fillHuaweiForm() {
+  const f = await openForm();
+  fireEvent.change(f.select, { target: { value: 'huawei-maas' } });
+  await waitFor(() => expect(f.url).toHaveValue('https://api.modelarts-maas.com/plan/v2'));
+  fireEvent.change(f.key, { target: { value: 'sk-test' } });
+  return f;
+}
+
 describe('ModelProviderPanel：API 地址与自动识别', () => {
-  beforeEach(() => { addProvider.mockClear(); });
+  beforeEach(() => {
+    addProvider.mockClear();
+    fetchModels.mockReset().mockResolvedValue({ ok: true, data: [] });
+  });
 
   it('表单里有可编辑的 API 地址输入框（此前只有只读展示）', async () => {
     const { url } = await openForm();
@@ -104,5 +127,93 @@ describe('ModelProviderPanel：API 地址与自动识别', () => {
       api_key: 'sk-test',
       display_name: 'DeepSeek',
     });
+  });
+});
+
+// ── 端点不提供 /models（华为云 MaaS Token Plan 的 /plan/v2）─────────────
+//
+// 实测（2026-10-17）：该端点 `GET /models` 返回 404 APIG.0101，但 `POST /chat/completions`
+// 完全正常。旧实现把原始 404 文本当 `formError` 显示，用户只能断定"供应商有问题"，
+// 而且列表为空 ⇒ 勾不到模型 ⇒ 无法注册。修复后：不是错误，改为引导手填模型名。
+
+describe('ModelProviderPanel：端点不提供 /models 时的降级', () => {
+  beforeEach(() => {
+    addProvider.mockClear();
+    fetchModels.mockReset().mockResolvedValue({ ok: true, data: [] });
+  });
+
+  it('拉取时把该供应商的内置候选模型名带给后端（否则列表天然为空）', async () => {
+    const { url, key } = await fillHuaweiForm();
+    void url; void key;
+    fireEvent.click(screen.getByText('测试并拉取模型'));
+
+    await waitFor(() => expect(fetchModels).toHaveBeenCalledTimes(1));
+    const arg = fetchModels.mock.calls[0]![0] as { base_url: string; fallbackModels?: string[] };
+    expect(arg.base_url).toBe('https://api.modelarts-maas.com/plan/v2');
+    expect(arg.fallbackModels).toEqual(['GLM-5.1', 'DeepSeek-V4-Flash', 'Kimi-K2.6']);
+  });
+
+  it('404 不再显示为错误：给出候选列表 + 要求勾选，确认按钮在勾选前禁用', async () => {
+    fetchModels.mockResolvedValueOnce({
+      ok: true,
+      data: [MODEL_SPEC('GLM-5.1'), MODEL_SPEC('DeepSeek-V4-Flash')],
+      listNotProvided: true,
+      listStatus: 404,
+      modelsFromFallback: true,
+    });
+    await fillHuaweiForm();
+    fireEvent.click(screen.getByText('测试并拉取模型'));
+
+    await waitFor(() => expect(screen.getByTestId('list-not-provided')).toBeInTheDocument());
+    expect(screen.getByText(/该端点不提供模型列表/)).toBeInTheDocument();
+    // 绝不能出现"HTTP 404: {...APIG.0101...}"这类原始报文
+    expect(screen.queryByText(/APIG\.0101/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/HTTP 404/)).not.toBeInTheDocument();
+    // 候选已列出，但默认不勾选任何模型
+    expect(screen.getByText('GLM-5.1')).toBeInTheDocument();
+    expect(screen.getByTestId('add-provider-confirm')).toBeDisabled();
+
+    fireEvent.click(screen.getByText('GLM-5.1'));
+    await waitFor(() => expect(screen.getByTestId('add-provider-confirm')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('add-provider-confirm'));
+    await waitFor(() => expect(addProvider).toHaveBeenCalledTimes(1));
+    expect(addProvider.mock.calls[0]![0]).toMatchObject({
+      provider: 'huawei-maas',
+      models: [expect.objectContaining({ id: 'GLM-5.1' })],
+    });
+  });
+
+  it('没有任何内置候选时，可手填模型名并勾选后注册', async () => {
+    fetchModels.mockResolvedValueOnce({ ok: true, data: [], listNotProvided: true, listStatus: 404 });
+    const { url, key, select } = await openForm();
+    void select;
+    // 自定义地址（无内置候选）
+    fireEvent.change(url, { target: { value: 'https://api.internal.corp/plan/v2' } });
+    fireEvent.change(key, { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByText('测试并拉取模型'));
+
+    await waitFor(() => expect(screen.getByTestId('list-not-provided')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('手动填写模型名'), { target: { value: 'my-model-1' } });
+    fireEvent.click(screen.getByText('添加'));
+
+    await waitFor(() => expect(screen.getByText('my-model-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('my-model-1'));
+    await waitFor(() => expect(screen.getByTestId('add-provider-confirm')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('add-provider-confirm'));
+
+    await waitFor(() => expect(addProvider).toHaveBeenCalledTimes(1));
+    expect(addProvider.mock.calls[0]![0]).toMatchObject({
+      base_url: 'https://api.internal.corp/plan/v2',
+      models: [expect.objectContaining({ id: 'my-model-1' })],
+    });
+  });
+
+  it('真正的错误（403/5xx）仍然如实显示，不被降级掩盖', async () => {
+    fetchModels.mockResolvedValueOnce({ ok: false, error: 'HTTP 403: {"error_code":"ModelArts.81004"}' });
+    await fillHuaweiForm();
+    fireEvent.click(screen.getByText('测试并拉取模型'));
+
+    await waitFor(() => expect(screen.getByText(/ModelArts\.81004/)).toBeInTheDocument());
+    expect(screen.queryByTestId('list-not-provided')).not.toBeInTheDocument();
   });
 });

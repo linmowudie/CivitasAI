@@ -90,7 +90,7 @@ describe('CoTFolder', () => {
 
   it('有 reasoning 时渲染折叠区', () => {
     render(<CoTFolder reasoning="Let me think..." isStreaming={false} />);
-    expect(screen.getByText('思考过程')).toBeTruthy();
+    expect(screen.getByText(/思考过程/)).toBeTruthy();
   });
 
   it('流式中显示"思考中…"', () => {
@@ -109,7 +109,7 @@ describe('CoTFolder', () => {
     expect(screen.queryByText('Hidden thought')).toBeNull();
 
     // 点击展开
-    fireEvent.click(screen.getByText('思考过程'));
+    fireEvent.click(screen.getByText(/思考过程/));
     expect(screen.getByText('Hidden thought')).toBeTruthy();
   });
 
@@ -117,11 +117,11 @@ describe('CoTFolder', () => {
     render(<CoTFolder reasoning="Toggle me" isStreaming={false} />);
 
     // 展开
-    fireEvent.click(screen.getByText('思考过程'));
+    fireEvent.click(screen.getByText(/思考过程/));
     expect(screen.getByText('Toggle me')).toBeTruthy();
 
     // 折叠
-    fireEvent.click(screen.getByText('思考过程'));
+    fireEvent.click(screen.getByText(/思考过程/));
     expect(screen.queryByText('Toggle me')).toBeNull();
   });
 });

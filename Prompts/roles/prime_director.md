@@ -31,7 +31,7 @@
     {
       "id": "assign-001",
       "description": "...",
-      "requiredTools": ["file.write", "shell.exec"],
+      "requiredTools": ["FileWrite", "ShellExec"],
       "tokenBudget": 50000,
       "maxIterations": 15
     }

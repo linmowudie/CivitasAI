@@ -35,6 +35,8 @@ import {
   resetRouter,
 } from "../../Src/Infra/Llm/Router/modelRouter.js";
 import { clearRegistry } from "../../Src/Tools/Registry/toolRegistry.js";
+import { registerBuiltinTools } from "../../Src/Tools/builtinLoader.js";
+import { getTraceSpans } from "../../Src/Infra/Logging/traceContext.js";
 import {
   resetEventBus,
   initEventBus,
@@ -107,7 +109,7 @@ import type { RunTrace, Scenario, TurnTrace } from "./types.js";
 
 const BENCH_DATA_ROOT = resolve(import.meta.dirname, "../../Data");
 
-/** 场景 fixture（`bench.read` 的数据源）；首版内置一份，后续可由场景声明 */
+/** 场景 fixture（`BenchRead` 的数据源）；首版内置一份，后续可由场景声明 */
 const DEFAULT_FIXTURES: Record<string, string> = {
   "src/notes.txt": "构建步骤：1) 安装依赖 2) 跑测试 3) 打包",
   "src/config.json": '{"retries": 3, "timeoutSec": 30}',
@@ -150,6 +152,10 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
   resetControlTriggerCounts();
   clearActiveStopRuleSet();
   clearRegistry();
+  // 真实装配：注册内置工具（与 `main.ts` ⑫ 步同构）。
+  // 基准的"某工具已在注册表 / 工具契约"类断言必须看**产品装配结果**；
+  // 若基准自己不跑装配，就会把"产品已实现但基准没注册"误报成"工具未实现"。
+  const builtinReg = registerBuiltinTools();
   clearMiddlewares();
   resetFreezeManager();
   resetContextCompression();
@@ -238,7 +244,7 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
     //    toolDispatcher 对未注入端口是**静默跳过**（不伪造命中），所以失败会伪装成产品缺陷。
     initToolResultCache();
     configureToolServicePorts({
-      // 记忆写入的上层入口（裁定 (a)）：工具 bench.memwrite → memory.write → 本端口 → Services 写实现
+      // 记忆写入的上层入口（裁定 (a)）：工具 BenchMemWrite → MemoryWrite → 本端口 → Services 写实现
       memoryWrite: (params) => {
         const r = svcWriteMemory({
           title: params.title,
@@ -268,6 +274,11 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
 
     //    onExecute 计数：只有"执行体被调用次数"能证明幂等缓存是否挡住了第二次副作用
     const toolExecutions: Record<string, number> = {};
+    if (!builtinReg.ok) {
+      trace.fatalError =
+        trace.fatalError ??
+        `内置工具注册失败（装配不完整）：${builtinReg.error}`;
+    }
     registerProbeTools(
       scenario.tools ?? [],
       { ...DEFAULT_FIXTURES, ...(scenario.fixtures ?? {}) },
@@ -284,7 +295,7 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
     if (!memwriteReg.ok)
       trace.fatalError =
         trace.fatalError ??
-        "bench.memwrite 注册失败: " + (memwriteReg.error ?? "");
+        "BenchMemWrite 注册失败: " + (memwriteReg.error ?? "");
 
     // ── 4. Loop 准入规则（让 limits / budget 判据真实生效）──
     const maxIterations = scenario.loop?.maxIterations ?? 6;
@@ -439,14 +450,13 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
 
     // ── 真实调用探针（裁定②：关键检查改为真实调用，不用「代码里还有这段形态」充当证据）──
     // 探针在 loop 之前跑：它们是装配期属性与纯函数级判定点，不依赖本次循环状态。
+    //
+    // 2026-10-17 修正：探针失败**不再**记 `fatalError`。
+    // `fatalError` 的语义是"**实验无效**（实验台/环境缺陷）"；而探针失败（尤其"设计接口缺失"）
+    // 是**被测产品未实现该设计点**的红证据 —— 两者混用会把产品缺口误记成实验故障，
+    // 让"缺口证明实验"永远显示为"实验无效"。判据由 `CHK-ASSERT-PROBES` 在第二层生成。
     if (scenario.assertProbes && scenario.assertProbes.length > 0) {
       trace.assertProbes = await runAssertProbes(scenario.assertProbes);
-      for (const p of trace.assertProbes) {
-        if (!p.passed) {
-          const msg = "真实调用探针失败: " + p.id + " —— " + p.detail;
-          trace.fatalError = trace.fatalError ?? msg;
-        }
-      }
     }
 
     const loopState = createLoopState({
@@ -509,6 +519,10 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
             arguments: tc.arguments,
           })),
           toolResultStatuses: it.toolResults.map((tr) => tr.status),
+          // 错误码单独采集：oracle 常判"具体错误码"，只记 status 会让任意 error 冒充目标码
+          toolResultCodes: it.toolResults
+            .map((tr) => tr.error?.code)
+            .filter((c): c is NonNullable<typeof c> => typeof c === "string"),
           outputChars: it.outputText.length,
           tokensConsumed: it.tokensConsumed,
           ...(it.decision.exitReason
@@ -519,6 +533,16 @@ export async function runScenario(scenario: Scenario): Promise<RunTrace> {
         trace.iterations.push(turn);
       });
       trace.totalIterations = exec.iterations.length;
+
+      // MM-GAP-TRACE（生产验收）：真实运行必须**产出 span 产物**，否则"可归因到 span"
+      // 只是库能力。这里从产品的 span 检索面读取真实运行留下的 span。
+      const spans = getTraceSpans(`bench-trace-${scenario.id}`);
+      trace.spans = {
+        total: spans.length,
+        llm: spans.filter((s) => s.type === "llm_call").length,
+        tool: spans.filter((s) => s.type === "tool_exec").length,
+        traceIds: [...new Set(spans.map((s) => s.traceId))],
+      };
     }
   } catch (e) {
     trace.fatalError = e instanceof Error ? e.message : String(e);

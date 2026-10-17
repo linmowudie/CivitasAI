@@ -3,7 +3,7 @@
  * @description 子任务落库（`subtasks` 表，FE-050 派发链路接线，2026-10-04 新增）。
  *
  * 背景：`subtasks` 表（迁移 v4）此前无任何写入方 —— 编排器把任务书交给 Worker 后
- * 只存在于内存（progressTracker），进程重启即丢失；`agent.recruit` 的
+ * 只存在于内存（progressTracker），进程重启即丢失；`AgentRecruit` 的
  * `dispatch: 'pending'` 残留边界与此同源（FE-006）。
  *
  * 职责：

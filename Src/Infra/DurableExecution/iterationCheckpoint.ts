@@ -26,6 +26,8 @@ import { createCheckpoint, pruneCheckpoints } from "./checkpointStore.js";
 
 /** 保留最近多少份快照（长任务防膨胀） */
 export const CHECKPOINT_KEEP_LAST = 20;
+/** 快照中保留的对话消息上限（尾部窗口；恢复只需要"接着说"所需的上下文） */
+export const MESSAGE_SNAPSHOT_LIMIT = 40;
 /** 每多少轮裁剪一次 */
 const PRUNE_EVERY = 10;
 
@@ -41,6 +43,24 @@ export interface IterationCheckpointInput {
   failedAttempts: number;
   /** 本轮工具调用名列表（作为 stateSnapshot 的一部分，便于恢复时理解进度） */
   toolNames?: string[];
+  /** 归属 Agent / trace（恢复续跑必须知道"替谁继续跑"） */
+  agentId?: string;
+  traceId?: string;
+  /** 原始目标（恢复续跑的 userInput 来源；不可变区目标不随压缩丢失） */
+  goal?: string;
+  /** 本轮用户输入（恢复时作为任务说明的一部分） */
+  userInput?: string;
+  /**
+   * 本轮对话历史快照（MEM1-GAP-RESTORE，设计 §3.4）。
+   * 修复前恢复链只存轮次/阶段、**不含对话内容** → 恢复后无法继续对话。
+   * 只保留尾部安全窗口（见 `MESSAGE_SNAPSHOT_LIMIT`，避免快照无界增长）。
+   */
+  messages?: ReadonlyArray<{
+    role: string;
+    content?: unknown;
+    tool_call_id?: string;
+    tool_calls?: unknown;
+  }>;
   /** 尚未完成/结果未知的副作用（来自 EffectJournal，恢复时需要续跑或裁决） */
   pendingEffects?: Array<Pick<EffectRecord, "effectId">>;
   /** 下一步提示（如"继续执行第 N 轮"） */
@@ -70,6 +90,13 @@ export function writeIterationCheckpoint(
         failedAttempts: input.failedAttempts,
         decision: input.decision,
         toolNames: input.toolNames ?? [],
+        // 恢复续跑所需的归属与目标（此前快照只有轮次/阶段 → 恢复后不知道替谁跑、跑什么）
+        ...(input.agentId ? { agentId: input.agentId } : {}),
+        ...(input.traceId ? { traceId: input.traceId } : {}),
+        ...(input.goal ? { goal: input.goal } : {}),
+        ...(input.userInput ? { userInput: input.userInput } : {}),
+        // 对话内容随快照落盘：恢复后可继续说，而非只剩轮次计数
+        messages: (input.messages ?? []).slice(-MESSAGE_SNAPSHOT_LIMIT),
       },
       // 产物清单与文件指纹需要扫描工作目录，成本高；恢复主要依赖状态与副作用列表，此处留空
       artifactManifest: [],

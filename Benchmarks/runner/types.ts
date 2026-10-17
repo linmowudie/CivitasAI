@@ -39,6 +39,13 @@ export interface ScenarioToolSpec {
   /** slow 行为的延迟毫秒 */
   delayMs?: number;
   /**
+   * 该探针工具的 `timeoutMs`（默认 5000）。
+   *
+   * 为什么需要：`TOOL-ENV-TIMEOUT` 的 oracle 是"超时返回 TOOL_TIMEOUT 且主循环继续"，
+   * 探针若固定 5s 超时，场景就得真的等 5s 才能触发；调小到百毫秒级才可稳定复现。
+   */
+  timeoutMs?: number;
+  /**
    * 声明为 DANGEROUS + IRREVERSIBLE —— 用于验证"危险且不可逆的工具必经审批门"。
    * 这类工具在真实系统里会走 `toolSafetyGate` 的**阻塞式**审批。
    */
@@ -66,8 +73,28 @@ export interface ScenarioExpect {
   forbiddenTools?: string[];
   /** 期望的工具结果条数（工具调用与结果必须成对） */
   minToolResults?: number;
+  /**
+   * 必须出现的工具**错误码**（逐条命中，缺一即失败）。
+   *
+   * 例：`TOOL-ENV-TIMEOUT` 的 oracle 要求"返回 `TOOL_TIMEOUT`"；只断 `status==='error'`
+   * 的话，任何其它错误（角色受限/参数非法/执行异常）都能冒充它 —— 判据会失去分辨力。
+   */
+  toolErrorCodes?: string[];
   /** 诊断结论里**不允许**出现的问题类型（如无故障场景里不该出现 tool_loop） */
   forbidDiagnoses?: string[];
+  /**
+   * 诊断结论里**必须**出现的问题类型（cell oracle 的**正面**要求）。
+   *
+   * 与 `allowDiagnoses` 的分工（两者常一起用，但语义完全不同）：
+   * - `allowDiagnoses`：这几个形态是本场景**故意制造**的输入，别算成 Agent 缺陷（降级 info）；
+   * - `requiredDiagnoses`：本场景的 oracle 要求系统**必须把它们诊断出来**。
+   *
+   * 为什么必须分开（2026-10-17 实测）：`AG-ENV-TOOLLOOP` 的 oracle 是
+   * "诊断出 tool_loop **且**退出类别不是 success"。此前只有 `forbidDiagnoses` 这类
+   * **反向**断言，于是"压根没诊断出 tool_loop、只是耗尽了迭代上限"也会被判通过 ——
+   * 覆盖声明比实际断言强，是最典型的假绿。`requiredDiagnoses` 才是它的正面证据。
+   */
+  requiredDiagnoses?: string[];
   /**
    * 场景**故意制造**的问题形态（不算缺陷，降级为 info）。
    * 例：故障恢复场景会故意让工具连失败两次，`tool_misuse` 是它的输入而不是它的结论。
@@ -148,7 +175,7 @@ export interface Scenario {
    */
   approveDangerousTools?: boolean;
   tools?: ScenarioToolSpec[];
-  /** 场景级 fixture 内容（`bench.read` 的数据源）。
+  /** 场景级 fixture 内容（`BenchRead` 的数据源）。
    * 声明式覆盖默认 fixture —— 安全面实验要靠它把**注入载荷**放进工具返回值，
    * 从而验证"间接注入是否在下一轮被前置监管拦下"。
    */
@@ -195,6 +222,14 @@ export interface TurnTrace {
   stepOrderOk: boolean;
   toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>;
   toolResultStatuses: string[];
+  /**
+   * 工具结果的**错误码**（成功结果为 undefined，已过滤）。
+   *
+   * 为什么必须采集：不少 oracle 判的是"具体错误码"而不是"error 状态"——
+   * 例如 `TOOL-ENV-TIMEOUT` 要求 `TOOL_TIMEOUT`、限流要求 `TOOL_RATE_LIMITED`。
+   * 只记 status 时，任何 error 都能冒充目标错误码，判据就失去分辨力。
+   */
+  toolResultCodes?: string[];
   outputChars: number;
   tokensConsumed: number;
   exitReason?: string;
@@ -256,7 +291,12 @@ export interface RunTrace {
   /** 真实调用探针的结果（证据形态 executed，区别于静态对账） */
   assertProbes: AssertProbeResult[];
   /**
-   * 记忆写入实验结果：由 Agent 经 `bench.memwrite`（转交真实 `memory.write`）驱动，
+   * MM-GAP-TRACE（生产验收）：真实运行产出的 span 产物统计。
+   * 由产品 span 检索面 `getTraceSpans(traceId)` 读取——不是基准自己造的观测。
+   */
+  spans?: { total: number; llm: number; tool: number; traceIds: string[] };
+  /**
+   * 记忆写入实验结果：由 Agent 经 `BenchMemWrite`（转交真实 `MemoryWrite`）驱动，
    * 记录每次的入参与结果（含被拒 code/message）—— 不再直调 Services 写 API。
    */
   memoryWriteResults: MemWriteResult[];

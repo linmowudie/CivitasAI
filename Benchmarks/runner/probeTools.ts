@@ -3,15 +3,15 @@
  * @description
  * Benchmark **探针工具** —— 场景可控的副作用替身。
  *
- * 为什么不用真实工具（`file.write` / `shell.exec`）做基准实验：
+ * 为什么不用真实工具（`FileWrite` / `ShellExec`）做基准实验：
  *  - 它们把**环境**（路径守卫、工作区隔离、宿主权限）卷进被判对象，
  *    失败时无法区分"Agent 用错了工具"与"沙箱拒绝了这个路径"；
  *  - 基准要的是**可复现、无环境依赖**的观测。
  *
  * 因此探针工具只做三件事，且行为完全由场景声明：
- *  - `bench.echo`：回显参数（用于验证参数装配无误）；
- *  - `bench.read`：从一个**场景内声明的内存 fixture** 里读文本（用于制造"需要多轮才能拿到信息"的任务）；
- *  - `bench.fail`：恒返回错误（用于驱动"连续错误 → limits 退出"与恢复路径）。
+ *  - `BenchEcho`：回显参数（用于验证参数装配无误）；
+ *  - `BenchRead`：从一个**场景内声明的内存 fixture** 里读文本（用于制造"需要多轮才能拿到信息"的任务）；
+ *  - `BenchFail`：恒返回错误（用于驱动"连续错误 → limits 退出"与恢复路径）。
  */
 
 import { memoryWrite } from "../../Src/Tools/Builtin/Memory/memoryWrite.js";
@@ -66,6 +66,9 @@ function baseSpec(
     // idempotency='YES' 时校验器强制要求声明幂等键字段
     ...(dangerous ? {} : { idempotencyKeyFields: ["text", "path"] }),
     reversibility: dangerous ? "IRREVERSIBLE" : "REVERSIBLE",
+    // 危险且不可逆 ⇒ 按 specValidator 规则 11 必须声明 L4 HumanGate，
+    // 否则探针注册会被拒（矩阵 TOOL-SEC-L4GATE 的同一条规则）
+    ...(dangerous ? { humanGateLevel: "L4" as const } : {}),
     sideEffectScope: dangerous ? "external" : "none",
     requiredRoles: [...ALL_ROLES],
     sandboxMode: "none",
@@ -73,7 +76,7 @@ function baseSpec(
   };
 }
 
-/** 场景 fixture：`bench.read` 从中取内容 */
+/** 场景 fixture：`BenchRead` 从中取内容 */
 export type ProbeFixtures = Record<string, string>;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -98,9 +101,14 @@ export function registerProbeTools(
     const behavior = s.behavior ?? "ok";
     let def: ToolDefinition;
 
-    if (s.name === "bench.echo") {
+    if (s.name === "BenchEcho") {
       def = {
-        spec: baseSpec(s.name, "回显输入（基准探针）", 5_000, s.dangerous),
+        spec: baseSpec(
+          s.name,
+          "回显输入（基准探针）",
+          s.timeoutMs ?? 5_000,
+          s.dangerous,
+        ),
         execute: async (input, context): Promise<ToolResult> => {
           hit(s.name);
           if (behavior === "slow") await delay(s.delayMs ?? 50);
@@ -108,7 +116,7 @@ export function registerProbeTools(
             return toolError(
               context.operationId,
               "PROBE_FAIL",
-              "bench.echo 场景声明为失败",
+              "BenchEcho 场景声明为失败",
               true,
             );
           return toolSuccess(
@@ -118,7 +126,7 @@ export function registerProbeTools(
           );
         },
       };
-    } else if (s.name === "bench.read") {
+    } else if (s.name === "BenchRead") {
       def = {
         spec: baseSpec(
           s.name,
@@ -133,7 +141,7 @@ export function registerProbeTools(
             return toolError(
               context.operationId,
               "PROBE_FAIL",
-              "bench.read 场景声明为失败",
+              "BenchRead 场景声明为失败",
               true,
             );
           const key = String(input["path"] ?? "");
@@ -152,7 +160,7 @@ export function registerProbeTools(
           );
         },
       };
-    } else if (s.name === "bench.fail") {
+    } else if (s.name === "BenchFail") {
       def = {
         spec: baseSpec(
           s.name,
@@ -165,7 +173,7 @@ export function registerProbeTools(
           return toolError(
             context.operationId,
             "PROBE_ALWAYS_FAIL",
-            "bench.fail 恒失败（场景故意注入）",
+            "BenchFail 恒失败（场景故意注入）",
             true,
           );
         },
@@ -173,7 +181,12 @@ export function registerProbeTools(
     } else {
       // 未识别的探针名：注册为回显工具，避免场景因拼写问题静默失效
       def = {
-        spec: baseSpec(s.name, "未识别探针（按回显处理）", 5_000, s.dangerous),
+        spec: baseSpec(
+          s.name,
+          "未识别探针（按回显处理）",
+          s.timeoutMs ?? 5_000,
+          s.dangerous,
+        ),
         execute: async (input, context): Promise<ToolResult> => {
           hit(s.name);
           return toolSuccess(
@@ -198,11 +211,11 @@ export function registerProbeTools(
 }
 
 /**
- * 注册 `bench.memwrite` —— 记忆写入的**实验驱动包装**（裁定 (a)，2026-10-14）。
+ * 注册 `BenchMemWrite` —— 记忆写入的**实验驱动包装**（裁定 (a)，2026-10-14）。
  *
  * 为什么需要包装：harness 不加载内置工具，而"测 Services 的记忆写"必须由**上层驱动**
  * （Tools 在 Services 之下，直调工具层同样违反层规）。故由 Agent 在循环里调用本工具，
- * 本工具把入参**原样转交**给真实的内置工具 `memory.write` 执行体 ——
+ * 本工具把入参**原样转交**给真实的内置工具 `MemoryWrite` 执行体 ——
  * 端口注入、§8.4 断言守卫、红线/治理键判定全部发生在真实路径上，包装层**不做任何判定**，
  * 只把结果记进 sink 供实验观测。
  */
@@ -216,8 +229,8 @@ export function registerMemoryWriteProbe(
 ): { ok: boolean; error?: string } {
   const def = {
     spec: {
-      name: "bench.memwrite",
-      description: "实验用：转交 memory.write 真实执行体，并记录结果",
+      name: "BenchMemWrite",
+      description: "实验用：转交 MemoryWrite 真实执行体，并记录结果",
       inputSchema: {
         type: "object",
         properties: {
@@ -261,5 +274,5 @@ export function registerMemoryWriteProbe(
   const registered = registerTool(def as never);
   return registered
     ? { ok: true }
-    : { ok: false, error: "bench.memwrite 注册被拒" };
+    : { ok: false, error: "BenchMemWrite 注册被拒" };
 }

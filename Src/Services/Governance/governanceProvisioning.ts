@@ -20,13 +20,20 @@
  *  - 上限按 (role) 计（默认 2）：达到上限后不再创建，返回已有实例（**扩容有度**）。
  */
 
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
-import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
-import { getAgentsByRole, unregisterAgent } from '../../Core/AgentRuntime/agentRegistry.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { isGovernanceActor, toCanonicalRole, isCanonicalRole } from '../../Infra/Roles/roleVocabulary.js';
-import { recordGovernanceAction } from './governanceAudit.js';
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
+import { createAgent } from "../../Core/AgentRuntime/agentFactory.js";
+import {
+  getAgentsByRole,
+  unregisterAgent,
+} from "../../Core/AgentRuntime/agentRegistry.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import {
+  isGovernanceActor,
+  toCanonicalRole,
+  isCanonicalRole,
+} from "../../Infra/Roles/roleVocabulary.js";
+import { recordGovernanceAction } from "./governanceAudit.js";
 
 /** 每个角色的默认上限（按需扩容但有度） */
 export const DEFAULT_MAX_AGENTS_PER_ROLE = 2;
@@ -52,11 +59,15 @@ function limitOf(role: string): number {
 }
 
 /** 找出该角色下**可用**（非 destroyed）的 Agent */
-function usableAgents(role: string): Array<{ agentId: string; status: string }> {
-  const canonical = toCanonicalRole(role) as Parameters<typeof getAgentsByRole>[0];
+function usableAgents(
+  role: string,
+): Array<{ agentId: string; status: string }> {
+  const canonical = toCanonicalRole(role) as Parameters<
+    typeof getAgentsByRole
+  >[0];
   return getAgentsByRole(canonical)
-    .filter(a => a.status !== 'destroyed')
-    .map(a => ({ agentId: a.agentId, status: String(a.status) }));
+    .filter((a) => a.status !== "destroyed")
+    .map((a) => ({ agentId: a.agentId, status: String(a.status) }));
 }
 
 /**
@@ -76,7 +87,7 @@ export function ensureAgentForRole(
   role: string,
   options: { model?: string; traceId?: string; reason?: string } = {},
 ): Result<ProvisionResult> {
-  if (!role) return err('缺少角色');
+  if (!role) return err("缺少角色");
   if (!isCanonicalRole(toCanonicalRole(role))) return err(`未知角色 ${role}`);
 
   const existing = usableAgents(role);
@@ -84,44 +95,63 @@ export function ensureAgentForRole(
 
   if (existing.length > 0 && (limit <= 0 || existing.length >= limit)) {
     // 已达上限（或本就存在）→ 复用，不再扩容
-    return ok({ agentId: existing[0]!.agentId, role: toCanonicalRole(role), created: false });
+    return ok({
+      agentId: existing[0]!.agentId,
+      role: toCanonicalRole(role),
+      created: false,
+    });
   }
   if (existing.length > 0) {
     // 未达上限：仍优先复用空闲实例（避免为同一角色无谓扩容）
-    return ok({ agentId: existing[0]!.agentId, role: toCanonicalRole(role), created: false });
+    return ok({
+      agentId: existing[0]!.agentId,
+      role: toCanonicalRole(role),
+      created: false,
+    });
   }
 
   // 需要创建：治理角色必须走受控播种通道（G-11 的逃生舱）
   const governance = isGovernanceActor(role);
   const created = createAgent(
-    { role: toCanonicalRole(role) as never, model: options.model ?? 'governance-model' },
-    options.traceId ?? 'governance-provisioning',
+    {
+      role: toCanonicalRole(role) as never,
+      model: options.model ?? "governance-model",
+    },
+    options.traceId ?? "governance-provisioning",
     { allowGovernance: true },
   );
   if (!created.ok) {
-    logger.warn('治理角色按需创建失败', {
-      source: 'governanceProvisioning/ensureAgentForRole', role, error: created.error,
+    logger.warn("治理角色按需创建失败", {
+      source: "governanceProvisioning/ensureAgentForRole",
+      role,
+      error: created.error,
     });
     return err(`按需创建 ${role} 失败：${created.error}`);
   }
 
   recordGovernanceAction({
-    action: governance ? 'governance.agent_provisioned' : 'execution.agent_provisioned',
-    actorRole: 'system',
+    action: governance
+      ? "governance.agent_provisioned"
+      : "execution.agent_provisioned",
+    actorRole: "system",
     actorId: created.value.agentId,
-    outcome: 'allowed',
+    outcome: "allowed",
     ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
-    reason: `${options.reason ?? '系统请求'} → 按需创建 ${toCanonicalRole(role)} 角色 Agent（角色上限 ${limit}）`,
+    reason: `${options.reason ?? "系统请求"} → 按需创建 ${toCanonicalRole(role)} 角色 Agent（角色上限 ${limit}）`,
     targetIds: [created.value.agentId],
   });
 
-  logger.info('已按需创建角色 Agent', {
-    source: 'governanceProvisioning/ensureAgentForRole',
+  logger.info("已按需创建角色 Agent", {
+    source: "governanceProvisioning/ensureAgentForRole",
     role: toCanonicalRole(role),
     agentId: created.value.agentId,
     governance,
   });
-  return ok({ agentId: created.value.agentId, role: toCanonicalRole(role), created: true });
+  return ok({
+    agentId: created.value.agentId,
+    role: toCanonicalRole(role),
+    created: true,
+  });
 }
 
 /**
@@ -136,7 +166,20 @@ export function ensureAgentsForRoles(
   const out = new Map<string, string>();
   for (const role of roles) {
     const r = ensureAgentForRole(role, options);
-    if (r.ok) out.set(toCanonicalRole(role), r.value.agentId);
+    if (r.ok) {
+      out.set(toCanonicalRole(role), r.value.agentId);
+    } else {
+      // 不再静默丢弃：创建失败必须可见。
+      // 否则审批决策池会出现"角色在池里、却永远没有实体可裁"的隐性瘫痪
+      // （表现为审批只能靠人类凑齐、L0 形同未启用，且日志还显示"已确保存在"）。
+      logger.warn("决策池角色实例创建失败（该角色将没有可裁实体）", {
+        source: "governanceProvisioning/ensureAgentsForRoles",
+        role,
+        canonicalRole: toCanonicalRole(role),
+        error: r.error,
+        reason: options.reason,
+      });
+    }
   }
   return out;
 }
@@ -155,12 +198,12 @@ export function ensureDistinctAgentsForRole(
   count: number,
   options: { model?: string; traceId?: string; reason?: string } = {},
 ): Result<string[]> {
-  if (!role) return err('缺少角色');
+  if (!role) return err("缺少角色");
   if (!isCanonicalRole(toCanonicalRole(role))) return err(`未知角色 ${role}`);
-  if (!Number.isFinite(count) || count <= 0) return err('count 必须为正数');
+  if (!Number.isFinite(count) || count <= 0) return err("count 必须为正数");
 
   const canonical = toCanonicalRole(role);
-  const existing = usableAgents(role).map(a => a.agentId);
+  const existing = usableAgents(role).map((a) => a.agentId);
   const out = [...existing];
 
   // 调用方声明的规模驱动上限（扩容有度：上限 = max(既有上限, 需求)）
@@ -169,25 +212,28 @@ export function ensureDistinctAgentsForRole(
 
   while (out.length < count && out.length < limit) {
     const created = createAgent(
-      { role: canonical as never, model: options.model ?? 'governance-model' },
-      options.traceId ?? 'governance-provisioning',
+      { role: canonical as never, model: options.model ?? "governance-model" },
+      options.traceId ?? "governance-provisioning",
       { allowGovernance: true },
     );
     if (!created.ok) {
-      logger.warn('池化扩容创建 Agent 失败（返回已可用部分）', {
-        source: 'governanceProvisioning/ensureDistinctAgentsForRole',
-        role: canonical, error: created.error,
+      logger.warn("池化扩容创建 Agent 失败（返回已可用部分）", {
+        source: "governanceProvisioning/ensureDistinctAgentsForRole",
+        role: canonical,
+        error: created.error,
       });
       break;
     }
     out.push(created.value.agentId);
     recordGovernanceAction({
-      action: isGovernanceActor(role) ? 'governance.agent_provisioned' : 'execution.agent_provisioned',
-      actorRole: 'system',
+      action: isGovernanceActor(role)
+        ? "governance.agent_provisioned"
+        : "execution.agent_provisioned",
+      actorRole: "system",
       actorId: created.value.agentId,
-      outcome: 'allowed',
+      outcome: "allowed",
       ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
-      reason: `${options.reason ?? '池化需求'} → 按需扩容 ${canonical}（目标 ${count}，角色上限 ${limit}）`,
+      reason: `${options.reason ?? "池化需求"} → 按需扩容 ${canonical}（目标 ${count}，角色上限 ${limit}）`,
       targetIds: [created.value.agentId],
     });
   }
@@ -216,41 +262,48 @@ export function recycleAgentsForRole(
   keepCount = 1,
   options: { excludeAgentIds?: readonly string[]; reason?: string } = {},
 ): Result<string[]> {
-  if (!role) return err('缺少角色');
+  if (!role) return err("缺少角色");
   if (!isCanonicalRole(toCanonicalRole(role))) return err(`未知角色 ${role}`);
-  if (!Number.isFinite(keepCount) || keepCount < 0) return err('keepCount 必须为非负数');
+  if (!Number.isFinite(keepCount) || keepCount < 0)
+    return err("keepCount 必须为非负数");
 
   const canonical = toCanonicalRole(role);
   const excluded = new Set(options.excludeAgentIds ?? []);
-  const candidates = usableAgents(role).filter(a => !excluded.has(a.agentId));
+  const candidates = usableAgents(role).filter((a) => !excluded.has(a.agentId));
 
   // 保留 keepCount 个；额外回收（从后往前，优先回收"最后创建"的）
-  const toRecycle = candidates.slice(keepCount).map(a => a.agentId);
+  const toRecycle = candidates.slice(keepCount).map((a) => a.agentId);
   const recycled: string[] = [];
 
   for (const agentId of toRecycle) {
-    const r = unregisterAgent(agentId);  // 软销毁（destroyed_at 留痕）
+    const r = unregisterAgent(agentId); // 软销毁（destroyed_at 留痕）
     if (!r.ok) {
-      logger.warn('回收治理 Agent 失败', {
-        source: 'governanceProvisioning/recycleAgentsForRole', agentId, error: r.error,
+      logger.warn("回收治理 Agent 失败", {
+        source: "governanceProvisioning/recycleAgentsForRole",
+        agentId,
+        error: r.error,
       });
       continue;
     }
     recycled.push(agentId);
     recordGovernanceAction({
-      action: isGovernanceActor(role) ? 'governance.agent_recycled' : 'execution.agent_recycled',
-      actorRole: 'system',
+      action: isGovernanceActor(role)
+        ? "governance.agent_recycled"
+        : "execution.agent_recycled",
+      actorRole: "system",
       actorId: agentId,
-      outcome: 'allowed',
-      reason: `${options.reason ?? '需求下降'} → 按需回收 ${canonical}（保留 ${keepCount}）`,
+      outcome: "allowed",
+      reason: `${options.reason ?? "需求下降"} → 按需回收 ${canonical}（保留 ${keepCount}）`,
       targetIds: [agentId],
     });
   }
 
   if (recycled.length > 0) {
-    logger.info('已按需回收角色 Agent', {
-      source: 'governanceProvisioning/recycleAgentsForRole',
-      role: canonical, recycled: recycled.length, keepCount,
+    logger.info("已按需回收角色 Agent", {
+      source: "governanceProvisioning/recycleAgentsForRole",
+      role: canonical,
+      recycled: recycled.length,
+      keepCount,
     });
   }
   return ok(recycled);

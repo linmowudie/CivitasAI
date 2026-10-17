@@ -37,10 +37,17 @@
 }
 
 .body {
-  padding: 6px 12px 8px;
+  padding: 8px 12px 10px;
   font-size: 11px;
   line-height: 1.6;
   color: var(--color-text-muted, #888);
   white-space: pre-wrap;
   border-top: 1px solid color-mix(in srgb, var(--color-surface-700, #313244) 60%, transparent);
+  /* 让思考区**明显区别于正文**（用户反馈"思考内容看起来像正文的一部分"）：
+     内嵌底色 + 左侧强调条 + 限高滚动，长思维链不再占据整屏、也不会与正文混淆。 */
+  background: color-mix(in srgb, var(--color-surface-900, #11111b) 55%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--color-brand-400, #89b4fa) 45%, transparent);
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }

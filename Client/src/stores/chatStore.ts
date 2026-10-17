@@ -208,6 +208,8 @@ interface ChatState {
   streamingMessageId: string | null;
   /** 当前选中的模型（qualified name，如 "huawei-maas/DeepSeek-V4-Flash"） */
   selectedModel: string;
+  /** 自动完全权限（按会话，跟随当前任务） */
+  autoFullPermissionBySession: Record<string, boolean>;
   /** 当前选中的工作方式 */
   selectedWorkingMode: WorkingMode;
   /** 可用模型列表 */
@@ -320,6 +322,8 @@ interface ChatState {
   fetchModels: () => Promise<void>;
   /** 设置选中模型 */
   setSelectedModel: (model: string) => void;
+  /** 自动完全权限（按会话）：开启后当前任务内不再产生审批 */
+  setAutoFullPermission: (sessionId: string, enabled: boolean) => void;
   /** 设置选中工作方式 */
   setSelectedWorkingMode: (mode: WorkingMode) => void;
 }
@@ -502,6 +506,56 @@ function flushBuffer(
 
 // ── Store 创建 ──────────────────────────────────────────────────────
 
+/**
+ * 上次使用的模型（跨重启持久化）。
+ *
+ * 背景（2026-10-16 用户反馈）：`setSelectedModel` 原先只改内存不落盘，
+ * 重启后 `selectedModel` 为空 ⇒ 启动兜底"取第一个可用模型"把用户选的 deepseek 覆盖回 huawei。
+ *
+ * 该键同时会被 `syncService.gatherLocalPrefs()` 并入服务端偏好，因此服务端侧也保持同步。
+ */
+const LS_LAST_MODEL = "civitas.lastSelectedModel";
+
+function readLastSelectedModel(): string {
+  try {
+    return localStorage.getItem(LS_LAST_MODEL) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeLastSelectedModel(model: string): void {
+  try {
+    if (model) localStorage.setItem(LS_LAST_MODEL, model);
+    else localStorage.removeItem(LS_LAST_MODEL);
+  } catch {
+    // 理由（fail-soft）：localStorage 不可用（隐私模式/配额）不应影响选择模型本身
+  }
+}
+/** 自动完全权限 · 按会话持久化（跟随当前任务；重启后同一任务仍保持） */
+const LS_AUTO_FULL = "civitas.autoFullPermission";
+
+function readAutoFullPermissionMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(LS_AUTO_FULL);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    // 理由（fail-soft）：本地存储不可用不应阻断界面
+    return {};
+  }
+}
+
+function writeAutoFullPermission(sessionId: string, enabled: boolean): void {
+  try {
+    const map = readAutoFullPermissionMap();
+    if (enabled) map[sessionId] = true;
+    else delete map[sessionId];
+    localStorage.setItem(LS_AUTO_FULL, JSON.stringify(map));
+  } catch {
+    // 理由（fail-soft）：本地存储不可用不影响开关在本会话内生效
+  }
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   archivedSessions: [],
@@ -512,7 +566,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeAgentSessionId: null,
   loading: false,
   streamingMessageId: null,
-  selectedModel: "",
+  selectedModel: readLastSelectedModel(),
+  /** 自动完全权限（按会话，跟随当前任务） */
+  autoFullPermissionBySession: readAutoFullPermissionMap(),
   selectedWorkingMode: "DIRECT",
   availableModels: [],
 
@@ -668,10 +724,56 @@ export const useChatStore = create<ChatState>((set, get) => ({
         !dbKeys.has(`${m.role}\u0000${m.content}`),
     );
 
-    const merged =
+    const rawMerged =
       localOnly.length > 0 ? [...completed, ...localOnly] : completed;
+
+    // ★ 去重（修复"切换窗口再切回来内容翻倍 / 2 个子容器"，2026-10-16）：
+    //   流式进行中的本地消息可能**同时**已在库中（后端已落库整条，而本地仍是非 complete 的
+    //   半条或同一条），上面的 localOnly 过滤按 (role, content) 精确比对，内容微差就会漏过 ⇒
+    //   合并后同一条回复出现两次 ⇒ 容器数与正文都翻倍。
+    //   判定：① 同 id；② 同角色且一方内容是另一方前缀（流式半条 vs 库中整条，取更长者）。
+    const deduped: ChatMessage[] = [];
+    const byId = new Map<string, number>();
+    const idOf = (m: ChatMessage): string =>
+      (m as { id?: string }).id ??
+      (m as { messageId?: string }).messageId ??
+      "";
+    for (const m of rawMerged) {
+      const id = idOf(m);
+      if (id) {
+        const at = byId.get(id);
+        if (at !== undefined) {
+          // 保留内容更完整的一条（库中的整条通常更长）
+          if ((m.content?.length ?? 0) > (deduped[at]!.content?.length ?? 0))
+            deduped[at] = m;
+          continue;
+        }
+        byId.set(id, deduped.length);
+        deduped.push(m);
+        continue;
+      }
+      const prefixDupAt = deduped.findIndex(
+        (o) =>
+          o.role === m.role &&
+          (o.content ?? "").length > 0 &&
+          (m.content ?? "").length > 0 &&
+          ((o.content ?? "").startsWith(m.content ?? "") ||
+            (m.content ?? "").startsWith(o.content ?? "")),
+      );
+      if (prefixDupAt >= 0) {
+        if (
+          (m.content?.length ?? 0) >
+          (deduped[prefixDupAt]!.content?.length ?? 0)
+        ) {
+          deduped[prefixDupAt] = m;
+        }
+        continue;
+      }
+      deduped.push(m);
+    }
+
     set({
-      messages: { ...state.messages, [sessionId]: merged },
+      messages: { ...state.messages, [sessionId]: deduped },
       loading: false,
     });
     // 回放该会话的 AI 组件事件（重启/切回会话后重建事件驱动的组件）
@@ -1434,7 +1536,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setSelectedModel: (model) => {
+    set({ selectedModel: model });
+    writeLastSelectedModel(model); // 跨重启记住（否则重启被默认值覆盖）
+  },
+  setAutoFullPermission: (sessionId, enabled) => {
+    if (!sessionId) return;
+    set((st) => ({
+      autoFullPermissionBySession: {
+        ...st.autoFullPermissionBySession,
+        [sessionId]: enabled,
+      },
+    }));
+    writeAutoFullPermission(sessionId, enabled);
+    // 送到后端：审批门按会话跳过审批；失败不回滚本地开关（界面如实显示，门侧仍会走审批）
+    void apiPost(
+      "/api/sessions/auto-full-permission?sessionId=" +
+        encodeURIComponent(sessionId) +
+        "&enabled=" +
+        (enabled ? "true" : "false"),
+      {},
+    ).then((r) => {
+      if (!r.ok)
+        console.warn(
+          "[chatStore] 自动完全权限未送达后端，该会话仍会走审批",
+          sessionId,
+        );
+    });
+  },
   setSelectedWorkingMode: (mode) => set({ selectedWorkingMode: mode }),
 }));
 

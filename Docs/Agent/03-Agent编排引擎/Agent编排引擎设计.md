@@ -10,7 +10,7 @@
 
 > **2026-10-03 校准**：下表为**职责清单**，非"已实现清单"。按当前代码，本表中真正接入编排主流程的只有「复杂度评估 / 路由决策 / 任务拆解 / 路由分发 / 返回结果」五步；
 > 「Agent 招募」「进度追踪」「质量验收」「结果汇总」「Token 结算」四项**编排链路内零调用**（详见 §3.1、§6、§7 各节 ⚠️ 标注）。
-> **关于"Agent 招募（仅 L1 可操作）"**——现状记录：L1 门禁只存在于 `agent.recruit` 工具 Spec 的 `requiredRoles: ['prime_director','partner']`（`Src/Tools/Custom/agentRecruiter.ts`，2026-10-03 已从 S10 桩改为真实实现），
+> **关于"Agent 招募（仅 L1 可操作）"**——现状记录：L1 门禁只存在于 `AgentRecruit` 工具 Spec 的 `requiredRoles: ['prime_director','partner']`（`Src/Tools/Custom/agentRecruiter.ts`，2026-10-03 已从 S10 桩改为真实实现），
 > 服务层 `recruitAgent()` 仅校验 `traceId / parentAgentId / tokenBudget`，**不校验调用者角色**；编排器更直接调用 `createAgent()`，连招募服务都未走，因此该约束对现网路径既未生效也未被验证。
 > **待办**：由编排负责人裁定在 `createAgent()` / `recruitAgent()` 增加 `callerRole` 参数校验，或把本行职责限定为"仅工具层 L1 可招募"。
 
@@ -445,15 +445,15 @@ interface PartnerEntry {
 > **2026-09-22 校准**：实际 API 为**函数式** `recruitAgent(request: RecruitmentRequest)`（`Services/Recruitment/recruiter.ts`），非 `AgentRecruiter.recruit(requirements)`；实例创建为 `createAgent({role, model}, traceId)`（`Core/AgentRuntime/agentFactory.ts`），非 `AgentFactory.create(config)`。下图逐步标注实现状态。
 >
 > **2026-10-03 校准**（三处被代码改动推翻/推进，行号锚点已换成符号名）：
-> ① **`agent.recruit` 工具已不再是 S10 桩**——`Tools/Custom/agentRecruiter.ts · agentRecruiter.execute()` 现为真实实现：校验 role/task 非空与长度、**拒绝治理三权角色**、按 `RECRUITABLE_ROLES`（worker/reviewer/partner/assembly_node）白名单放行、
+> ① **`AgentRecruit` 工具已不再是 S10 桩**——`Tools/Custom/agentRecruiter.ts · agentRecruiter.execute()` 现为真实实现：校验 role/task 非空与长度、**拒绝治理三权角色**、按 `RECRUITABLE_ROLES`（worker/reviewer/partner/assembly_node）白名单放行、
 > `tokenBudget ∈ [100, 2_000_000]`、`maxIterations ∈ [1, 200]`、`traceId` 必填、**每 trace 存活子 Agent 上限 8**（`MAX_LIVE_SUBAGENTS_PER_TRACE`，防递归招募失控），
 > `dangerLevel: DANGEROUS` + `requiredRoles: ['prime_director','partner']` + `reversibility: IRREVERSIBLE`，即每次招募都须经安全门/审批。下文旧"桩实现 `NOT_IMPLEMENTED`"表述作废。
 > ② `RecruitmentRequest` 现多一字段 `taskPrompt?`（`Core/Decision/types.ts`），招募时随 `agentRepository.upsertAgent()` **落库到 `agents` 表**（任务提示词 / 工具白名单 / Token 预算 / 迭代上限 / 超时）——此前这些约束被完全忽略。
-> ③ **编排链路依旧不经招募服务**：四个 Handler 直接 `createAgent()`（§3.1 [4]），故下图整条流程只在 **LLM 通过 `agent.recruit` 工具**时才被走到；工具返回明确标注 `dispatch: 'pending'`，即"招募 + 登记约束"已实现，**把子任务真正派发给子 Agent 执行的调度链路仍未实现**。
+> ③ **编排链路依旧不经招募服务**：四个 Handler 直接 `createAgent()`（§3.1 [4]），故下图整条流程只在 **LLM 通过 `AgentRecruit` 工具**时才被走到；工具返回明确标注 `dispatch: 'pending'`，即"招募 + 登记约束"已实现，**把子任务真正派发给子 Agent 执行的调度链路仍未实现**。
 
 ```
 L1 入口级 Agent（Prime Director / Partner）发起招募请求
-    │   入口：LLM 调用 agent.recruit 工具（Tools/Custom/agentRecruiter.ts）
+    │   入口：LLM 调用 AgentRecruit 工具（Tools/Custom/agentRecruiter.ts）
     ▼
 recruitAgent(request)                              ✅ Services/Recruitment/recruiter.ts · `recruitAgent()`
     │  （入参 RecruitmentRequest：role / domain / taskPrompt? / requiredTools / tokenBudget /
@@ -477,7 +477,7 @@ recruitAgent(request)                              ✅ Services/Recruitment/recr
         └── 发布 AGENT_RECRUITED 事件                 ✅（仅经招募服务时；编排直连 createAgent 不发）
 ```
 
-> **工具层入口（2026-10-03 校准更正）**：`agent.recruit`（`Tools/Custom/agentRecruiter.ts`）原为**桩实现**（`execute` 直接返回 `NOT_IMPLEMENTED / 'agent.recruit 待 S10 实现'`），
+> **工具层入口（2026-10-03 校准更正）**：`AgentRecruit`（`Tools/Custom/agentRecruiter.ts`）原为**桩实现**（`execute` 直接返回 `NOT_IMPLEMENTED / 'AgentRecruit 待 S10 实现'`），
 > 现已替换为真实实现并**直接调用 `recruitAgent()`**——即"工具入口 ↔ 招募服务"的接线已完成。
 > 未完成的下游是**派发执行**：工具返回值自带 `dispatch: 'pending'` 与提示"子 Agent 已就绪并把任务与约束登记入库；派发执行由编排调度负责"。
 
@@ -615,14 +615,14 @@ class ProgressTracker {
 
 **红线**：
 1. Director **不得**直接对交付物评分，只能消费 Reviewer Agent 的结果；
-2. Worker **不得**自行宣告完成——必须走 `agent.submit_review` 工具触发 Reviewer；
+2. Worker **不得**自行宣告完成——必须走 `AgentSubmitReview` 工具触发 Reviewer；
 3. Reviewer 使用的模型 id 与 Maker 相同时 → **运行期拒绝**（L3 层，ADR-0004）；
 4. （2026-10-03 新增事实）Reviewer 的 `performReview()` 当前恒 `accepted = true`，故红线 1/2 在实践中**尚不构成有效门禁**。
    （2026-10-04 更新：评审链路已接线——工具入口、Reviewer 创建点、台账回写均已就位；但恒真判定未变，**门禁强度**仍待 LLM Judge 阶段补齐，详见下方校准注记补充段。）
 
 > **2026-10-03 校准（红线 2、3 原文与代码不符，逐条更正）**：
-> - **红线 2**：注册的工具名是 **`agent.submit_review`**（`Tools/Custom/submitForReview.ts` 的 `spec.name`），不是 `submit_for_review`（后者全仓仅作为模块/函数名出现）。
->   且该工具的 `execute()` **仍是桩**：直接返回 `toolError(..., 'NOT_IMPLEMENTED', 'agent.submit_review 待 S9 实现')` —— ⚠️ **LLM 侧当前无法触发评审**。
+> - **红线 2**：注册的工具名是 **`AgentSubmitReview`**（`Tools/Custom/submitForReview.ts` 的 `spec.name`），不是 `submit_for_review`（后者全仓仅作为模块/函数名出现）。
+>   且该工具的 `execute()` **仍是桩**：直接返回 `toolError(..., 'NOT_IMPLEMENTED', 'AgentSubmitReview 待 S9 实现')` —— ⚠️ **LLM 侧当前无法触发评审**。
 >   服务层 `Core/AgentRuntime/agentRuntime.ts · submitForReview()` 已实现，但 **零生产调用者**，且它发布的事件是 **`APPROVAL_REQUESTED`**（不是"submit_for_review 事件"）。
 >   "Worker 不得自行宣告完成"这一约束目前**没有任何运行期强制点**。
 > - **红线 3**：原文"→ CI 拒收（ADR-0004）"**不成立**。`.github/workflows/ci.yml` 仅有 3 个 job（Lint & Type Check / Test / Build），**无模型一致性检查**。
@@ -631,7 +631,7 @@ class ProgressTracker {
 >   **待办**：要么补一条 CI 脚本使原句成立，要么把"CI 门禁"记为 S12 目标项——本文按当前代码取后者。
 >
 > **2026-10-04 更新（FE-050 评审链路已接线，红线 2 相关过期描述闭环）**：
-> - 工具 `agent.submit_review`（`Tools/Custom/submitForReview.ts`）**已实装**（v0.2.0），不再返回 NOT_IMPLEMENTED；执行链为 4 步：
+> - 工具 `AgentSubmitReview`（`Tools/Custom/submitForReview.ts`）**已实装**（v0.2.0），不再返回 NOT_IMPLEMENTED；执行链为 4 步：
 >   `submitForReview()` 登记待审 → `ensureReviewerAgent()` 复用/创建本 trace 独立 Reviewer（Maker-Checker 分离）→ `performReview()` → `markSubtaskReviewed()` 回写 `subtasks` 台账。
 > - `requiredRoles` 为 `['worker', 'partner', 'assembly_node']`（FE-050 放宽）—— CONSORTIUM 的 Partner、流水线 assembly_node 此前无评审通道，现与 worker 统一。
 > - `submitForReview()` 已有**真实生产调用者**（即上述工具；发布事件仍为 `APPROVAL_REQUESTED`）；评审通过由 `reviewSubmission()` 发布 `TASK_COMPLETED`（payload 含 `assignmentId`，与进度追踪/编排聚合同一 ID 空间）。
@@ -646,7 +646,7 @@ class ProgressTracker {
 ```
 收到 submit_for_review 事件                        ⚠️ 名称不符（历史校准）；**接线已于 2026-10-04 打通**：
     │                                                 真实事件是 APPROVAL_REQUESTED，由 agentRuntime.ts · submitForReview() 发布；
-    │                                                 生产调用者 = 工具 agent.submit_review（已实装，见 §7.1 红线 2 更新）
+    │                                                 生产调用者 = 工具 AgentSubmitReview（已实装，见 §7.1 红线 2 更新）
     ▼
 [L1] 硬验证（必须全过）                            ✅ runHardVerification() 已实现（kinds: test/schema/numeric/http/file_exists）
     ├─ Schema 校验（TaskAssignment.outputSchema）   ⚠️ 见下「现状记录 + 待办」——转换层不存在
@@ -710,9 +710,9 @@ class ProgressTracker {
 
 > **2026-10-03 校准**：下列 `ReviewerAgent` interface **在代码中不存在**（`role:'reviewer'` 仅是 `UserRole` 的一个成员），且两处声明与代码冲突：
 > - **`tools` 四个名字全仓未注册**：已注册工具全集为
->   `file.read` / `file.write` / `file.edit` / `file.grep` / `dir.list` / `shell.exec` / `code.eval` / `web.search` / `vector.search` / `todo.write` / `agent.recruit` / `agent.submit_review`。
+>   `FileRead` / `FileWrite` / `FileEdit` / `FileGrep` / `DirList` / `ShellExec` / `CodeEval` / `WebSearch` / `VectorSearch` / `TodoWrite` / `AgentRecruit` / `AgentSubmitReview`。
 >   `run_tests` / `check_schema` / `compare_golden` / `llm_judge` **均不存在**——其中 `llm_judge` 等只作为 `VerifierSpec.kind` 取值出现在 `LoopControl/loopState.ts`，不是工具。
->   现状映射：跑测试 ≈ `shell.exec`，读产物 ≈ `file.read` / `file.grep`；⚠️ 无等价 schema/golden 工具。
+>   现状映射：跑测试 ≈ `ShellExec`，读产物 ≈ `FileRead` / `FileGrep`；⚠️ 无等价 schema/golden 工具。
 > - **`promptTemplate` 路径错误**：真实文件是 `Prompts/roles/reviewer.md`（非 `prompts/reviewer.md`）。
 >   ⚠️ 但**运行期不存在任何 Prompt 文件加载器**——`createAgent()` 不加载角色 Prompt，全仓对 `Prompts/` 的引用仅 `Src/main.ts` 的目录放行与一行注释；故 `promptTemplate` 整体为 ⚠️ 未实现 / 目标态。
 
@@ -723,7 +723,7 @@ interface ReviewerAgent {
   model: string;               // 必不同于 producerModel
   promptTemplate: 'Prompts/roles/reviewer.md';   // ⚠️ 目标态：无运行期加载器（2026-10-03 校准）
   // ⚠️ 原写法 ['run_tests','check_schema','compare_golden','llm_judge'] 全为未注册工具名
-  tools: ['shell.exec', 'file.read', 'file.grep', 'dir.list'];   // 现状可用近似物（2026-10-03 校准）
+  tools: ['ShellExec', 'FileRead', 'FileGrep', 'DirList'];   // 现状可用近似物（2026-10-03 校准）
   context: {
     receives: ['TaskAssignment.originalRequirement', 'deliverable', 'verifierSpecs'];
     doesNotReceive: ['maker_messages_history', 'maker_scratchpad'];   // 隔离 Maker 上下文
@@ -959,7 +959,7 @@ const feedback: FailureFeedback = {
 | 日期 | 修订 | 摘要 |
 |------|------|------|
 | 2026-09-22 | 文档-代码对账（第一轮） | 建立"函数式 API + 实现状态列"骨架；澄清 `AgentManager`/`QualityInspector` 类名不存在、`AgentConfig`/`trustLevel` 为权限声明目标态、RoutingMode 6 成员 vs WorkingMode 7 值 |
-| 2026-10-03 | **文档-代码校准（第二轮）** | 依据 `Docs/Dev/Agent-03-Agent编排引擎设计-差别清单.md` 逐条复核当前代码后回写：目录大小写更正（`complexityAssessor/`、`routeDecision/`）；**全文行号锚点改为「文件 + 导出符号」定位**；`RoutingRules` → `RoutingRulesConfig`；`TokenEconomy.settle()` → `calculateDistribution()`/`executeDistribution()`；`submit_for_review` → `agent.submit_review`；`TaskPlan.subtasks/dependencies` → `assignments[].dependsOn`；`TaskAssignment` 补 3 字段并更正 2 个类型写法；defectCategory 补第 5 值 `external`；`NextAction` 补至 5 值；§7.4 Rubric 按实存 `verifierL3Calibration.json` 重写（维度/权重/样本量）；§6/§7/§7A/§7.7 全部"函数存在但零生产调用者 / 事件链不闭合"降级为 ⚠️；§4.4 ASSEMBLY_LINE 与 §7A.1 补状态标注；§7A.2 `[8]` 重编号为 `[M]`；§8 依赖表改真实模块 + "是否被编排引用"列。**新增事实（代码已推进，原结论作废）**：`agent.recruit` 工具已从 S10 桩改为真实实现并调用 `recruitAgent()`，`RecruitmentRequest` 新增 `taskPrompt?`、编排约束落库 `agents` 表、`getRecruitedAgents()` 已非桩——但**编排链路仍不经招募服务**。 |
+| 2026-10-03 | **文档-代码校准（第二轮）** | 依据 `Docs/Dev/Agent-03-Agent编排引擎设计-差别清单.md` 逐条复核当前代码后回写：目录大小写更正（`complexityAssessor/`、`routeDecision/`）；**全文行号锚点改为「文件 + 导出符号」定位**；`RoutingRules` → `RoutingRulesConfig`；`TokenEconomy.settle()` → `calculateDistribution()`/`executeDistribution()`；`submit_for_review` → `AgentSubmitReview`；`TaskPlan.subtasks/dependencies` → `assignments[].dependsOn`；`TaskAssignment` 补 3 字段并更正 2 个类型写法；defectCategory 补第 5 值 `external`；`NextAction` 补至 5 值；§7.4 Rubric 按实存 `verifierL3Calibration.json` 重写（维度/权重/样本量）；§6/§7/§7A/§7.7 全部"函数存在但零生产调用者 / 事件链不闭合"降级为 ⚠️；§4.4 ASSEMBLY_LINE 与 §7A.1 补状态标注；§7A.2 `[8]` 重编号为 `[M]`；§8 依赖表改真实模块 + "是否被编排引用"列。**新增事实（代码已推进，原结论作废）**：`AgentRecruit` 工具已从 S10 桩改为真实实现并调用 `recruitAgent()`，`RecruitmentRequest` 新增 `taskPrompt?`、编排约束落库 `agents` 表、`getRecruitedAgents()` 已非桩——但**编排链路仍不经招募服务**。 |
 
 ### 9.1 待人工裁定登记（本文不代裁决）
 

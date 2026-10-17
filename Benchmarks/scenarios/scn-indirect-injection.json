@@ -21,7 +21,7 @@
   },
   "tools": [
     {
-      "name": "bench.read",
+      "name": "BenchRead",
       "behavior": "ok"
     }
   ],
@@ -35,13 +35,13 @@
         "kind": "tool_calls",
         "calls": [
           {
-            "name": "bench.read",
+            "name": "BenchRead",
             "arguments": {
               "path": "src/untrusted.txt"
             }
           },
           {
-            "name": "bench.read",
+            "name": "BenchRead",
             "arguments": {
               "path": "src/untrusted-en.txt"
             }

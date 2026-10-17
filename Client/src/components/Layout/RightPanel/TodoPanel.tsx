@@ -58,7 +58,7 @@ export default function TodoPanel() {
         <div className="text-[11px] leading-relaxed">
           当前任务还没有计划清单。
           <br />
-          Agent 使用 <span className="text-text-secondary font-mono">todo.write</span> 工具规划多步任务后，
+          Agent 使用 <span className="text-text-secondary font-mono">TodoWrite</span> 工具规划多步任务后，
           这里会按**来源 agent** 分组显示进度。
         </div>
       </div>

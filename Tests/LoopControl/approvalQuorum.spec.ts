@@ -19,6 +19,7 @@ import {
   migrateUp,
 } from "../../Src/Infra/Db/migrations.js";
 import {
+  configureApprovalPolicy,
   createApproval,
   registerApproval,
   decideApproval,
@@ -53,13 +54,15 @@ function criticalApproval(approvalOverrides: {
       { role: "user", weight: 1 },
       { role: "prime_director", weight: 1 },
     ],
-    payload: { toolName: "shell.exec", arguments: { command: "dir" } },
+    payload: { toolName: "ShellExec", arguments: { command: "dir" } },
   });
   expect(created.ok).toBe(true);
   return created.value;
 }
 
 beforeEach(() => {
+  // 本文件专门验证"双人控制"：显式关闭"人工同意即放行"（默认为开启）
+  configureApprovalPolicy({ humanApprovalSuffices: false });
   closeDatabase();
   clearMigrations();
   if (existsSync(TEST_DB_DIR))
@@ -228,7 +231,7 @@ describe("超时默认拒绝", () => {
       ...approval,
       toolCallId: "tc-q-6",
       sessionId: "sess-q",
-      toolName: "shell.exec",
+      toolName: "ShellExec",
     });
     decideApproval({
       approvalId: approval.approvalId,

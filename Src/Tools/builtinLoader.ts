@@ -34,10 +34,16 @@ import { todoWriter } from "./Builtin/Plan/todoWriter.js";
 import { webSearch } from "./Builtin/Search/webSearch.js";
 import { vectorSearch } from "./Builtin/Search/vectorSearch.js";
 import { memoryWrite } from "./Builtin/Memory/memoryWrite.js";
+// Builtin/Multimodal（多模态路径 a：文本主模型 + 视觉工具）
+import { sightUse } from "./Builtin/Multimodal/sightUse.js";
 
 // Custom
 import { agentRecruiter } from "./Custom/agentRecruiter.js";
 import { submitForReview } from "./Custom/submitForReview.js";
+import { orchestratorCompose } from "./Custom/orchestratorCompose.js";
+import { orchestratorSelect } from "./Custom/orchestratorSelect.js";
+import { agentSplit } from "./Custom/agentSplit.js";
+import { agentMerge } from "./Custom/agentMerge.js";
 
 /** 所有内置工具定义 */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
@@ -60,9 +66,17 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   webSearch,
   vectorSearch,
   memoryWrite,
+  // Multimodal (SAFE) —— 视觉工具（多模态路径 a：文本主模型 + 视觉工具）
+  sightUse,
   // Custom（编排类：招募 + 评审提交，均已实装）
   agentRecruiter,
   submitForReview,
+  // Custom（组装闭环类：C6 的工具身份 —— 改结构与选件，仅 L1 外层）
+  orchestratorCompose,
+  orchestratorSelect,
+  // Custom（分裂/自合并类：兄弟账本链路 —— **内层** L1 可达，不含改结构）
+  agentSplit,
+  agentMerge,
 ];
 
 /**

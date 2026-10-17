@@ -9,12 +9,12 @@
  * Gate G1 要求：迁移可上可下（up/down 幂等）
  */
 
-import type Database from 'better-sqlite3';
+import type Database from "better-sqlite3";
 
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
+import type { Result } from "../types.js";
+import { ok, err } from "../types.js";
 
-import { getMainDb, getEventsDb, getMemoryDb } from './database.js';
+import { getMainDb, getEventsDb, getMemoryDb } from "./database.js";
 
 // ===== 类型定义 =====
 
@@ -24,7 +24,7 @@ export interface Migration {
   readonly name: string;
   readonly up: string;
   readonly down: string;
-  readonly database?: 'main' | 'events' | 'memory';
+  readonly database?: "main" | "events" | "memory";
 }
 
 /** 迁移状态 */
@@ -54,7 +54,10 @@ export function registerDefaultMigrations(): void {
   defaultsRegistered = true;
 
   // --- Main DB ---
-  registerMigration({ version: 1, name: 'create_sessions', database: 'main',
+  registerMigration({
+    version: 1,
+    name: "create_sessions",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS sessions (
       session_key TEXT PRIMARY KEY, trace_id TEXT, user_id TEXT, description TEXT,
       status TEXT NOT NULL DEFAULT 'active',
@@ -62,7 +65,10 @@ export function registerDefaultMigrations(): void {
     );`,
     down: `DROP TABLE IF EXISTS sessions;`,
   });
-  registerMigration({ version: 2, name: 'create_agents', database: 'main',
+  registerMigration({
+    version: 2,
+    name: "create_agents",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS agents (
       agent_id TEXT PRIMARY KEY, trace_id TEXT NOT NULL, parent_agent_id TEXT,
       role TEXT NOT NULL, system_prompt TEXT NOT NULL, task_prompt TEXT,
@@ -77,7 +83,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);`,
     down: `DROP TABLE IF EXISTS agents;`,
   });
-  registerMigration({ version: 3, name: 'create_tasks', database: 'main',
+  registerMigration({
+    version: 3,
+    name: "create_tasks",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS tasks (
       task_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, trace_id TEXT NOT NULL,
       user_request TEXT NOT NULL, route_mode TEXT NOT NULL,
@@ -91,7 +100,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_trace ON tasks(trace_id);`,
     down: `DROP TABLE IF EXISTS tasks;`,
   });
-  registerMigration({ version: 4, name: 'create_subtasks', database: 'main',
+  registerMigration({
+    version: 4,
+    name: "create_subtasks",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS subtasks (
       subtask_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, trace_id TEXT NOT NULL,
       description TEXT NOT NULL, input_context TEXT, output_schema TEXT, assigned_agent_id TEXT,
@@ -105,7 +117,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);`,
     down: `DROP TABLE IF EXISTS subtasks;`,
   });
-  registerMigration({ version: 5, name: 'create_token_wallets', database: 'main',
+  registerMigration({
+    version: 5,
+    name: "create_token_wallets",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS token_wallets (
       wallet_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
       balance REAL NOT NULL DEFAULT 0, total_earned REAL NOT NULL DEFAULT 0,
@@ -117,7 +132,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_wallets_agent ON token_wallets(agent_id);`,
     down: `DROP TABLE IF EXISTS token_wallets;`,
   });
-  registerMigration({ version: 6, name: 'create_token_transactions', database: 'main',
+  registerMigration({
+    version: 6,
+    name: "create_token_transactions",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS token_transactions (
       transaction_id TEXT PRIMARY KEY, wallet_id TEXT NOT NULL,
       trace_id TEXT, operation_id TEXT, type TEXT NOT NULL,
@@ -129,7 +147,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_tx_type ON token_transactions(type);`,
     down: `DROP TABLE IF EXISTS token_transactions;`,
   });
-  registerMigration({ version: 7, name: 'create_system_config', database: 'main',
+  registerMigration({
+    version: 7,
+    name: "create_system_config",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS system_config (
       config_key TEXT PRIMARY KEY, config_value TEXT NOT NULL,
       description TEXT, updated_at INTEGER NOT NULL, updated_by TEXT
@@ -138,7 +159,10 @@ export function registerDefaultMigrations(): void {
   });
 
   // --- S2 持久执行底座（Docs/Agent/09 §8.2）---
-  registerMigration({ version: 8, name: 'create_loops', database: 'main',
+  registerMigration({
+    version: 8,
+    name: "create_loops",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS loops (
       loop_id TEXT PRIMARY KEY, trace_id TEXT NOT NULL, session_key TEXT NOT NULL,
       agent_id TEXT NOT NULL, task_id TEXT NOT NULL, parent_agent_id TEXT,
@@ -155,7 +179,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_loops_trace ON loops(trace_id);`,
     down: `DROP TABLE IF EXISTS loops;`,
   });
-  registerMigration({ version: 9, name: 'create_loop_checkpoints', database: 'main',
+  registerMigration({
+    version: 9,
+    name: "create_loop_checkpoints",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS loop_checkpoints (
       checkpoint_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, state_snapshot_json TEXT NOT NULL,
@@ -166,7 +193,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_checkpoints_loop_iter ON loop_checkpoints(loop_id, iteration DESC);`,
     down: `DROP TABLE IF EXISTS loop_checkpoints;`,
   });
-  registerMigration({ version: 10, name: 'create_effect_journal', database: 'main',
+  registerMigration({
+    version: 10,
+    name: "create_effect_journal",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS effect_journal (
       effect_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, kind TEXT NOT NULL,
@@ -180,7 +210,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_effect_loop ON effect_journal(loop_id, iteration);`,
     down: `DROP TABLE IF EXISTS effect_journal;`,
   });
-  registerMigration({ version: 11, name: 'create_idempotency_cache', database: 'main',
+  registerMigration({
+    version: 11,
+    name: "create_idempotency_cache",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS idempotency_cache (
       idem_key TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       result_json TEXT NOT NULL, result_hash TEXT NOT NULL,
@@ -191,7 +224,10 @@ export function registerDefaultMigrations(): void {
   });
 
   // --- S6 Loop 控制（Docs/Agent/09 §8.2）---
-  registerMigration({ version: 12, name: 'create_verifier_results', database: 'main',
+  registerMigration({
+    version: 12,
+    name: "create_verifier_results",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS verifier_results (
       result_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, level TEXT NOT NULL,
@@ -204,7 +240,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_verifier_loop ON verifier_results(loop_id, iteration);`,
     down: `DROP TABLE IF EXISTS verifier_results;`,
   });
-  registerMigration({ version: 13, name: 'create_failure_feedbacks', database: 'main',
+  registerMigration({
+    version: 13,
+    name: "create_failure_feedbacks",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS failure_feedbacks (
       feedback_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, category TEXT NOT NULL,
@@ -215,7 +254,10 @@ export function registerDefaultMigrations(): void {
     );`,
     down: `DROP TABLE IF EXISTS failure_feedbacks;`,
   });
-  registerMigration({ version: 14, name: 'create_strategies_ledger', database: 'main',
+  registerMigration({
+    version: 14,
+    name: "create_strategies_ledger",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS strategies_ledger (
       entry_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, strategy TEXT NOT NULL,
@@ -225,7 +267,10 @@ export function registerDefaultMigrations(): void {
     );`,
     down: `DROP TABLE IF EXISTS strategies_ledger;`,
   });
-  registerMigration({ version: 15, name: 'create_pending_approvals', database: 'main',
+  registerMigration({
+    version: 15,
+    name: "create_pending_approvals",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS pending_approvals (
       approval_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL,
       trace_id TEXT NOT NULL, iteration INTEGER NOT NULL,
@@ -244,7 +289,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_approvals_pending ON pending_approvals(status, expires_at);`,
     down: `DROP TABLE IF EXISTS pending_approvals;`,
   });
-  registerMigration({ version: 2, name: 'create_action_fingerprints', database: 'events',
+  registerMigration({
+    version: 2,
+    name: "create_action_fingerprints",
+    database: "events",
     up: `CREATE TABLE IF NOT EXISTS action_fingerprints (
       fingerprint TEXT NOT NULL, loop_id TEXT NOT NULL,
       iteration INTEGER NOT NULL, tool_name TEXT NOT NULL,
@@ -257,7 +305,10 @@ export function registerDefaultMigrations(): void {
   });
 
   // --- Events DB ---
-  registerMigration({ version: 1, name: 'create_events', database: 'events',
+  registerMigration({
+    version: 1,
+    name: "create_events",
+    database: "events",
     up: `CREATE TABLE IF NOT EXISTS events (
       event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, trace_id TEXT,
       source TEXT NOT NULL, payload TEXT NOT NULL,
@@ -269,7 +320,10 @@ export function registerDefaultMigrations(): void {
   });
 
   // --- F0.7 会话与消息（Docs/Client/02）---
-  registerMigration({ version: 18, name: 'create_chat_sessions', database: 'main',
+  registerMigration({
+    version: 18,
+    name: "create_chat_sessions",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS chat_sessions (
       session_id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT 'New Chat',
@@ -279,7 +333,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_chat_sessions_status ON chat_sessions(status);`,
     down: `DROP TABLE IF EXISTS chat_sessions;`,
   });
-  registerMigration({ version: 19, name: 'create_chat_messages', database: 'main',
+  registerMigration({
+    version: 19,
+    name: "create_chat_messages",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS chat_messages (
       message_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -293,13 +350,19 @@ export function registerDefaultMigrations(): void {
     down: `DROP TABLE IF EXISTS chat_messages;`,
   });
   // 会话工作目录：任务/会话绑定一个工作目录（默认 <项目根>/Data/workspaces/<sessionId>/）
-  registerMigration({ version: 20, name: 'add_chat_sessions_work_dir', database: 'main',
+  registerMigration({
+    version: 20,
+    name: "add_chat_sessions_work_dir",
+    database: "main",
     up: `ALTER TABLE chat_sessions ADD COLUMN work_dir TEXT;`,
     down: `ALTER TABLE chat_sessions DROP COLUMN work_dir;`,
   });
 
   // ── S8 事件总线与共享记忆 ──────────────────────────────────────────
-  registerMigration({ version: 16, name: 'create_global_workspace', database: 'main',
+  registerMigration({
+    version: 16,
+    name: "create_global_workspace",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS global_workspace (
       entry_id TEXT PRIMARY KEY, key TEXT NOT NULL,
       trace_id TEXT NOT NULL, agent_id TEXT NOT NULL, task_id TEXT,
@@ -319,7 +382,10 @@ export function registerDefaultMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_gw_agent ON global_workspace(agent_id);`,
     down: `DROP TABLE IF EXISTS global_workspace;`,
   });
-  registerMigration({ version: 17, name: 'create_long_term_memory', database: 'main',
+  registerMigration({
+    version: 17,
+    name: "create_long_term_memory",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS long_term_memory (
       memory_id TEXT PRIMARY KEY,
       title TEXT NOT NULL, content TEXT NOT NULL,
@@ -341,7 +407,10 @@ export function registerDefaultMigrations(): void {
   //  - 改为复合主键 (owner_user_id, memory_id)：未登录用 'local'，登录后用服务端 userId
   //  - 因 SQLite 不支持修改主键，这里重建表并迁移既有数据（归入 'local'）
   //  - 先 `CREATE TABLE IF NOT EXISTS` 兜底 v17 形状：保证 down 之后再 up 仍可重放（Gate G1 幂等）
-  registerMigration({ version: 21, name: 'add_long_term_memory_owner', database: 'main',
+  registerMigration({
+    version: 21,
+    name: "add_long_term_memory_owner",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS long_term_memory (
       memory_id TEXT PRIMARY KEY,
       title TEXT NOT NULL, content TEXT NOT NULL,
@@ -391,7 +460,10 @@ export function registerDefaultMigrations(): void {
   //
   //  注意：SQLite 的 `ALTER TABLE ... ADD COLUMN` **不支持 IF NOT EXISTS**
   //  （那是 Postgres 语法）；迁移本身由 `_migrations` 保证只执行一次，故直接 ADD 即可。
-  registerMigration({ version: 22, name: 'add_owner_scope_to_personal_data', database: 'main',
+  registerMigration({
+    version: 22,
+    name: "add_owner_scope_to_personal_data",
+    database: "main",
     up: `ALTER TABLE chat_sessions      ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT 'local';
     ALTER TABLE chat_messages      ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT 'local';
     ALTER TABLE tasks              ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT 'local';
@@ -443,7 +515,10 @@ export function registerDefaultMigrations(): void {
   //  ① 消息富结构：把组件渲染所需的 reasoning/toolCalls/segments/totalIterations/error/status 随消息落库；
   //  ② AI 事件流：组件族是**事件驱动**的（按 eventTypes 注册，payload 来自事件），
   //     故把会话内的事件也持久化，可回放重建（覆盖 loop/memory/multiagent 等尚无专门字段的组件）。
-  registerMigration({ version: 23, name: 'persist_ai_components', database: 'main',
+  registerMigration({
+    version: 23,
+    name: "persist_ai_components",
+    database: "main",
     up: `ALTER TABLE chat_messages ADD COLUMN reasoning TEXT;
     ALTER TABLE chat_messages ADD COLUMN tool_calls_json TEXT;
     ALTER TABLE chat_messages ADD COLUMN segments_json TEXT;
@@ -480,7 +555,10 @@ export function registerDefaultMigrations(): void {
   //     故重建表去掉该外键（审批与 Loop 行的强绑定在内存态由队列保证）；
   //  ② 补齐工具关联列（tool_call_id/tool_name/session_id）与 auto_approved，
   //     与 PendingApproval 的落库字段对齐。
-  registerMigration({ version: 24, name: 'rebuild_pending_approvals_for_persistence', database: 'main',
+  registerMigration({
+    version: 24,
+    name: "rebuild_pending_approvals_for_persistence",
+    database: "main",
     up: `CREATE TABLE pending_approvals_v24 (
       approval_id TEXT PRIMARY KEY,
       loop_id TEXT NOT NULL,
@@ -564,7 +642,10 @@ export function registerDefaultMigrations(): void {
   //
   //  注意：历史上 Qoder 的 FE-004 已占用 v24（rebuild_pending_approvals_for_persistence），
   //  本条必须是 v25 —— 撞号会被 `isApplied()` 静默跳过（现已由 initMigrations 的冲突检测拦住）。
-  registerMigration({ version: 25, name: 'add_effect_journal_tool_call_id', database: 'main',
+  registerMigration({
+    version: 25,
+    name: "add_effect_journal_tool_call_id",
+    database: "main",
     up: `ALTER TABLE effect_journal ADD COLUMN tool_call_id TEXT;
     CREATE INDEX IF NOT EXISTS idx_effect_tool_call ON effect_journal(tool_call_id);`,
     down: `DROP INDEX IF EXISTS idx_effect_tool_call;
@@ -573,7 +654,10 @@ export function registerDefaultMigrations(): void {
   // v26：任务（会话）归档（2026-10-03 新功能）
   //  归档是**软状态**：`archived_at` 非空表示已归档；不删除任何消息，
   //  任务仍可打开、可取消归档，并继续参与统计与同步（服务端 user_tasks 保存归档状态）。
-  registerMigration({ version: 26, name: 'add_chat_sessions_archived_at', database: 'main',
+  registerMigration({
+    version: 26,
+    name: "add_chat_sessions_archived_at",
+    database: "main",
     up: `ALTER TABLE chat_sessions ADD COLUMN archived_at INTEGER;
     CREATE INDEX IF NOT EXISTS idx_chat_sessions_archived ON chat_sessions(owner_user_id, archived_at);`,
     down: `DROP INDEX IF EXISTS idx_chat_sessions_archived;
@@ -582,7 +666,10 @@ export function registerDefaultMigrations(): void {
   // v27：Agent 计划清单（TODO，2026-10-03 新功能）
   //  **按来源 agent 归属**：多 agent 且部分平级，因此每个 agent 在会话内各有一张独立计划表，
   //  键为 (owner_user_id, session_id, agent_id)，平级 agent 互不覆盖；面板按 agent 分组展示。
-  registerMigration({ version: 27, name: 'create_session_todos', database: 'main',
+  registerMigration({
+    version: 27,
+    name: "create_session_todos",
+    database: "main",
     up: `CREATE TABLE IF NOT EXISTS session_todos (
       todo_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -603,20 +690,26 @@ export function registerDefaultMigrations(): void {
   // v28：Agent 注册表落库（多 Agent 核心，2026-10-03）
   //  背景：`agents` 表自早期迁移就存在，但**从无代码读写** —— 招募出的 Agent 只活在内存 Map 里，
   //  进程重启即消失，也无法按账号隔离。本迁移补 owner 作用域，配合 agentRepository 做实落库。
-  registerMigration({ version: 28, name: 'add_agents_owner_scope', database: 'main',
+  registerMigration({
+    version: 28,
+    name: "add_agents_owner_scope",
+    database: "main",
     up: `ALTER TABLE agents ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT 'local';
     CREATE INDEX IF NOT EXISTS idx_agents_owner ON agents(owner_user_id, trace_id);`,
     down: `DROP INDEX IF EXISTS idx_agents_owner;
     ALTER TABLE agents DROP COLUMN owner_user_id;`,
   });
   // 注（2026-10-04）：`global_workspace.owner_user_id` **已由既有迁移统一添加**（见上方"统一加 owner_user_id"
-//   迁移，含 `idx_gw_owner` 索引），因此 G-13③ 只需补齐**读写接线**（`globalWorkspace` 写穿落库 +
-//   按属主隔离读取 + 启动回灌），无需新增迁移。此处曾误加 v29 迁移导致 `duplicate column`，已删除。
-// ═══ v29（2026-10-04）：治理动作台账落库（G-10 后续）════════════════════════
-// 背景：治理留痕此前仅存进程内数组 —— 重启即丢，无法满足灵感源 §1.2「全链路可追溯」。
-//   本表按属主隔离（owner_user_id），字段对应四类强制元数据 + 动作语义。
-registerMigration({ version: 29, name: 'create_governance_records', database: 'main',
-  up: `
+  //   迁移，含 `idx_gw_owner` 索引），因此 G-13③ 只需补齐**读写接线**（`globalWorkspace` 写穿落库 +
+  //   按属主隔离读取 + 启动回灌），无需新增迁移。此处曾误加 v29 迁移导致 `duplicate column`，已删除。
+  // ═══ v29（2026-10-04）：治理动作台账落库（G-10 后续）════════════════════════
+  // 背景：治理留痕此前仅存进程内数组 —— 重启即丢，无法满足灵感源 §1.2「全链路可追溯」。
+  //   本表按属主隔离（owner_user_id），字段对应四类强制元数据 + 动作语义。
+  registerMigration({
+    version: 29,
+    name: "create_governance_records",
+    database: "main",
+    up: `
     CREATE TABLE IF NOT EXISTS governance_records (
       record_id TEXT PRIMARY KEY,
       timestamp INTEGER NOT NULL,
@@ -634,21 +727,27 @@ registerMigration({ version: 29, name: 'create_governance_records', database: 'm
     CREATE INDEX IF NOT EXISTS idx_gov_time ON governance_records(owner_user_id, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_gov_action ON governance_records(action, timestamp DESC);
   `,
-  down: `DROP TABLE IF EXISTS governance_records;`,
-});
-// ═══ v30（2026-10-04）：长时记忆向量列（FE-058 语义检索）══════════════
-// 背景：`embeddingClient` 实现齐备但全库 0 消费——语义检索不存在。
-//   本列存条目向量（JSON 数组）；未配置嵌入模型时列留空（检索走文本打分），
-//   配置后由检索器后台逐步补齐（语义重排）。fail-safe：写失败不影响检索主链路。
-registerMigration({ version: 30, name: 'add_long_term_memory_embedding', database: 'main',
-  up: `ALTER TABLE long_term_memory ADD COLUMN embedding_json TEXT;`,
-  down: `ALTER TABLE long_term_memory DROP COLUMN embedding_json;`,
-});
-// ── A2A（治理型智能体间通信）· P0a（2026-10-05）────────────────────────
-// 设计：Docs/Dev/A2A-治理型智能体间通信协议设计.md §8/§15
-// 本机为**权威**（含 signature / verdict / hash 链）；服务端仅镜像（Server 006）。
-registerMigration({ version: 31, name: 'create_a2a_tables', database: 'main',
-  up: `
+    down: `DROP TABLE IF EXISTS governance_records;`,
+  });
+  // ═══ v30（2026-10-04）：长时记忆向量列（FE-058 语义检索）══════════════
+  // 背景：`embeddingClient` 实现齐备但全库 0 消费——语义检索不存在。
+  //   本列存条目向量（JSON 数组）；未配置嵌入模型时列留空（检索走文本打分），
+  //   配置后由检索器后台逐步补齐（语义重排）。fail-safe：写失败不影响检索主链路。
+  registerMigration({
+    version: 30,
+    name: "add_long_term_memory_embedding",
+    database: "main",
+    up: `ALTER TABLE long_term_memory ADD COLUMN embedding_json TEXT;`,
+    down: `ALTER TABLE long_term_memory DROP COLUMN embedding_json;`,
+  });
+  // ── A2A（治理型智能体间通信）· P0a（2026-10-05）────────────────────────
+  // 设计：Docs/Dev/A2A-治理型智能体间通信协议设计.md §8/§15
+  // 本机为**权威**（含 signature / verdict / hash 链）；服务端仅镜像（Server 006）。
+  registerMigration({
+    version: 31,
+    name: "create_a2a_tables",
+    database: "main",
+    up: `
     CREATE TABLE IF NOT EXISTS agent_cards (
       card_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, card_version INTEGER NOT NULL,
       role TEXT NOT NULL, create_time INTEGER NOT NULL, update_time INTEGER NOT NULL,
@@ -705,21 +804,75 @@ registerMigration({ version: 31, name: 'create_a2a_tables', database: 'main',
     );
     CREATE INDEX IF NOT EXISTS idx_a2a_cooldown_until ON a2a_cooldowns(owner_user_id, until_at);
   `,
-  down: `
+    down: `
     DROP TABLE IF EXISTS a2a_cooldowns;
     DROP TABLE IF EXISTS a2a_collusion_alerts;
     DROP TABLE IF EXISTS a2a_handoffs;
     DROP TABLE IF EXISTS a2a_messages;
     DROP TABLE IF EXISTS agent_cards;
   `,
-});
-// ── A2A 同步标记（P0c 客户端编排）────────────────────────────────────
-// 说明：`synced_at IS NULL` = 尚未上行；上行成功后写入时间戳（幂等重试）
-registerMigration({ version: 32, name: 'add_a2a_synced_at', database: 'main',
-  up: `ALTER TABLE a2a_messages ADD COLUMN synced_at INTEGER;`,
-  down: `ALTER TABLE a2a_messages DROP COLUMN synced_at;`,
-});
-registerMigration({ version: 3, name: 'create_domain_events', database: 'events',
+  });
+  // ── A2A 同步标记（P0c 客户端编排）────────────────────────────────────
+  // 说明：`synced_at IS NULL` = 尚未上行；上行成功后写入时间戳（幂等重试）
+  registerMigration({
+    version: 32,
+    name: "add_a2a_synced_at",
+    database: "main",
+    up: `ALTER TABLE a2a_messages ADD COLUMN synced_at INTEGER;`,
+    down: `ALTER TABLE a2a_messages DROP COLUMN synced_at;`,
+  });
+  // ═══ v33（2026-10-17）：治理审计哈希链（SUP-SEC-AUDITCHAIN）════════════
+  // 设计 §3.3：治理记录要有**完整性链**，篡改可检出。
+  // 背景：`governance_records` 只有行内容、没有前后链接 —— 直接改库（或改内存）无法发现。
+  // 本迁移补 `hash`（本条规范化摘要）与 `prev_hash`（上一条摘要，链首为 NULL）。
+  // 历史行留空：`verifyAuditChain` 从链首（第一条有 hash 的记录）开始校验，
+  // 不回改历史，也不把"历史缺链"误报成"被篡改"。
+  registerMigration({
+    version: 33,
+    name: "add_governance_hash_chain",
+    database: "main",
+    up: `
+    ALTER TABLE governance_records ADD COLUMN prev_hash TEXT;
+    ALTER TABLE governance_records ADD COLUMN hash TEXT;
+    CREATE INDEX IF NOT EXISTS idx_gov_chain ON governance_records(owner_user_id, hash);
+  `,
+    down: `
+    DROP INDEX IF EXISTS idx_gov_chain;
+    ALTER TABLE governance_records DROP COLUMN hash;
+    ALTER TABLE governance_records DROP COLUMN prev_hash;
+  `,
+  });
+  // ═══ v34（2026-10-17）：审计冻结状态落库（SUP-SEC-FREEZEPERSIST）════════
+  // 设计 §3.3：冻结状态跨重启存活。背景：`freezeManager` 纯内存 Map ⇒ 重启后
+  // `isFrozen` 全 false，被冻结 Agent 自动恢复行动能力，等同绕过审计执法。
+  // 表按属主隔离；只存状态机，不存执行细节（钱包冻结由 TokenEconomy 自己的表承载）。
+  registerMigration({
+    version: 34,
+    name: "create_agent_freezes",
+    database: "main",
+    up: `
+    CREATE TABLE IF NOT EXISTS agent_freezes (
+      freeze_id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      actor_role TEXT NOT NULL,
+      frozen_at INTEGER NOT NULL,
+      auto_unfreeze_at INTEGER,
+      unfrozen_at INTEGER,
+      unfrozen_by TEXT,
+      status TEXT NOT NULL,
+      owner_user_id TEXT NOT NULL DEFAULT 'local',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_freeze_agent ON agent_freezes(agent_id, status);
+    CREATE INDEX IF NOT EXISTS idx_freeze_owner ON agent_freezes(owner_user_id, status);
+  `,
+    down: `DROP TABLE IF EXISTS agent_freezes;`,
+  });
+  registerMigration({
+    version: 3,
+    name: "create_domain_events",
+    database: "events",
     up: `CREATE TABLE IF NOT EXISTS domain_events (
       event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,
       trace_id TEXT, loop_id TEXT,
@@ -740,7 +893,10 @@ registerMigration({ version: 3, name: 'create_domain_events', database: 'events'
   // 数据源）与 `ipc-get-memory-entries` 都查这张表，因表缺失恒为空数组。
   // 现由长时记忆写入/状态变更时镜像投影（key=`ltm-<n>`、namespace='long-term'），
   // 启动回灌时补齐存量条目；表带属主维度（FE-032），读取一律按属主过滤。
-  registerMigration({ version: 1, name: 'create_memory_entries', database: 'memory',
+  registerMigration({
+    version: 1,
+    name: "create_memory_entries",
+    database: "memory",
     up: `CREATE TABLE IF NOT EXISTS memory_entries (
       owner_user_id TEXT NOT NULL DEFAULT 'local',
       key           TEXT NOT NULL,
@@ -765,12 +921,12 @@ export function initMigrations(): Result<void> {
     // 属于最难察觉的一类故障（曾真实发生：新增 v24 时与既有 v24 撞号，列没建出来只在测试里暴露）。
     const seen = new Map<string, string>();
     for (const m of migrations) {
-      const key = `${m.database ?? 'main'}:${m.version}`;
+      const key = `${m.database ?? "main"}:${m.version}`;
       const prev = seen.get(key);
       if (prev) {
         return err(
           `迁移版本号冲突：${key} 同时被 "${prev}" 与 "${m.name}" 使用（后者将被静默跳过）。请改用新的版本号。`,
-          'FATAL',
+          "FATAL",
         );
       }
       seen.set(key, m.name);
@@ -788,7 +944,7 @@ export function initMigrations(): Result<void> {
     return ok(undefined);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`迁移系统初始化失败: ${message}`, 'FATAL');
+    return err(`迁移系统初始化失败: ${message}`, "FATAL");
   }
 }
 
@@ -802,8 +958,9 @@ export function migrateUp(): Result<number> {
       const db = getDbForMigration(migration);
       if (!isApplied(db, migration.version)) {
         db.exec(migration.up);
-        db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-          migration.version, migration.name,
+        db.prepare("INSERT INTO _migrations (version, name) VALUES (?, ?)").run(
+          migration.version,
+          migration.name,
         );
         applied++;
       }
@@ -811,7 +968,7 @@ export function migrateUp(): Result<number> {
     return ok(applied);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`迁移 up 失败: ${message}`, 'FATAL');
+    return err(`迁移 up 失败: ${message}`, "FATAL");
   }
 }
 
@@ -821,43 +978,55 @@ export function migrateUp(): Result<number> {
 export function migrateDown(): Result<number> {
   try {
     const db = getMainDb();
-    const lastMigration = db.prepare(
-      'SELECT version, name FROM _migrations ORDER BY version DESC LIMIT 1',
-    ).get() as { version: number; name: string } | undefined;
+    const lastMigration = db
+      .prepare(
+        "SELECT version, name FROM _migrations ORDER BY version DESC LIMIT 1",
+      )
+      .get() as { version: number; name: string } | undefined;
 
     if (!lastMigration) return ok(0);
 
-    const migration = migrations.find(m => m.version === lastMigration.version);
+    const migration = migrations.find(
+      (m) => m.version === lastMigration.version,
+    );
     if (!migration) return ok(0);
 
     const targetDb = getDbForMigration(migration);
     targetDb.exec(migration.down);
-    targetDb.prepare('DELETE FROM _migrations WHERE version = ?').run(migration.version);
+    targetDb
+      .prepare("DELETE FROM _migrations WHERE version = ?")
+      .run(migration.version);
     return ok(1);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`迁移 down 失败: ${message}`, 'FATAL');
+    return err(`迁移 down 失败: ${message}`, "FATAL");
   }
 }
 
 /**
  * 获取已应用的迁移列表
  */
-export function getAppliedMigrations(db: 'main' | 'events' | 'memory' = 'main'): MigrationStatus[] {
+export function getAppliedMigrations(
+  db: "main" | "events" | "memory" = "main",
+): MigrationStatus[] {
   const database = getDb(db);
-  return database.prepare(
-    'SELECT version, name, applied_at FROM _migrations ORDER BY version ASC',
-  ).all() as MigrationStatus[];
+  return database
+    .prepare(
+      "SELECT version, name, applied_at FROM _migrations ORDER BY version ASC",
+    )
+    .all() as MigrationStatus[];
 }
 
 /**
  * 获取当前迁移版本
  */
-export function getCurrentVersion(db: 'main' | 'events' | 'memory' = 'main'): number {
+export function getCurrentVersion(
+  db: "main" | "events" | "memory" = "main",
+): number {
   const database = getDb(db);
-  const row = database.prepare(
-    'SELECT MAX(version) as version FROM _migrations',
-  ).get() as { version: number | null } | undefined;
+  const row = database
+    .prepare("SELECT MAX(version) as version FROM _migrations")
+    .get() as { version: number | null } | undefined;
   return row?.version ?? 0;
 }
 
@@ -868,20 +1037,24 @@ export function clearMigrations(): void {
 
 // ===== 内部函数 =====
 
-function getDb(name: 'main' | 'events' | 'memory'): Database.Database {
+function getDb(name: "main" | "events" | "memory"): Database.Database {
   switch (name) {
-    case 'main': return getMainDb();
-    case 'events': return getEventsDb();
-    case 'memory': return getMemoryDb();
+    case "main":
+      return getMainDb();
+    case "events":
+      return getEventsDb();
+    case "memory":
+      return getMemoryDb();
   }
 }
 
 function getDbForMigration(migration: Migration): Database.Database {
-  return getDb(migration.database ?? 'main');
+  return getDb(migration.database ?? "main");
 }
 
 function isApplied(db: Database.Database, version: number): boolean {
-  const row = db.prepare('SELECT 1 FROM _migrations WHERE version = ?').get(version);
+  const row = db
+    .prepare("SELECT 1 FROM _migrations WHERE version = ?")
+    .get(version);
   return row !== undefined;
 }
-

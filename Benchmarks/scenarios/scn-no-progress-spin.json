@@ -9,14 +9,14 @@
   },
   "agentRole": "worker",
   "loop": { "maxIterations": 4, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
-  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "attempt-1" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "attempt-2" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "attempt-3" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "attempt-4" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "attempt-5" } }] }
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "attempt-1" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "attempt-2" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "attempt-3" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "attempt-4" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "attempt-5" } }] }
     ],
     "defaultReply": "任务完成。"
   },

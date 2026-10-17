@@ -200,6 +200,113 @@ export function broadcastToRendererWindows(
   }
 }
 
+/** `/models` 拉取的入参（渲染层按预设可带一批候选模型名） */
+export interface ModelListQuery {
+  base_url?: string;
+  api_key?: string;
+  /**
+   * 端点不提供 `/models`（404/405）时使用的候选模型名（厂商内置已知模型）。
+   * 见 `fetchUpstreamModels` 的说明。
+   */
+  fallbackModels?: unknown;
+}
+
+/** `/models` 拉取结果（`data` 项与 `Configs/modelRouter.json` 的 models 同构） */
+export interface ModelListResult {
+  ok: boolean;
+  data?: Array<{
+    id: string;
+    context_window: number;
+    max_output: number;
+    supports_vision: boolean;
+    supports_tools: boolean;
+    cost_per_1k_input: number;
+    cost_per_1k_output: number;
+  }>;
+  error?: string;
+  /** 端点确实不提供 `/models`（404/405）——与"鉴权失败"是两回事 */
+  listNotProvided?: boolean;
+  listStatus?: number;
+  /** `data` 来自 `fallbackModels` 而非端点响应 */
+  modelsFromFallback?: boolean;
+}
+
+/**
+ * 用 API Key 拉取供应商模型列表（`ipc-fetch-models` 的实现）。
+ *
+ * 为什么要单独导出：端点不提供 `GET /models` 时的降级语义，是
+ * "华为云 Token Plan 用不了"这类问题的直接原因，必须有测试锁住。
+ *
+ * 实测（2026-10-17）：华为云 MaaS Token Plan 的 base_url 是
+ * `https://api.modelarts-maas.com/plan/v2`，该端点**没有** `/models`
+ * （返回 404 `APIG.0101: The API does not exist or has not been published in the environment`），
+ * 但同一个 Key 打 `POST /chat/completions` 完全正常。
+ *
+ * 旧实现把原始 404 文本当错误抛给界面 → 用户看到
+ * 「HTTP 404: {"error_code":"APIG.0101"...}」→ 只能断定"供应商有问题"，
+ * 而"添加供应商"流程就此卡死（列表为空 ⇒ 勾不到模型 ⇒ 无法注册）。
+ *
+ * 现在：404/405 返回 `ok:true` + 空列表（或 `fallbackModels` 候选）+ `listNotProvided` 标记，
+ * 由界面引导手填模型名；`modelsFromFallback` 如实标注候选来源。
+ */
+export async function fetchUpstreamModels(
+  config: ModelListQuery,
+): Promise<ModelListResult> {
+  try {
+    const url = `${config.base_url}/models`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (config.api_key) {
+      headers["Authorization"] = `Bearer ${config.api_key}`;
+    }
+
+    /** `/models` 与候选模型共用的占位规格（拉取后由用户确认或后续编辑） */
+    const toModelSpec = (id: string) => ({
+      id,
+      context_window: 128000,
+      max_output: 8192,
+      supports_vision: false,
+      supports_tools: true,
+      cost_per_1k_input: 0,
+      cost_per_1k_output: 0,
+    });
+
+    const res = await fetch(url, { method: "GET", headers });
+    if (!res.ok) {
+      const text = await res.text();
+      if (res.status === 404 || res.status === 405) {
+        const fallback: string[] = Array.isArray(config.fallbackModels)
+          ? config.fallbackModels
+              .map((m: unknown) => (typeof m === "string" ? m.trim() : ""))
+              .filter((m: string) => m.length > 0)
+              .slice(0, 20)
+          : [];
+        return {
+          ok: true,
+          data: fallback.map(toModelSpec),
+          listNotProvided: true,
+          listStatus: res.status,
+          modelsFromFallback: fallback.length > 0,
+        };
+      }
+      return { ok: false, error: `HTTP ${res.status}: ${text}` };
+    }
+    const data = (await res.json()) as {
+      data?: Array<{ id: string; [k: string]: unknown }>;
+    };
+    const models = (data.data ?? []).map((m) => toModelSpec(m.id));
+    return {
+      ok: true,
+      data: models,
+      listNotProvided: false,
+      modelsFromFallback: false,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * 注入 Electron 主进程的 `ipcMain`。
  *
@@ -583,38 +690,10 @@ function registerIpcHandlers(ipcMain: any): void {
   // ── 首次运行引导（路径透明化 / 连通性探测 / 白名单写用户配置 / 完成标记）──
   registerOnboardingIpc(ipcMain);
 
-  // 用 API_KEY 调用 /models 端点拉取模型列表
-  ipcMain.handle("ipc-fetch-models", async (_event: any, config: any) => {
-    try {
-      const url = `${config.base_url}/models`;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (config.api_key) {
-        headers["Authorization"] = `Bearer ${config.api_key}`;
-      }
-      const res = await fetch(url, { method: "GET", headers });
-      if (!res.ok) {
-        const text = await res.text();
-        return { ok: false, error: `HTTP ${res.status}: ${text}` };
-      }
-      const data = (await res.json()) as {
-        data?: Array<{ id: string; [k: string]: unknown }>;
-      };
-      const models = (data.data ?? []).map((m) => ({
-        id: m.id,
-        context_window: 128000, // 默认值，拉取后由用户确认
-        max_output: 8192,
-        supports_vision: false,
-        supports_tools: true,
-        cost_per_1k_input: 0,
-        cost_per_1k_output: 0,
-      }));
-      return { ok: true, data: models };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
-    }
-  });
+  // 用 API_KEY 调用 /models 端点拉取模型列表（实现见 fetchUpstreamModels）
+  ipcMain.handle("ipc-fetch-models", async (_event: any, config: any) =>
+    fetchUpstreamModels((config ?? {}) as ModelListQuery),
+  );
 
   // 获取当前路由配置
   ipcMain.handle("ipc-get-routing", () => {

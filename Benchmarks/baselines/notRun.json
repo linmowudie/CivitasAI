@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T15:33:56.079Z",
+  "generatedAt": "2026-10-17T01:38:35.060Z",
   "generatedBy": "Scripts/credentialNotRun.cjs",
   "credential": "HUAWEI_MAAS_API_KEY",
   "credentialPresent": false,
@@ -23,62 +23,62 @@
     {
       "test": "S3 Llm 模块 > Gate G3 连通性 > 华为云 GLM-5.1 非流式调用",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.163Z"
+      "at": "2026-10-17T01:38:34.080Z"
     },
     {
       "test": "S3 Llm 模块 > Gate G3 连通性 > 华为云 GLM-5.1 流式调用",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.166Z"
+      "at": "2026-10-17T01:38:34.082Z"
     },
     {
       "test": "S3 Llm 模块 > slmCaller > SLM 真实调用（华为云 GLM-5.1）",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.453Z"
+      "at": "2026-10-17T01:38:34.371Z"
     },
     {
       "test": "S9 · 真实 Agent 集成测试 > Round 1: Worker 编码任务 → LLM 真实调用 → 审核通过",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.782Z"
+      "at": "2026-10-17T01:38:34.793Z"
     },
     {
       "test": "S9 · 真实 Agent 集成测试 > Round 2: Worker 设计任务 → LLM 真实调用 → 审核通过",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.787Z"
+      "at": "2026-10-17T01:38:34.797Z"
     },
     {
       "test": "S9 · 真实 Agent 集成测试 > Round 3: Worker 分析任务 → 首次拒绝 → 重新提交 → 通过",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.788Z"
+      "at": "2026-10-17T01:38:34.798Z"
     },
     {
       "test": "S9 · 真实 Agent 集成测试 > 综合: 多 Agent 并行工作 + Token 守恒验证",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.789Z"
+      "at": "2026-10-17T01:38:34.799Z"
     },
     {
       "test": "E2E: LITIGATION 模式 — 司法仲裁 > [LLM] 3 个仲裁者独立裁决 → 多数一致",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.869Z"
-    },
-    {
-      "test": "E2E: ASSEMBLY_LINE 模式 — SOP 流水线 > [LLM] 流水线节点依次调用 LLM",
-      "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.923Z"
+      "at": "2026-10-17T01:38:34.898Z"
     },
     {
       "test": "E2E: DIRECT 模式 — 简单任务直接执行 > [LLM] Director 真实调用 LLM → 输出非空 + Token 扣减",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.929Z"
+      "at": "2026-10-17T01:38:34.942Z"
     },
     {
-      "test": "E2E: CONSORTIUM 模式 — 高难攻坚 > [LLM] 多 Partner 并行调用 → 各自提交审核",
+      "test": "E2E: ASSEMBLY_LINE 模式 — SOP 流水线 > [LLM] 流水线节点依次调用 LLM",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.954Z"
+      "at": "2026-10-17T01:38:34.949Z"
     },
     {
       "test": "E2E: DELEGATION 模式 — 并行委派 > [LLM] Worker 真实调用 → 提交审核 → Reviewer 通过",
       "credential": "HUAWEI_MAAS_API_KEY",
-      "at": "2026-10-13T15:33:55.958Z"
+      "at": "2026-10-17T01:38:34.958Z"
+    },
+    {
+      "test": "E2E: CONSORTIUM 模式 — 高难攻坚 > [LLM] 多 Partner 并行调用 → 各自提交审核",
+      "credential": "HUAWEI_MAAS_API_KEY",
+      "at": "2026-10-17T01:38:34.963Z"
     }
   ],
   "notRunCount": 12,

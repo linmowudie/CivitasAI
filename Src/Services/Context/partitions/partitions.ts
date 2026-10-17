@@ -16,7 +16,7 @@
 // ── 类型定义 ──────────────────────────────────────────
 
 /** 四级分区标识 */
-export type PartitionId = 'S' | 'L' | 'M' | 'H';
+export type PartitionId = "S" | "L" | "M" | "H";
 
 /** 追加式写入格式：类型|元数据|时间戳|内容（Docs/Agent/02 §5.2） */
 export interface ContextEntry {
@@ -66,7 +66,7 @@ export const PARTITION_CONFIG: Record<PartitionId, PartitionConfig> = {
 };
 
 /** 分区顺序（装配时按此顺序拼接） */
-export const PARTITION_ORDER: PartitionId[] = ['S', 'L', 'M', 'H'];
+export const PARTITION_ORDER: PartitionId[] = ["S", "L", "M", "H"];
 
 // ── 分区管理器 ────────────────────────────────────────
 
@@ -131,12 +131,16 @@ export function serializeEntry(entry: ContextEntry): string {
 }
 
 /** 获取上下文总 token 估算 */
-export function getTotalTokens(context: Record<PartitionId, PartitionState>): number {
+export function getTotalTokens(
+  context: Record<PartitionId, PartitionState>,
+): number {
   return PARTITION_ORDER.reduce((sum, p) => sum + context[p].totalTokens, 0);
 }
 
 /** 获取上下文总条目数 */
-export function getTotalEntries(context: Record<PartitionId, PartitionState>): number {
+export function getTotalEntries(
+  context: Record<PartitionId, PartitionState>,
+): number {
   return PARTITION_ORDER.reduce((sum, p) => sum + context[p].entries.length, 0);
 }
 
@@ -174,4 +178,194 @@ export function clearHighFreqPartition(
   context: Record<PartitionId, PartitionState>,
 ): void {
   context.H = createEmptyPartition();
+}
+
+// ── 分区装配与执行链预算（MEM1-GAP-PARTITION，设计 §5）──────────────
+//
+// 背景：S/L/M/H 分区与预算规则此前只有数据结构（零生产引入）——
+// 装配链从未按分区预算截断，于是"分区"只是文档里的表。
+// 下面两个入口让分区在执行链上真正生效：
+//  - `assembleContext({entries, budgetTokens})`：按分区上限装配（分区内**保新弃旧**）；
+//  - `enforcePartitionBudget(messages, budgetTokens)`：对装配后的消息做预算截断
+//    （S 区不可丢；assistant.tool_calls 与其 tool 结果成组保留，绝不拆散配对）。
+
+/** 分区装配结果 */
+export interface PartitionAssemblyResult {
+  partitions: Record<PartitionId, ContextEntry[]>;
+  totalTokens: number;
+  /** 被丢弃（超预算/已标记）的条目 ID */
+  dropped: string[];
+  usageRatio: number;
+}
+
+/** 按 partition 字段分组（非法分区归入 H），组内按时间升序 */
+export function partitionEntries(
+  entries: readonly ContextEntry[],
+): Record<PartitionId, ContextEntry[]> {
+  const out: Record<PartitionId, ContextEntry[]> = {
+    S: [],
+    L: [],
+    M: [],
+    H: [],
+  };
+  for (const entry of entries) {
+    const partition = (PARTITION_ORDER as readonly string[]).includes(
+      entry.partition,
+    )
+      ? (entry.partition as PartitionId)
+      : "H";
+    out[partition].push(entry);
+  }
+  for (const p of PARTITION_ORDER) {
+    out[p].sort((a, b) => a.timestamp - b.timestamp);
+  }
+  return out;
+}
+
+/**
+ * 分区装配：按每区预算上限（budgetTokens × ceilingRatio）保留条目。
+ * 分区内**保留最新的条目**（保新弃旧），S 区不丢（静态区不可变，只统计）。
+ */
+export function assembleContext(input: {
+  entries: readonly ContextEntry[];
+  budgetTokens: number;
+}): PartitionAssemblyResult {
+  const budget = Math.max(1, input.budgetTokens);
+  const grouped = partitionEntries(input.entries);
+  const kept: Record<PartitionId, ContextEntry[]> = {
+    S: [],
+    L: [],
+    M: [],
+    H: [],
+  };
+  const dropped: string[] = [];
+
+  for (const p of PARTITION_ORDER) {
+    const ceiling = budget * PARTITION_CONFIG[p].ceilingRatio;
+    const list = grouped[p];
+    let used = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const entry = list[i];
+      if (!entry) continue;
+      if (entry.markedForDrop) {
+        dropped.push(entry.id);
+        continue;
+      }
+      // S 区不丢（静态前缀不可变）；其余分区超上限则丢旧条目
+      if (p === "S" || used + entry.tokenEstimate <= ceiling) {
+        kept[p].unshift(entry);
+        used += entry.tokenEstimate;
+      } else {
+        dropped.push(entry.id);
+      }
+    }
+  }
+
+  const totalTokens = PARTITION_ORDER.reduce(
+    (sum, p) => sum + kept[p].reduce((a, e) => a + e.tokenEstimate, 0),
+    0,
+  );
+  return {
+    partitions: kept,
+    totalTokens,
+    dropped,
+    usageRatio: totalTokens / budget,
+  };
+}
+
+/** 可参与分区预算截断的最小消息结构（避免与 Infra/Llm 的 ChatMessage 形成环依赖） */
+export interface PartitionableMessage {
+  role: string;
+  content?: unknown;
+  tool_calls?: unknown;
+  tool_call_id?: string;
+}
+
+/** 消息 → 分区：system=S，user=M，assistant/tool=H */
+export function partitionOfMessage(message: PartitionableMessage): PartitionId {
+  if (message.role === "system") return "S";
+  if (message.role === "user") return "M";
+  return "H";
+}
+
+/** 单条消息的 token 估算（委托 estimateTokens） */
+export function messageTokenEstimate(message: PartitionableMessage): number {
+  const content = message.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : content === undefined || content === null
+        ? ""
+        : JSON.stringify(content);
+  return estimateTokens(text);
+}
+
+/** 分区预算执行结果 */
+export interface PartitionEnforcement<T> {
+  messages: T[];
+  droppedCount: number;
+  partitionTokens: Record<PartitionId, number>;
+  usageRatio: number;
+}
+
+/**
+ * 执行链预算截断：总 token 超过 `threshold × budget` 时，从最旧的**安全消息**开始丢弃。
+ *
+ * 安全规则：
+ * - S 区（system）永不丢；
+ * - `tool` 消息与"带 tool_calls 的 assistant 消息"不成单条丢弃（配对拆散会让供应商
+ *   直接判请求非法，见 REV-341）——成组保留；
+ * - 只丢非配对的 user/assistant 文本消息（从旧到新）。
+ */
+export function enforcePartitionBudget<T extends PartitionableMessage>(
+  messages: readonly T[],
+  budgetTokens: number,
+  threshold = 0.92,
+): PartitionEnforcement<T> {
+  const budget = Math.max(1, budgetTokens);
+  const tokens = messages.map((m) => messageTokenEstimate(m));
+  const total = tokens.reduce((a, b) => a + b, 0);
+  const partitionTokens: Record<PartitionId, number> = {
+    S: 0,
+    L: 0,
+    M: 0,
+    H: 0,
+  };
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (!m) continue;
+    partitionTokens[partitionOfMessage(m)] += tokens[i] ?? 0;
+  }
+  const usageRatio = total / budget;
+  if (total <= budget * threshold) {
+    return {
+      messages: [...messages],
+      droppedCount: 0,
+      partitionTokens,
+      usageRatio,
+    };
+  }
+
+  const drop = new Set<number>();
+  let current = total;
+  const target = budget * threshold;
+  for (let i = 0; i < messages.length && current > target; i++) {
+    const message = messages[i];
+    if (!message) continue;
+    if (partitionOfMessage(message) === "S") continue;
+    // 配对安全：tool 消息 / 带 tool_calls 的 assistant 一律不单条丢
+    if (message.role === "tool" || message.tool_call_id) continue;
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0)
+      continue;
+    drop.add(i);
+    current -= tokens[i] ?? 0;
+  }
+
+  const droppedCount = drop.size;
+  return {
+    messages: messages.filter((_m, i) => !drop.has(i)),
+    droppedCount,
+    partitionTokens,
+    usageRatio: current / budget,
+  };
 }

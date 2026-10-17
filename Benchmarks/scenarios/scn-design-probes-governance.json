@@ -1,0 +1,55 @@
+{
+  "id": "scn-design-probes-governance",
+  "title": "设计契约探针·监管：冻结持久化 / 审计哈希链 / 死锁接线",
+  "tags": [
+    "design-contract",
+    "real-call"
+  ],
+  "matrixCells": [
+    "SUP-SEC-FREEZEPERSIST",
+    "SUP-SEC-AUDITCHAIN",
+    "SUP-ENV-DEADLOCKWIRE"
+  ],
+  "task": {
+    "description": "按设计文档声明的接口与 oracle 做真实调用验证（不读 Src 实现；接口缺失/不符即红）",
+    "goal": "让每个设计点在实验里都有可运行的证据"
+  },
+  "agentRole": "worker",
+  "assertProbes": [
+    "SUP-SEC-FREEZEPERSIST",
+    "SUP-SEC-AUDITCHAIN",
+    "SUP-ENV-DEADLOCKWIRE"
+  ],
+  "loop": {
+    "maxIterations": 1,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "BenchEcho",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "设计契约探针场景：无需工具调用。"
+      }
+    ],
+    "defaultReply": "设计契约探针场景：无需工具调用。"
+  },
+  "expect": {
+    "exitReasonOneOf": [
+      "success",
+      "max_iterations"
+    ],
+    "assertProbesMustPass": [
+      "SUP-SEC-FREEZEPERSIST",
+      "SUP-SEC-AUDITCHAIN",
+      "SUP-ENV-DEADLOCKWIRE"
+    ]
+  }
+}

@@ -22,6 +22,7 @@ import { consolidateLoopKnowledge } from "../../Src/Core/Loop/loopKnowledge.js";
 import { runHumanGate } from "../../Src/Services/LoopControl/verifier/humanGateCore.js";
 import { createMemoryRetriever } from "../../Src/Services/Retrieval/retriever.js";
 import { retrieveForContextAssembly } from "../../Src/Core/Loop/memoryRetrievalEntry.js";
+import { DESIGN_CONTRACT_PROBES } from "./designContractProbes.js";
 
 export interface AssertProbeResult {
   id: string;
@@ -60,7 +61,7 @@ export const ASSERT_PROBES: Record<string, ProbeDef> = {
     async run() {
       const r = registerTool({
         spec: {
-          name: "bench.probe.forbidden",
+          name: "BenchProbeForbidden",
           description: "实验探针：FORBIDDEN 级工具，注册必须被拒",
           inputSchema: {
             type: "object",
@@ -90,12 +91,35 @@ export const ASSERT_PROBES: Record<string, ProbeDef> = {
           throw new Error("FORBIDDEN 工具不应被执行到");
         },
       } as never);
-      const refused = r.ok === false;
+      if (r.ok !== false) {
+        return {
+          passed: false,
+          detail: "registerTool **接受**了 FORBIDDEN 工具 —— 注册期防线失效",
+        };
+      }
+
+      /*
+       * 不能只判 `ok === false`（2026-10-17 实测踩到的假绿）。
+       *
+       * 本探针原名 `bench.probe.forbidden`。工具名统一为大驼峰后，它违反
+       * `^[A-Z][A-Za-z0-9]*$`（specValidator 规则 15），于是**因为名字不合规**被拒 ——
+       * `ok === false` 照样成立：即使把 FORBIDDEN 防线整条删掉，这条探针仍会报"通过"。
+       * 教科书式的"覆盖声明建立在错误理由之上"。
+       *
+       * 现在两层判定，缺一不可：
+       *   ① 必须被拒（防线在）；
+       *   ② 拒绝原因必须是 FORBIDDEN 规则本身，且不得混入"探针自己不合规"的无关违规。
+       */
+      const reason = String(r.error ?? "");
+      const byForbiddenRule = reason.includes("FORBIDDEN 级别工具不允许注册");
+      const selfInvalid = reason.includes("不符命名规范");
       return {
-        passed: refused,
-        detail: refused
-          ? "registerTool 拒绝注册 FORBIDDEN 工具（真实调用，读到 Result.error）"
-          : "registerTool **接受**了 FORBIDDEN 工具 —— 注册期防线失效",
+        passed: byForbiddenRule && !selfInvalid,
+        detail: selfInvalid
+          ? `探针自身不合规（工具名不符规范），拒绝理由混入无关违规 → 判据无效：${reason}`
+          : byForbiddenRule
+            ? `registerTool 因 FORBIDDEN 规则拒绝（真实调用）：${reason}`
+            : `registerTool 拒绝了，但原因不是 FORBIDDEN 规则 → 判据无效（不能据此认定防线在）：${reason}`,
       };
     },
   },
@@ -265,6 +289,15 @@ export const ASSERT_PROBES: Record<string, ProbeDef> = {
     },
   },
 };
+
+/**
+ * 设计契约探针（2026-10-17 用户裁定：benchmark 依赖设计，不依赖 Src 实现）。
+ *
+ * 与上面"既有覆盖探针"并列执行：它们只调用设计声明的接口、断言设计的 oracle；
+ * 接口缺失/签名不符/行为未实现时**如实返回红**——那是产品缺口被实验复现，
+ * 不是"实验建不了"。对齐接口与修实现属产品侧后续工作。
+ */
+Object.assign(ASSERT_PROBES, DESIGN_CONTRACT_PROBES);
 
 /** 执行声明的探针；未知 id 记为失败（不许静默跳过——静默跳过就是假绿） */
 export async function runAssertProbes(

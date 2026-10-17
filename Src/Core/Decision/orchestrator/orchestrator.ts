@@ -123,7 +123,7 @@ function handleAssignmentTerminal(event: DomainEvent): void {
   const assignmentId = event.payload.assignmentId as string | undefined;
   if (!assignmentId) return; // 非子任务级事件（如 mergePhase 汇总事件）不触发
 
-  // REV-344：失败侧要同步子任务台账。评审拒绝的台账由 `agent.submit_review` 工具自己写
+  // REV-344：失败侧要同步子任务台账。评审拒绝的台账由 `AgentSubmitReview` 工具自己写
   // （带评审意见，且发生在发布事件之后），这里再写一次会把 failure_count 双计，故排除该来源。
   if (
     event.eventType === EventType.TASK_FAILED &&

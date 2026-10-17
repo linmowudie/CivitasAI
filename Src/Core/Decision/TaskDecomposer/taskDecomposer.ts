@@ -6,9 +6,9 @@
  * Phase 0-2：基于规则的拆解；后续可接 LLM 拆解。
  */
 
-import type { TaskPlan, TaskAssignment, ComplexityReport } from '../types.js';
-import type { Result } from '../../../Infra/types.js';
-import { ok, err } from '../../../Infra/types.js';
+import type { TaskPlan, TaskAssignment, ComplexityReport } from "../types.js";
+import type { Result } from "../../../Infra/types.js";
+import { ok, err } from "../../../Infra/types.js";
 
 // ── 拆解输入 ────────────────────────────────────────────────────────
 
@@ -34,10 +34,10 @@ let planCounter = 0;
  */
 export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
   if (!input.taskDescription || input.taskDescription.trim().length === 0) {
-    return err('任务描述不能为空');
+    return err("任务描述不能为空");
   }
   if (input.totalTokenBudget <= 0) {
-    return err('Token 预算必须大于 0');
+    return err("Token 预算必须大于 0");
   }
 
   const report = input.complexityReport;
@@ -56,23 +56,32 @@ export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
       traceId: input.traceId,
       parentAgentId: input.directorAgentId,
       subtaskIndex: i,
-      description: generateSubtaskDescription(input.taskDescription, domain ?? 'general', i, subtaskCount),
+      description: generateSubtaskDescription(
+        input.taskDescription,
+        domain ?? "general",
+        i,
+        subtaskCount,
+      ),
       inputContext: {
         originalTask: input.taskDescription,
         domain,
         partIndex: i,
         totalParts: subtaskCount,
       },
-      outputSchema: { type: 'object', properties: { result: { type: 'string' } } },
+      outputSchema: {
+        type: "object",
+        properties: { result: { type: "string" } },
+      },
       maxIterations: 20,
       timeLimitMs: timePerSubtask,
       tokenBudget: budgetPerSubtask,
       // FE-070：依赖引用真实 assignmentId（消除 `assign-current-N` 占位串——
       // 此前仅 ASSEMBLY_LINE 模式有替换逻辑，CONSORTIUM+高耦合时假 ID 会落库）
-      dependsOn: findDependencyIndexes(i, report.couplingScore)
-        .map((idx) => `assign-${input.taskId}-${idx}`),
-      requiredTools: getToolsForDomain(domain ?? 'general'),
-      status: 'pending',
+      dependsOn: findDependencyIndexes(i, report.couplingScore).map(
+        (idx) => `assign-${input.taskId}-${idx}`,
+      ),
+      requiredTools: getToolsForDomain(domain ?? "general"),
+      status: "pending",
     };
     assignments.push(assignment);
   }
@@ -85,9 +94,11 @@ export function decomposeTask(input: DecomposeInput): Result<TaskPlan> {
     assignments,
     totalTokenBudget: input.totalTokenBudget,
     globalTimeLimitMs: input.globalTimeLimitMs,
-    maxParallelism: input.maxParallelism ?? calculateMaxParallelism(subtaskCount, report.couplingScore),
+    maxParallelism:
+      input.maxParallelism ??
+      calculateMaxParallelism(subtaskCount, report.couplingScore),
     createdAt: Date.now(),
-    status: 'draft',
+    status: "draft",
   };
 
   return ok(plan);
@@ -116,18 +127,21 @@ function findDependencyIndexes(index: number, couplingScore: number): number[] {
 
 function getToolsForDomain(domain: string): string[] {
   const domainTools: Record<string, string[]> = {
-    backend: ['file.read', 'file.write', 'shell.exec'],
-    frontend: ['file.read', 'file.write'],
-    database: ['file.read', 'file.write', 'shell.exec'],
-    devops: ['file.read', 'shell.exec'],
-    testing: ['file.read', 'shell.exec', 'code.eval'],
-    security: ['file.read'],
-    general: ['file.read', 'file.write'],
+    backend: ["FileRead", "FileWrite", "ShellExec"],
+    frontend: ["FileRead", "FileWrite"],
+    database: ["FileRead", "FileWrite", "ShellExec"],
+    devops: ["FileRead", "ShellExec"],
+    testing: ["FileRead", "ShellExec", "CodeEval"],
+    security: ["FileRead"],
+    general: ["FileRead", "FileWrite"],
   };
-  return domainTools[domain] ?? domainTools['general'] ?? [];
+  return domainTools[domain] ?? domainTools["general"] ?? [];
 }
 
-function calculateMaxParallelism(subtaskCount: number, couplingScore: number): number {
+function calculateMaxParallelism(
+  subtaskCount: number,
+  couplingScore: number,
+): number {
   // 耦合度高 → 降低并行度
   if (couplingScore > 0.7) return Math.max(Math.ceil(subtaskCount * 0.5), 1);
   if (couplingScore > 0.4) return Math.max(Math.ceil(subtaskCount * 0.7), 1);

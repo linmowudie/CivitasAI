@@ -10,22 +10,45 @@
  * 说明：不依赖数据库与网络。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
 
 import {
-  loadSystemAssets, getSystemMainLoop, getTaskTemplate, resetSystemAssets,
-} from '../../Src/Services/Prompts/promptRegistry.js';
-import { buildStableSystemPrompt, resetSystemPromptCache } from '../../Src/Core/Loop/runIteration.js';
+  loadSystemAssets,
+  getSystemMainLoop,
+  getTaskTemplate,
+  resetSystemAssets,
+} from "../../Src/Services/Prompts/promptRegistry.js";
 import {
-  initConfigWatcher, onConfigChange, startWatching, stopWatching, resetConfigWatcher,
-} from '../../Src/Infra/Watcher/configWatcher.js';
+  buildStableSystemPrompt,
+  resetSystemPromptCache,
+} from "../../Src/Core/Loop/runIteration.js";
 import {
-  buildTraceIndex, writeTraceIndex,
-} from '../../Src/Interface/EventStore/traceIndex.js';
-import { resetEventBus, initEventBus, publish, createEvent } from '../../Src/Services/EventBus/eventBus.js';
-import { EventType } from '../../Src/Services/EventBus/eventTypes.js';
+  initConfigWatcher,
+  onConfigChange,
+  startWatching,
+  stopWatching,
+  resetConfigWatcher,
+} from "../../Src/Infra/Watcher/configWatcher.js";
+import {
+  buildTraceIndex,
+  writeTraceIndex,
+} from "../../Src/Interface/EventStore/traceIndex.js";
+import {
+  resetEventBus,
+  initEventBus,
+  publish,
+  createEvent,
+} from "../../Src/Services/EventBus/eventBus.js";
+import { EventType } from "../../Src/Services/EventBus/eventTypes.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,15 +56,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // 1. 提示词资产装载与注入
 // ═══════════════════════════════════════════════════════════════════
 
-describe('FE-069 · 系统提示资产', () => {
+describe("FE-069 · 系统提示资产", () => {
   afterEach(() => {
     resetSystemAssets();
     resetSystemPromptCache();
   });
 
-  it('loadSystemAssets：真实 Prompts/ 装载（manifest 校验无缺失）', () => {
+  it("loadSystemAssets：真实 Prompts/ 装载（manifest 校验无缺失）", () => {
     const check = loadSystemAssets();
-    expect(check.version).toBe('1.0.0');
+    expect(check.version).toBe("1.0.0");
     expect(check.missingFiles).toEqual([]);
     expect(check.fileCount).toBeGreaterThanOrEqual(10);
 
@@ -50,27 +73,27 @@ describe('FE-069 · 系统提示资产', () => {
     expect(mainLoop).not.toBeNull();
     expect(mainLoop!).not.toMatch(/^\s*>/m);
     expect(mainLoop!).not.toMatch(/^# /);
-    expect(mainLoop!).toContain('Civitas-AI');
+    expect(mainLoop!).toContain("Civitas-AI");
 
     // 任务模板装载（含占位符）
     const template = getTaskTemplate();
     expect(template).not.toBeNull();
-    expect(template!).toContain('{{taskDescription}}');
+    expect(template!).toContain("{{taskDescription}}");
   });
 
-  it('buildStableSystemPrompt：资产段注入（静态段之后、工具目录之前）；未装载退化', () => {
+  it("buildStableSystemPrompt：资产段注入（静态段之后、工具目录之前）；未装载退化", () => {
     // 未装载：无资产段
     resetSystemAssets();
-    const bare = buildStableSystemPrompt(['file.read'], undefined, false);
-    expect(bare).toContain('You are Civitas-AI');
-    expect(bare).not.toContain('Reasoning Sandwich');
+    const bare = buildStableSystemPrompt(["FileRead"], undefined, false);
+    expect(bare).toContain("You are Civitas-AI");
+    expect(bare).not.toContain("Reasoning Sandwich");
 
     // 装载后：资产段出现（在工具目录之前）
     loadSystemAssets();
-    const withAsset = buildStableSystemPrompt(['file.read'], undefined, false);
-    expect(withAsset).toContain('You are Civitas-AI');
-    const catalogIdx = withAsset.indexOf('## Available tools');
-    const assetIdx = withAsset.indexOf('Reasoning Sandwich');
+    const withAsset = buildStableSystemPrompt(["FileRead"], undefined, false);
+    expect(withAsset).toContain("You are Civitas-AI");
+    const catalogIdx = withAsset.indexOf("## Available tools");
+    const assetIdx = withAsset.indexOf("Reasoning Sandwich");
     // mainLoop.md 含“推理引导（Reasoning Sandwich”章节
     expect(assetIdx).toBeGreaterThan(-1);
     expect(assetIdx).toBeLessThan(catalogIdx);
@@ -78,9 +101,9 @@ describe('FE-069 · 系统提示资产', () => {
     // 缓存键含资产段：装载前后不串缓存（cache=true 路径）
     resetSystemPromptCache();
     resetSystemAssets();
-    const cachedBare = buildStableSystemPrompt(['file.read'], undefined, true);
+    const cachedBare = buildStableSystemPrompt(["FileRead"], undefined, true);
     loadSystemAssets();
-    const cachedAsset = buildStableSystemPrompt(['file.read'], undefined, true);
+    const cachedAsset = buildStableSystemPrompt(["FileRead"], undefined, true);
     expect(cachedBare).not.toBe(cachedAsset);
   });
 });
@@ -89,14 +112,14 @@ describe('FE-069 · 系统提示资产', () => {
 // 2. configWatcher 真实扫描
 // ═══════════════════════════════════════════════════════════════════
 
-describe('FE-069 · configWatcher 真实文件扫描', () => {
-  const DIR = resolve(import.meta.dirname, '../../.tmp/test-watcher-fe069');
+describe("FE-069 · configWatcher 真实文件扫描", () => {
+  const DIR = resolve(import.meta.dirname, "../../.tmp/test-watcher-fe069");
   const events: Array<{ file: string; type: string }> = [];
 
   beforeEach(() => {
     rmSync(DIR, { recursive: true, force: true });
-    mkdirSync(join(DIR, 'sub'), { recursive: true });
-    writeFileSync(join(DIR, 'a.json'), '{"v":1}');
+    mkdirSync(join(DIR, "sub"), { recursive: true });
+    writeFileSync(join(DIR, "a.json"), '{"v":1}');
     events.length = 0;
     initConfigWatcher({ watchDir: DIR, pollIntervalMs: 50 });
     onConfigChange((file, type) => events.push({ file, type }));
@@ -108,28 +131,34 @@ describe('FE-069 · configWatcher 真实文件扫描', () => {
     rmSync(DIR, { recursive: true, force: true });
   });
 
-  it('modified / added / deleted 均被检出', async () => {
+  it("modified / added / deleted 均被检出", async () => {
     const started = startWatching();
     expect(started.ok).toBe(true);
     expect(events).toHaveLength(0); // 首扫仅建基线
 
     // 修改：写内容 + 强制推高 mtime（避免同 tick 内 mtime 未变的竞态）
-    const target = join(DIR, 'a.json');
+    const target = join(DIR, "a.json");
     writeFileSync(target, '{"v":2}');
     utimesSync(target, new Date(), new Date(Date.now() + 5000));
     await sleep(140);
-    expect(events.some(e => e.type === 'modified' && e.file.includes('a.json'))).toBe(true);
+    expect(
+      events.some((e) => e.type === "modified" && e.file.includes("a.json")),
+    ).toBe(true);
 
     // 新增（子目录中）
-    const added = join(DIR, 'sub', 'b.md');
-    writeFileSync(added, '# new');
+    const added = join(DIR, "sub", "b.md");
+    writeFileSync(added, "# new");
     await sleep(140);
-    expect(events.some(e => e.type === 'added' && e.file.includes('b.md'))).toBe(true);
+    expect(
+      events.some((e) => e.type === "added" && e.file.includes("b.md")),
+    ).toBe(true);
 
     // 删除
     rmSync(added, { force: true });
     await sleep(140);
-    expect(events.some(e => e.type === 'deleted' && e.file.includes('b.md'))).toBe(true);
+    expect(
+      events.some((e) => e.type === "deleted" && e.file.includes("b.md")),
+    ).toBe(true);
   });
 });
 
@@ -137,8 +166,8 @@ describe('FE-069 · configWatcher 真实文件扫描', () => {
 // 3. trace 索引
 // ═══════════════════════════════════════════════════════════════════
 
-describe('FE-069 · trace 索引', () => {
-  const DIR = resolve(import.meta.dirname, '../../.tmp/test-trace-index');
+describe("FE-069 · trace 索引", () => {
+  const DIR = resolve(import.meta.dirname, "../../.tmp/test-trace-index");
 
   beforeEach(() => {
     resetEventBus();
@@ -150,33 +179,57 @@ describe('FE-069 · trace 索引', () => {
     rmSync(DIR, { recursive: true, force: true });
   });
 
-  it('buildTraceIndex：按 trace 聚合（事件数/起止/来源）', () => {
-    publish(createEvent({ eventType: EventType.TASK_RECEIVED, source: 'src-a', traceId: 'trace-x' }));
-    publish(createEvent({ eventType: EventType.TASK_ASSIGNED, source: 'src-a', traceId: 'trace-x' }));
-    publish(createEvent({ eventType: EventType.TASK_COMPLETED, source: 'src-b', traceId: 'trace-y' }));
+  it("buildTraceIndex：按 trace 聚合（事件数/起止/来源）", () => {
+    publish(
+      createEvent({
+        eventType: EventType.TASK_RECEIVED,
+        source: "src-a",
+        traceId: "trace-x",
+      }),
+    );
+    publish(
+      createEvent({
+        eventType: EventType.TASK_ASSIGNED,
+        source: "src-a",
+        traceId: "trace-x",
+      }),
+    );
+    publish(
+      createEvent({
+        eventType: EventType.TASK_COMPLETED,
+        source: "src-b",
+        traceId: "trace-y",
+      }),
+    );
 
     const index = buildTraceIndex();
     expect(index).toHaveLength(2);
-    const x = index.find(e => e.traceId === 'trace-x')!;
+    const x = index.find((e) => e.traceId === "trace-x")!;
     expect(x.eventCount).toBe(2);
-    expect(x.sources).toContain('src-a');
+    expect(x.sources).toContain("src-a");
     expect(x.lastEventAt).toBeGreaterThanOrEqual(x.firstEventAt);
   });
 
-  it('writeTraceIndex：索引文件落盘且内容可解析', () => {
-    publish(createEvent({ eventType: EventType.TASK_RECEIVED, source: 'src-a', traceId: 'trace-z' }));
+  it("writeTraceIndex：索引文件落盘且内容可解析", () => {
+    publish(
+      createEvent({
+        eventType: EventType.TASK_RECEIVED,
+        source: "src-a",
+        traceId: "trace-z",
+      }),
+    );
 
     const result = writeTraceIndex(DIR);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     expect(existsSync(result.value)).toBe(true);
-    const parsed = JSON.parse(readFileSync(result.value, 'utf-8')) as {
+    const parsed = JSON.parse(readFileSync(result.value, "utf-8")) as {
       traceCount: number;
       eventCount: number;
       traces: Array<{ traceId: string }>;
     };
     expect(parsed.traceCount).toBeGreaterThanOrEqual(1);
-    expect(parsed.traces.some(t => t.traceId === 'trace-z')).toBe(true);
+    expect(parsed.traces.some((t) => t.traceId === "trace-z")).toBe(true);
   });
 });

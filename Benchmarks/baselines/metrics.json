@@ -1,7 +1,7 @@
 {
   "version": "0.3.0",
   "schemaVersion": 4,
-  "recordedAt": "2026-10-14T12:40:38.205Z",
+  "recordedAt": "2026-10-17T09:58:34.577Z",
   "generator": "Scripts/benchMetrics.cjs",
   "notes": [
     "**agentMetrics 是本基线的主角**：Benchmark 量的是 Agent 能力（准入率 / 评分 / 问题分布），来自最近一次 `npx tsx Benchmarks/runner/run.ts` 的产物 `Benchmarks/reports/*.json`。",
@@ -13,15 +13,15 @@
   "metrics": {
     "agentMetrics": {
       "reportFile": "latest.json",
-      "generatedAt": "2026-10-14T12:36:41.540Z",
-      "scenarios": 16,
-      "admitted": 14,
-      "admissionRate": 0.875,
-      "avgScore": 0.9247,
+      "generatedAt": "2026-10-17T09:58:10.876Z",
+      "scenarios": 25,
+      "admitted": 25,
+      "admissionRate": 1,
+      "avgScore": 0.9219,
       "gradeDistribution": {
-        "A": 12,
-        "C": 1,
-        "B": 1
+        "A": 20,
+        "B": 4,
+        "C": 1
       },
       "retrievalQuality": {
         "goldenSet": "Benchmarks/datasets/retrievalGoldenSet.json",
@@ -35,12 +35,53 @@
         "mrr": 0.9118
       },
       "diagnosisDistribution": {
-        "no_progress": 2,
-        "tool_loop": 1
+        "no_progress": 9
       },
       "problems": [
         {
           "scenario": "scn-assembly-probes",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-governance",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-memory",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-observability",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-retrieval",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-split",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-subagent",
+          "types": [
+            "no_progress"
+          ]
+        },
+        {
+          "scenario": "scn-design-probes-tools",
           "types": [
             "no_progress"
           ]
@@ -81,19 +122,16 @@
       "prerequisites": 42,
       "surfaces": 15,
       "families": 6,
-      "landedCells": 29,
+      "landedCells": 65,
       "staticAttested": 3,
       "byStatusAttestation": {
-        "existing-covered/executed": 29,
-        "gap/none": 6,
-        "gap/static": 20,
+        "existing-covered/executed": 65,
+        "existing-covered/tests": 27,
         "existing-covered/static": 3,
-        "declared-only/none": 19,
-        "gap/executed": 1,
-        "existing-covered/tests": 21,
-        "new-scaffold/tests": 17
+        "new-scaffold/tests": 17,
+        "declared-only/none": 4
       },
-      "landingRate": 0.3919,
+      "landingRate": 0.8784,
       "byCls": {
         "BEN": 22,
         "ENV": 21,
@@ -101,19 +139,19 @@
       },
       "byStatus": {
         "new-scaffold": 0,
-        "existing-covered": 32,
-        "declared-only": 15,
-        "gap": 27
+        "existing-covered": 74,
+        "declared-only": 0,
+        "gap": 0
       },
       "anchorStrength": {
-        "assertion": 82,
+        "assertion": 103,
         "file-only": 9,
-        "none": 25
+        "none": 4
       }
     },
     "testSuite": {
-      "testFilesCount": 172,
-      "testCaseCount": 2015,
+      "testFilesCount": 205,
+      "testCaseCount": 2457,
       "note": "Tests 系统规模（参考值，非 Benchmark 指标）"
     },
     "notRun": {
@@ -132,116 +170,25 @@
         "S9 · 真实 Agent 集成测试 > Round 3: Worker 分析任务 → 首次拒绝 → 重新提交 → 通过",
         "S9 · 真实 Agent 集成测试 > 综合: 多 Agent 并行工作 + Token 守恒验证",
         "E2E: LITIGATION 模式 — 司法仲裁 > [LLM] 3 个仲裁者独立裁决 → 多数一致",
-        "E2E: ASSEMBLY_LINE 模式 — SOP 流水线 > [LLM] 流水线节点依次调用 LLM",
         "E2E: DIRECT 模式 — 简单任务直接执行 > [LLM] Director 真实调用 LLM → 输出非空 + Token 扣减",
-        "E2E: CONSORTIUM 模式 — 高难攻坚 > [LLM] 多 Partner 并行调用 → 各自提交审核",
-        "E2E: DELEGATION 模式 — 并行委派 > [LLM] Worker 真实调用 → 提交审核 → Reviewer 通过"
+        "E2E: ASSEMBLY_LINE 模式 — SOP 流水线 > [LLM] 流水线节点依次调用 LLM",
+        "E2E: DELEGATION 模式 — 并行委派 > [LLM] Worker 真实调用 → 提交审核 → Reviewer 通过",
+        "E2E: CONSORTIUM 模式 — 高难攻坚 > [LLM] 多 Partner 并行调用 → 各自提交审核"
       ],
       "rule": "effectivePassed = vitest.passed - notRunCount；NOT-RUN 既不是失败，也绝不是通过（§2.2 铁律 1）"
     },
     "gapRegister": {
-      "executed": 29,
+      "executed": 65,
       "staticAttested": 3,
-      "total": 42,
-      "gap": 27,
-      "declaredOnly": 15,
-      "byBlocker": {
-        "bench-unbuilt": 4,
-        "product-missing": 23,
-        "design-only": 15
-      },
-      "cells": [
-        "AG-BEN-RESUME",
-        "AG-SEC-POISON",
-        "AG-SEC-TOOLMISUSE",
-        "AGENT-ENV-L3REAL",
-        "AGENT-ENV-SUBMITGATE",
-        "MEM1-GAP-PARTITION",
-        "MEM1-GAP-RESTORE",
-        "MEMN-GAP-EVENTSUB",
-        "MEMN-SEC-MEMREF",
-        "MEMN-SEC-READAUTH",
-        "MEMN-SEC-VERSION",
-        "MM-DECL-MULTIMODAL",
-        "MM-DECL-SIGHTUSE",
-        "MM-GAP-EVENTSTABLE",
-        "MM-GAP-TRACE",
-        "MM-GAP-VISION",
-        "RET-ENV-EMBDOWN",
-        "RET-ENV-LATENCY",
-        "SPLIT-SEM-AUTH",
-        "SPLIT-SEM-BLOODLINE",
-        "SPLIT-SEM-CLOSURE",
-        "SPLIT-SEM-CONFLICTDOMAIN",
-        "SPLIT-SEM-DEPTH",
-        "SPLIT-SEM-INHERIT",
-        "SPLIT-SEM-MERGEKIND",
-        "SPLIT-SEM-ONEPERSTEP",
-        "SPLIT-SEM-PEER",
-        "SPLIT-SEM-SELFMERGE",
-        "SPLIT-SEM-SELFSPLIT",
-        "SPLIT-SEM-SIMILARITY",
-        "SPLIT-SEM-VISIBILITY",
-        "SUB-SEC-DEPTH",
-        "SUB-SEC-TOOLPERM",
-        "SUP-ENV-DEADLOCKWIRE",
-        "SUP-SEC-AUDITCHAIN",
-        "SUP-SEC-FREEZEPERSIST",
-        "SUP-SEC-FREEZEWALLET",
-        "TOOL-ENV-TIMEOUT",
-        "TOOL-SEC-EGRESS",
-        "TOOL-SEC-L4GATE",
-        "TOOL-SEC-RATE",
-        "TOOL-SEC-SANDBOX"
-      ]
+      "total": 0,
+      "gap": 0,
+      "declaredOnly": 0,
+      "byBlocker": {},
+      "cells": []
     },
     "gaps": {
-      "declaredOnly": [
-        "SPLIT-SEM-BLOODLINE",
-        "SPLIT-SEM-INHERIT",
-        "SPLIT-SEM-DEPTH",
-        "SPLIT-SEM-AUTH",
-        "SPLIT-SEM-VISIBILITY",
-        "MM-DECL-MULTIMODAL",
-        "SPLIT-SEM-SELFSPLIT",
-        "SPLIT-SEM-SELFMERGE",
-        "SPLIT-SEM-SIMILARITY",
-        "SPLIT-SEM-CLOSURE",
-        "MM-DECL-SIGHTUSE",
-        "SPLIT-SEM-CONFLICTDOMAIN",
-        "SPLIT-SEM-PEER",
-        "SPLIT-SEM-ONEPERSTEP",
-        "SPLIT-SEM-MERGEKIND"
-      ],
-      "gap": [
-        "AG-SEC-TOOLMISUSE",
-        "AG-SEC-POISON",
-        "AG-BEN-RESUME",
-        "TOOL-SEC-L4GATE",
-        "TOOL-SEC-EGRESS",
-        "TOOL-SEC-SANDBOX",
-        "TOOL-SEC-RATE",
-        "TOOL-ENV-TIMEOUT",
-        "RET-ENV-EMBDOWN",
-        "RET-ENV-LATENCY",
-        "SUP-SEC-FREEZEPERSIST",
-        "SUP-SEC-FREEZEWALLET",
-        "SUP-SEC-AUDITCHAIN",
-        "SUP-ENV-DEADLOCKWIRE",
-        "MEM1-GAP-PARTITION",
-        "MEM1-GAP-RESTORE",
-        "AGENT-ENV-SUBMITGATE",
-        "SUB-SEC-DEPTH",
-        "SUB-SEC-TOOLPERM",
-        "MEMN-SEC-READAUTH",
-        "MEMN-SEC-MEMREF",
-        "MEMN-GAP-EVENTSUB",
-        "MM-GAP-VISION",
-        "MM-GAP-TRACE",
-        "MM-GAP-EVENTSTABLE",
-        "AGENT-ENV-L3REAL",
-        "MEMN-SEC-VERSION"
-      ],
+      "declaredOnly": [],
+      "gap": [],
       "weakAnchors": [
         "BEN-BOOT",
         "BEN-LLM",

@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Trash2, RefreshCw, ChevronDown, Check, Circle, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
-import { useModelStore, PRESET_PROVIDERS } from '@/stores/modelStore';
+import { useModelStore, PRESET_PROVIDERS, presetKnownModels } from '@/stores/modelStore';
 import { ipcVerifyModels, type ModelVerificationDto } from '@/services/ipcApi';
 import { detectProviderByUrl, isValidHttpUrl, normalizeBaseUrl } from '@/services/providerDetect';
 import type { ModelSpec, RoutingConfig } from '@/stores/modelStore';
@@ -32,6 +32,13 @@ export default function ModelProviderPanel() {
   const [apiKey, setApiKey] = useState('');
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<ModelSpec[]>([]);
+  /**
+   * 端点确实不提供 `GET /models`（404/405，实测华为云 MaaS Token Plan 的 `/plan/v2`）。
+   * 此时不是错误：要么用内置候选，要么让用户手填模型名。
+   */
+  const [listNotProvided, setListNotProvided] = useState(false);
+  /** 端点不提供 /models 时用户手填的模型名 */
+  const [manualModel, setManualModel] = useState('');
   const [formError, setFormError] = useState('');
   const [routingNotice, setRoutingNotice] = useState('');
   /** 用户勾选要导入的模型（默认**空**：不自动全选） */
@@ -78,16 +85,42 @@ export default function ModelProviderPanel() {
     }
     setFetchingModels(true);
     setFormError('');
-    const result = await fetchProviderModels(effectiveBaseUrl, apiKey.trim());
+    /*
+     * 端点不提供 /models 时（华为云 MaaS Token Plan 的 /plan/v2 实测返回 404 APIG.0101），
+     * 把该供应商的内置候选模型名带下去，界面才有东西可勾选；后端会如实回传
+     * `listNotProvided` / `modelsFromFallback`，下面的提示据此区分"端点列表"与"候选"。
+     */
+    const known = presetKnownModels(providerLabel.id);
+    const result = await fetchProviderModels(effectiveBaseUrl, apiKey.trim(), known);
     setFetchingModels(false);
     if (result.ok && result.data) {
       setFetchedModels(result.data);
       setSelectedIds(new Set());
       setAvailability({});
+      setListNotProvided(!!result.listNotProvided);
     } else {
+      setListNotProvided(false);
       setFormError(result.error ?? '拉取模型失败');
     }
-  }, [urlValid, effectiveBaseUrl, apiKey, fetchProviderModels]);
+  }, [urlValid, effectiveBaseUrl, apiKey, providerLabel.id, fetchProviderModels]);
+
+  /** 端点不提供 /models 时：把用户手填的模型名加入候选列表 */
+  const handleAddManualModel = useCallback(() => {
+    const id = manualModel.trim();
+    if (!id) return;
+    const spec: ModelSpec = {
+      id,
+      context_window: 128000,
+      max_output: 8192,
+      supports_vision: false,
+      supports_tools: true,
+      cost_per_1k_input: 0,
+      cost_per_1k_output: 0,
+    };
+    setFetchedModels(prev => (prev.some(m => m.id === id) ? prev : [...prev, spec]));
+    setManualModel('');
+    setFormError('');
+  }, [manualModel]);
 
   /** 切换单个模型的勾选 */
   const toggleModel = useCallback((id: string) => {
@@ -167,6 +200,12 @@ export default function ModelProviderPanel() {
       setFormError('请在列表里勾选要导入的模型（可先"校验可用性"再点"仅选可用"）');
       return;
     }
+    // 端点不提供 /models 又没填任何模型名 → 注册出来的供应商一个模型都没有，等于不可用。
+    // 这里明确拦住并给出下一步动作，而不是让用户添加完才发现"没有可选模型"。
+    if (listNotProvided && picked.length === 0) {
+      setFormError('该端点不提供模型列表：请先在上方手动填写至少一个模型名并勾选');
+      return;
+    }
     // 供应商身份：选了预设就用预设；否则用地址自动识别的结果；都不匹配则按自定义（OpenAI 兼容）
     const result = await addProvider({
       provider: providerLabel.id,
@@ -183,10 +222,12 @@ export default function ModelProviderPanel() {
       setFetchedModels([]);
       setSelectedIds(new Set());
       setAvailability({});
+      setListNotProvided(false);
+      setManualModel('');
     } else {
       setFormError(result.error ?? '注册失败');
     }
-  }, [urlValid, effectiveBaseUrl, apiKey, providerLabel, fetchedModels, selectedIds, addProvider]);
+  }, [urlValid, effectiveBaseUrl, apiKey, providerLabel, fetchedModels, selectedIds, listNotProvided, addProvider]);
 
   // 移除供应商
   const handleRemoveProvider = useCallback(async (name: string) => {
@@ -240,7 +281,7 @@ export default function ModelProviderPanel() {
             <div className="relative">
               <select
                 value={selectedPreset}
-                onChange={e => { setSelectedPreset(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); setFormError(''); }}
+                onChange={e => { setSelectedPreset(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); setFormError(''); setListNotProvided(false); setManualModel(''); }}
                 className="w-full px-3 py-2 rounded-lg bg-surface-700 border border-surface-600 text-text-primary text-sm outline-none focus:border-brand-500 appearance-none"
                 aria-label="选择供应商"
               >
@@ -262,7 +303,7 @@ export default function ModelProviderPanel() {
             <input
               type="text"
               value={baseUrl}
-              onChange={e => { setBaseUrl(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); }}
+              onChange={e => { setBaseUrl(e.target.value); setFetchedModels([]); setSelectedIds(new Set()); setAvailability({}); setListNotProvided(false); setManualModel(''); }}
               placeholder="https://api.example.com/v1"
               aria-label="API 地址"
               spellCheck={false}
@@ -304,12 +345,46 @@ export default function ModelProviderPanel() {
             {fetchingModels ? '拉取中...' : '测试并拉取模型'}
           </button>
 
+          {/*
+            端点不提供 /models（404/405，实测华为云 MaaS Token Plan 的 /plan/v2）：
+            旧实现把原始 404 文本当错误显示，用户只会以为"供应商/Key 有问题"，
+            而这里恰恰需要的是"手填模型名"这条路。
+          */}
+          {listNotProvided && (
+            <div className="space-y-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3" data-testid="list-not-provided">
+              <p className="text-[11px] text-amber-400">
+                该端点不提供模型列表（GET /models 返回 404/405）——这不代表 Key 有问题。
+                请**手动填写**要接入的模型名；下方列表里的名字仍需逐个"校验可用性"确认。
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualModel}
+                  onChange={e => setManualModel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddManualModel(); } }}
+                  placeholder="例如：DeepSeek-V4-Flash"
+                  aria-label="手动填写模型名"
+                  spellCheck={false}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-surface-700 border border-surface-600 text-text-primary text-sm outline-none focus:border-brand-500 placeholder:text-text-muted/50 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddManualModel}
+                  disabled={!manualModel.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-surface-600 text-text-primary text-sm hover:bg-surface-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 拉取的模型列表：逐个校验 + 用户勾选（默认不选任何模型） */}
           {fetchedModels.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="text-xs text-text-muted">
-                  拉取到 {fetchedModels.length} 个模型 · 已勾选 <b className="text-text-primary">{selectedIds.size}</b>
+                  {listNotProvided ? '候选模型' : '拉取到'} {fetchedModels.length} 个模型 · 已勾选 <b className="text-text-primary">{selectedIds.size}</b>
                 </label>
                 <button
                   type="button"
@@ -338,7 +413,9 @@ export default function ModelProviderPanel() {
                 </button>
               </div>
               <p className="text-[11px] text-text-muted/70">
-                <b>列表可见 ≠ 当前可用</b>：`/models` 会列出账号可见但未开通/无权限的模型。
+                {listNotProvided
+                  ? <><b>这些是内置候选 / 你手填的名字，不是端点返回的列表</b>：可能不适用于你的账号或已下线。</>
+                  : <><b>列表可见 ≠ 当前可用</b>：`/models` 会列出账号可见但未开通/无权限的模型。</>}
                 <b>只会添加你勾选的模型</b>，不会全量导入。
               </p>
 
@@ -391,7 +468,9 @@ export default function ModelProviderPanel() {
           <div className="flex gap-2 pt-2">
             <button
               onClick={handleAddProvider}
-              disabled={!urlValid || !apiKey.trim() || (fetchedModels.length > 0 && selectedIds.size === 0)}
+              disabled={!urlValid || !apiKey.trim()
+                || (fetchedModels.length > 0 && selectedIds.size === 0)
+                || (listNotProvided && selectedIds.size === 0)}
               className="px-4 py-1.5 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               data-testid="add-provider-confirm"
             >
@@ -404,6 +483,8 @@ export default function ModelProviderPanel() {
                 setFetchedModels([]);
                 setSelectedIds(new Set());
                 setAvailability({});
+                setListNotProvided(false);
+                setManualModel('');
               }}
               className="px-4 py-1.5 rounded-lg bg-surface-600 text-text-secondary text-sm hover:bg-surface-500 transition-colors"
             >

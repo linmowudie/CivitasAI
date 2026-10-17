@@ -22,6 +22,12 @@ import {
   runPostSupervision,
   accumulateConsecutiveErrors,
 } from "../../Services/Supervision/postSupervision.js";
+// SUP-ENV-DEADLOCKWIRE：互等死锁看门（运行期入口，命中按风险退出）
+import { checkLoopDeadlock } from "../../Services/Supervision/deadlockWatch.js";
+// MEM1-GAP-PARTITION：S/L/M/H 分区预算在执行链上生效（装配后按分区预算截断）
+import { enforcePartitionBudget } from "../../Services/Context/partitions/index.js";
+// MEMN-SEC-READAUTH：共享记忆读侧 agent 级鉴权（生产读取路径声明 requesterAgentId）
+import { read as readSharedWorkspace } from "../../Services/SharedMemory/globalWorkspace.js";
 import {
   evaluateStopRules,
   getActiveStopRuleSet,
@@ -80,6 +86,9 @@ import { dispatchToolCall } from "../../Tools/Registry/toolDispatcher.js";
 import { buildToolHeader } from "../../Tools/Registry/toolHeader.js";
 import { writeIterationCheckpoint } from "../../Infra/DurableExecution/iterationCheckpoint.js";
 import { getUnknownEffects } from "../../Infra/DurableExecution/effectJournal.js";
+import { loadAgents } from "../../Infra/Db/Repositories/agentRepository.js";
+// MM-GAP-TRACE（生产埋点）：主循环每轮建立 trace 根上下文，模型调用/工具执行各开 span
+import { runInTrace, runInSpan } from "../../Infra/Logging/traceContext.js";
 import type {
   ToolExecutionContext,
   ToolResult,
@@ -218,7 +227,7 @@ export interface IterationContext {
   sessionId: string;
   /**
    * 任务工作目录（会话绑定，来自 chat_sessions.work_dir）。
-   * 供路径型工具与 shell.exec 收敛路径；缺省则不启用任务级约束。
+   * 供路径型工具与 ShellExec 收敛路径；缺省则不启用任务级约束。
    */
   workDir?: string;
   /** Agent ID */
@@ -312,7 +321,7 @@ export interface IterationContext {
   /**
    * 检索的**上层入口**（裁定 (a)，2026-10-14 项目负责人）。
    *
-   * 记忆检索属 Services 层；此前产品里只有 Tools 层的 `vector.search` 能到达它，
+   * 记忆检索属 Services 层；此前产品里只有 Tools 层的 `VectorSearch` 能到达它，
    * **Core 没有检索调用点**（见 AG-SEC-POISON「检索器未接入 prompt」）。
    * 本端口由组合根注入，供 ⑷ ContextAssembly 经 Core 驱动检索 —— 即"调被测层之上的接口"。
    *
@@ -324,6 +333,13 @@ export interface IterationContext {
     query: string,
     limit: number,
   ) => Promise<Array<{ key: string; content: string }>>;
+  /**
+   * 本轮**授予**的工具名（执行件级收紧，12 §0.4 条 1：组件只能收紧不能放宽）。
+   *
+   * 未提供时**不改变**原有行为（两个生产调用点与热工具白名单口径保持一致）；
+   * 提供时工具目录与系统提示的工具清单都按它取交集——交集为空就不发 `tools` 参数。
+   */
+  grantedToolNames?: readonly string[];
 }
 
 /**
@@ -625,6 +641,28 @@ export async function runIteration(
     // ── ② 前置监管 ──────────────────────────────────────
     recordStep(loopState, "② PreSupervision");
 
+    // 死锁看门（SUP-ENV-DEADLOCKWIRE，设计 §3.3）：互等死锁命中即按风险退出。
+    // 修复前产品侧只有仲裁庭的语义层"deadlocked"判定，**运行期没有检测方** ——
+    // 两个 Agent 互等资源时循环会一直等下去（或直到超时），观测面看不到这一退出原因。
+    const deadlock = checkLoopDeadlock({ loopId: loopState.loopId });
+    if (deadlock.ok && deadlock.value.deadlocked) {
+      return ok({
+        outputText: "",
+        toolCalls: [],
+        toolResults: [],
+        tokensConsumed: 0,
+        decision: {
+          shouldContinue: false,
+          exitReason: "risk" as const,
+          exitMessage: `互等死锁风险退出：${deadlock.value.cycle.join(" → ")}`,
+        },
+        steps,
+        events,
+        shortCircuited: true,
+        shortCircuitReason: `deadlock: ${deadlock.value.cycle.join(" → ")}`,
+      });
+    }
+
     const preSupResult = runPreSupervision({
       userInput: ctx.userInput,
       agentId: ctx.agentId,
@@ -721,10 +759,19 @@ export async function runIteration(
     // ★ 头部冻结（2026-10-03）：OpenAI 兼容接口把 `tools` 放在**所有 messages 之前**，
     //   因此头部一旦变化，从该点起的前缀缓存全部失效；且"一开始注入全部工具"会让头部
     //   随工具增长而膨胀。这里只放**热工具 + 元工具**（默认约 10 个，会话内字节恒定）：
-    //   其余工具由 Agent 通过 `tool.search` 探索（schema 作为工具结果追加到消息尾部，不破坏前缀），
-    //   再用 `tool.execute` 统一派发执行（派发器按名字执行任意已注册工具，不要求它在头部）。
+    //   其余工具由 Agent 通过 `ToolSearch` 探索（schema 作为工具结果追加到消息尾部，不破坏前缀），
+    //   再用 `ToolExecute` 统一派发执行（派发器按名字执行任意已注册工具，不要求它在头部）。
     const toolSpecs = buildToolHeader(ctx.agentRole as UserRole);
-    const tools = toolSpecs
+    // ★ 执行件级收紧（12 §0.4 条 1）：给了授予清单就与角色目录取**交集**；
+    //   未给则与改动前逐字节一致（两个生产调用点不传）。
+    const grantedSet =
+      ctx.grantedToolNames !== undefined
+        ? new Set(ctx.grantedToolNames)
+        : undefined;
+    const visibleSpecs = grantedSet
+      ? toolSpecs.filter((spec) => grantedSet.has(spec.name))
+      : toolSpecs;
+    const tools = visibleSpecs
       .map((spec) => ({
         type: "function" as const,
         function: {
@@ -750,7 +797,7 @@ export async function runIteration(
     //  系统提示整段改变，前缀缓存从 system 消息起就失效。
     // FE-052：角色段 = promptRegistry 按 agentRole 装载的 Prompts/roles/{role}.md
     const systemPrompt = buildStableSystemPrompt(
-      toolSpecs.map((s) => s.name),
+      visibleSpecs.map((s) => s.name),
       getRolePrompt(ctx.agentRole),
     );
 
@@ -776,6 +823,30 @@ export async function runIteration(
         RETRIEVAL_ASSEMBLY_TOP_K,
       );
       if (section) ctx.contextStore.put(section);
+    }
+
+    // MEMN-SEC-READAUTH：Agent 读共享记忆必须**声明读取方身份**（只读回自己署名条目）。
+    // 生产路径在此接入：同属主下"他人署名"的条目不会进入本 Agent 的可见集合。
+    // 读到的内容**真正进入上下文**（追加区系统段）——鉴权不是日志装饰。
+    const ownWorkspaceEntries = readSharedWorkspace({
+      agentId: ctx.agentId,
+      requesterAgentId: ctx.agentId,
+      status: "active",
+    });
+    if (ownWorkspaceEntries.length > 0 && ctx.contextStore) {
+      const lines = ownWorkspaceEntries
+        .slice(-3)
+        .map((e) => `- [${e.contentType}] ${e.content}`);
+      ctx.contextStore.put({
+        key: `workspace:own:${ctx.agentId}`,
+        content: `## 本 Agent 署名的共享记忆（已按 agent 级鉴权过滤）\n${lines.join("\n")}`,
+        timestamp: Date.now(),
+      });
+      logger.debug("Agent 读取共享记忆并注入上下文（agent 级鉴权生效）", {
+        source: "runIteration/④ContextAssembly",
+        agentId: ctx.agentId,
+        visibleEntries: ownWorkspaceEntries.length,
+      });
     }
 
     const appended = ctx.contextStore
@@ -818,15 +889,22 @@ export async function runIteration(
             : max,
         0,
       );
-      const compression = await maybeCompressContext({
-        messages: assemblySource,
-        loopModel: ctx.config.model,
-        goal: ctx.userInput,
-        traceId: loopState.traceId,
-        loopId: loopState.loopId,
-        complexityHints: { messageCount: assemblySource.length, toolCallCount },
-        toolOutputTokens,
-      });
+      const compression = await maybeCompressContext(
+        {
+          messages: assemblySource,
+          loopModel: ctx.config.model,
+          goal: ctx.userInput,
+          traceId: loopState.traceId,
+          loopId: loopState.loopId,
+          complexityHints: {
+            messageCount: assemblySource.length,
+            toolCallCount,
+          },
+          toolOutputTokens,
+          // ★ S2b：传入本循环的压缩会话 —— 低增益计数与计量按运行归因，不再落模块全局
+        },
+        loopState.compressionSession,
+      );
       if (compression.compressed) {
         // 重建本轮发送给模型的消息（系统提示 + 压缩后历史 + 追加区）
         messages = [
@@ -863,6 +941,25 @@ export async function runIteration(
         loopState.needsGoalReanchor = true;
         mwCtx.data["needsGoalReanchor"] = true;
       }
+    }
+
+    // ── ④.5 分区预算执行（MEM1-GAP-PARTITION，设计 §5）──
+    // S/L/M/H 分区与分区预算此前是**死代码**（全仓零生产引入）：装配链从不按分区上限截断。
+    // 现在在 ⑤→⑥ 之间执行：总 token 超过 92% 预算时，按分区规则截断最旧的**安全**消息
+    // （S 区永不丢；tool 消息与带 tool_calls 的 assistant 成组保留，绝不拆散配对）。
+    const partitionEnforcement = enforcePartitionBudget(
+      messages,
+      ctx.config.token_budget,
+    );
+    if (partitionEnforcement.droppedCount > 0) {
+      messages = partitionEnforcement.messages;
+      logger.warn("上下文按分区预算截断（S/L/M/H）", {
+        source: "runIteration/④ContextAssembly",
+        loopId: loopState.loopId,
+        droppedMessages: partitionEnforcement.droppedCount,
+        usageRatio: Number(partitionEnforcement.usageRatio.toFixed(3)),
+        partitionTokens: partitionEnforcement.partitionTokens,
+      });
     }
 
     // ── ⑥ 模型调用 ──────────────────────────────────────
@@ -924,11 +1021,14 @@ export async function runIteration(
         ModelCallInput,
         Result<CallResult>
       >("wrapModelCall", mwCtx, modelInput, async (input) => {
-        return callModelStream(
-          input.model,
-          input.messages as ChatMessage[],
-          streamChunkHandler,
-          modelCallOptions,
+        // 真实埋点：LLM 调用在 span 内执行（span 产物可跨 Agent 归因）
+        return runInSpan({ type: "llm_call" }, () =>
+          callModelStream(
+            input.model,
+            input.messages as ChatMessage[],
+            streamChunkHandler,
+            modelCallOptions,
+          ),
         );
       });
 
@@ -968,10 +1068,13 @@ export async function runIteration(
         mwCtx,
         modelInput,
         async (input) => {
-          const result = await callModel(
-            input.model,
-            input.messages as ChatMessage[],
-            modelCallOptions,
+          // 真实埋点：非流式 LLM 调用在 span 内执行
+          const result = await runInSpan({ type: "llm_call" }, () =>
+            callModel(
+              input.model,
+              input.messages as ChatMessage[],
+              modelCallOptions,
+            ),
           );
           if (result.ok) {
             callResult = result.value;
@@ -1048,6 +1151,10 @@ export async function runIteration(
     if (toolCalls.length > 0) {
       recordStep(loopState, "⑧ ToolExecute");
 
+      // SUB-SEC-TOOLPERM：取该 Agent 落库的 allowed_tools，交给执行器**强制裁剪**
+      // （此前该字段只落库、执行侧零消费 —— 权限只是记录，不是约束）。
+      const agentAllowedTools = readAgentAllowedTools(ctx.agentId);
+
       for (const tc of toolCalls) {
         const toolCallInput: ToolCallInput = {
           toolName: tc.name,
@@ -1072,6 +1179,14 @@ export async function runIteration(
           ToolCallInput,
           ToolCallOutput
         >("wrapToolCall", mwCtx, toolCallInput, async (input) => {
+          // ★ 授予边界：收紧了工具集却仍按名字派发，等于门禁只在提示里生效
+          if (grantedSet !== undefined && !grantedSet.has(input.toolName)) {
+            return {
+              status: "error" as const,
+              content: "工具未授予本轮执行件: " + input.toolName,
+              recoverable: false,
+            };
+          }
           const toolCtx: ToolExecutionContext = {
             operationId: tc.id,
             agentId: ctx.agentId,
@@ -1079,23 +1194,31 @@ export async function runIteration(
             loopId: loopState.loopId,
             traceId: loopState.traceId,
             signal: ctx.signal,
-            // 会话归属：需要按会话落库的工具（如 todo.write 计划清单）用它确定归属
+            // 会话归属：需要按会话落库的工具（如 TodoWrite 计划清单）用它确定归属
             sessionId: ctx.sessionId,
             // 任务工作目录：路径型工具据此收敛（会话未绑定则为 undefined，退化为全局 pathGuard）
             workDir: ctx.workDir,
+            // SUB-SEC-TOOLPERM：白名单强制生效（未配置 allowed_tools 时为 undefined，不限制）
+            ...(agentAllowedTools ? { allowedTools: agentAllowedTools } : {}),
           };
-          const outcome = await dispatchToolCall({
-            toolName: input.toolName,
-            arguments: input.arguments,
-            context: toolCtx,
-            iteration: ctx.currentIteration,
-          });
+          // 真实埋点：工具执行在 span 内（含超时/被中间件短路的情形）
+          const outcome = await runInSpan({ type: "tool_exec" }, () =>
+            dispatchToolCall({
+              toolName: input.toolName,
+              arguments: input.arguments,
+              context: toolCtx,
+              iteration: ctx.currentIteration,
+            }),
+          );
           // 记录本轮耗时，供事件 payload 与界面展示（T2）
           lastToolDurationMs = outcome.durationMs;
           return {
             status: outcome.result.status,
             content: outcome.text,
             recoverable: outcome.result.recoverable,
+            // TOOL-ENV-TIMEOUT：错误码必须穿过中间件边界（此前在 wrapToolCall 返回值里丢失，
+            // 于是 `IterationResult.toolResults` 永远没有 `error`，错误码在观测面上不可见）
+            ...(outcome.result.error ? { error: outcome.result.error } : {}),
           };
         });
 
@@ -1127,6 +1250,9 @@ export async function runIteration(
           status: toolOutput.status as "success" | "error",
           recoverable: toolOutput.recoverable,
           content: toolOutput.content,
+          // TOOL-ENV-TIMEOUT：结构化错误随结果一起上报（benchmark 的 CHK-TOOL-ERROR-CODES
+          // 与观测层都读 `toolResults[].error.code`，不得只靠正文文本）
+          ...(toolOutput.error ? { error: toolOutput.error } : {}),
         } as ToolResult);
       }
 
@@ -1413,6 +1539,14 @@ export async function executeLoop(
      * P0-1 修复后视图改由本函数每轮构造，这里继续作为它的输入。
      */
     let consecutiveErrors = 0;
+    /**
+     * 伪成功护栏（AG-SEC-TOOLMISUSE）：最近一次**有工具执行**的轮次是否整体失败。
+     *
+     * 设计口径：「末轮含错误结果时不得以 `success` 退出」。
+     * 注意取"最近有工具结果的轮次"而不是"最后一轮"——最后一轮通常是纯文本收尾、天然没有
+     * 工具结果；只看最后一轮会让"工具失败后直接宣称完成"漏网（实验 scn-tool-misuse 暴露的形态）。
+     */
+    let lastToolRoundHadError: boolean | undefined;
     const t0 = Date.now();
     /**
      * 进展积分（P0-1 / P1-5）。
@@ -1506,7 +1640,12 @@ export async function executeLoop(
         riskSignals: [...riskSignals],
       });
 
-      const result = await runIteration(loopState, iterCtx, controlView);
+      // MM-GAP-TRACE（生产埋点）：每轮在**真实 trace 根上下文**内执行，
+      // 模型调用/工具执行据此挂出 span；traceId 跨轮稳定 = 同一 Loop 的调用可归因。
+      const result = await runInTrace(
+        { traceId: loopState.traceId, agentId: loopState.agentId },
+        () => runIteration(loopState, iterCtx, controlView),
+      );
 
       if (!result.ok) {
         failLoop(loopState, result.error);
@@ -1526,6 +1665,13 @@ export async function executeLoop(
         consecutiveErrors,
         iterResult.toolResults,
       );
+
+      // 伪成功护栏：记录"最近一次有工具结果的轮次"是否整体失败
+      if (iterResult.toolResults.length > 0) {
+        lastToolRoundHadError = iterResult.toolResults.some(
+          (tr) => tr.status === "error",
+        );
+      }
 
       // 进展积分（P1-5）：只把"此前从未出现过"的工具调用签名计入累积进展。
       // 与 `loopState` 无关的本地状态即可——它只服务本 Loop 的 `no_progress` 判据。
@@ -1654,6 +1800,22 @@ export async function executeLoop(
           (it) => it.decision?.exitReason === "risk",
         ).length,
         toolNames: iterResult.toolCalls.map((tc) => tc.name),
+        // 恢复续跑所需：归属（替谁跑）、目标（跑什么）
+        agentId: loopState.agentId,
+        traceId: loopState.traceId,
+        ...(loopState.goal.originalRequirement
+          ? { goal: loopState.goal.originalRequirement }
+          : {}),
+        userInput: initialCtx.userInput,
+        // MEM1-GAP-RESTORE：快照携带对话内容，恢复后可"接着说"而非只剩轮次计数
+        messages: initialCtx.chatMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
+          ...(m.tool_calls && m.tool_calls.length > 0
+            ? { tool_calls: m.tool_calls }
+            : {}),
+        })),
         pendingEffects: (() => {
           const unknown = getUnknownEffects(loopState.loopId);
           return unknown.ok
@@ -1675,6 +1837,24 @@ export async function executeLoop(
     }
 
     const finalIteration = allIterations[allIterations.length - 1];
+
+    // ── 伪成功护栏（AG-SEC-TOOLMISUSE）──
+    // 模型在最近一轮工具**失败**后直接给出终稿、未再做任何工具调用 → 这不是任务达成，
+    // 拒绝以 `success` 收尾（否则"失败被粉饰成完成"会同时污染观测与知识沉淀）。
+    // 降级到 `no_progress`：本轮没有取得可验证进展，且失败未被纠正。
+    if (
+      finalIteration?.decision.exitReason === "success" &&
+      lastToolRoundHadError === true
+    ) {
+      const message = "末轮工具结果含错误，拒绝以 success 退出（伪成功护栏）";
+      finalIteration.decision.exitReason = "no_progress";
+      finalIteration.decision.exitMessage = message;
+      logger.warn(message, {
+        source: "runIteration/executeLoop",
+        loopId: loopState.loopId,
+        iterations: allIterations.length,
+      });
+    }
 
     // ── P0-3 收尾自检：账本与本地求和必须为 0 差异 ──
     // 四源账本（executeLoop 本地累加 / loopState.iteration.totalTokensConsumed /
@@ -1734,5 +1914,25 @@ export async function executeLoop(
         middlewareId: gateHandle.value.id,
       });
     }
+  }
+}
+
+// ── SUB-SEC-TOOLPERM：读取 Agent 落库的工具白名单 ─────────────────────
+
+/**
+ * 读取某 Agent 的 `allowed_tools`（落库值）。
+ *
+ * 返回 `undefined` 表示**未配置白名单**（不限制，保持旧行为）；
+ * 返回数组（可能为空）表示必须按清单裁剪 —— 空数组意味着"一个都不许调"。
+ * 读取失败按未配置处理（fail-soft：读不到权限数据不阻断执行，但可观测）。
+ */
+function readAgentAllowedTools(agentId: string): readonly string[] | undefined {
+  try {
+    const row = loadAgents(false).find((r) => r.agent_id === agentId);
+    if (!row?.allowed_tools) return undefined;
+    const parsed = JSON.parse(row.allowed_tools) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : undefined;
+  } catch {
+    return undefined;
   }
 }

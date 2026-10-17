@@ -92,7 +92,7 @@ const PENDING_APPROVAL: Approval = {
   kind: 'irreversible_action',
   riskLevel: 'CRITICAL',
   requestedBy: 'agent-1',
-  payload: { toolName: 'shell.exec', arguments: { command: 'dir' } },
+  payload: { toolName: 'ShellExec', arguments: { command: 'dir' } },
   status: 'PENDING',
   timeoutSec: 60,
   requestedAt: Date.now(),
@@ -103,7 +103,7 @@ const PENDING_APPROVAL: Approval = {
 function toolCalls(approvalStatus?: 'pending' | 'approved' | 'rejected' | 'timeout' | 'auto-approved') {
   return [{
     id: 'tc-1',
-    name: 'shell.exec',
+    name: 'ShellExec',
     arguments: { command: 'dir' },
     status: 'pending' as const,
     approvalId: 'ap-1',
@@ -167,7 +167,7 @@ describe('工具行内嵌审批', () => {
       approvals: [{ ...PENDING_APPROVAL, status: 'APPROVED' }],
       loading: false,
     });
-    render(<ToolGroup toolCalls={[{ id: 'tc-1', name: 'shell.exec', arguments: {}, status: 'pending', approvalId: 'ap-1' }]} />);
+    render(<ToolGroup toolCalls={[{ id: 'tc-1', name: 'ShellExec', arguments: {}, status: 'pending', approvalId: 'ap-1' }]} />);
 
     expect(screen.getByText(/审批已通过，工具已放行执行/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /确认执行/ })).not.toBeInTheDocument();

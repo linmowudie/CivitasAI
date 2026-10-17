@@ -8,6 +8,107 @@
 
 ---
 
+## 2026-10-16 — 工具名统一为大驼峰（修复 DeepSeek 400）
+
+**现象**：切换到 `deepseek/deepseek-flash` 后每次生成都失败：
+
+```
+生成出错：Model call failed: 未知错误 (400)
+Invalid tools[0].function.name: string does not match pattern ^[a-zA-Z0-9_-]+$
+```
+
+**根因**：工具名带点号（如 `file.read`）。DeepSeek 等 OpenAI 兼容端点要求 `tools[].function.name`
+匹配 `^[a-zA-Z0-9_-]+$`，点号直接 400。旧 provider（GLM 等）不校验，所以此前未暴露。
+
+**为什么不能在 provider 边界只改一处**：模型看到工具名的地方有**三处** ——
+① `tools` schema；② **历史回放**（`toWireMessages` 原样透传 `tool_calls`）；
+③ **提示词工具区**（`toolHeader` 热工具头部 + `contextAssembler` 的 `ctx:zone:tools`）。
+只改 ① 会造成 schema 说 `FileRead`、而提示词与历史说 `file.read` ⇒ 模型照提示词喊旧名，工具依然用不对。
+
+**修复**：工具名**全局统一为大驼峰**（`FileRead` / `ShellExec` / `AgentRecruit` / `OrchestratorCompose` …，共 19 个），
+内部名 == 线上名，三处同名。
+
+- 改动范围：`Src` / `Client/src` / `Tests` / `Configs` / `Prompts` / `Benchmarks` / `Scripts` / 现行 `Docs`，共 **139 文件 / 1049 处**
+  （历史文档快照、`Docs/CHANGELOG.md`、`Docs/99-审查记录/`、只读 Bug 登记簿**未改**）
+- **兼容层** `Src/Infra/Llm/Provider/toolNameWireCompat.ts`：旧点号名仍可解析（以 `file.read` 查询命中 `FileRead`）；
+  历史回放出站前归一化；已落库的治理规则 `tool.forbid(shell.*)` 仍能命中 `ShellExec`（`behaviorCode` 命名空间兼容）
+- **注册期守卫**（`specValidator` 规则 15）：工具名必须匹配 `^[A-Z][A-Za-z0-9]*$`，点号名**注册即拒**
+  （避免"能注册、上线才炸"）；新增回归测试 `Tests/Tools/toolNamePolicy.spec.ts`
+- 语义修正（改名后必须同步，否则**静默失效**）：`specValidator` 的 `agent.*` 前缀判断、`toolHeader` 的命名空间计分、
+  `toolVisuals` 的大小写敏感匹配（改不敏感）、`behaviorCode` 的 `shell.*` 通配
+
+**验证**：`npx vitest run` **198 文件 / 2456 用例全绿**；`npm run typecheck` 0 error；`cd Client && npx tsc --noEmit` 0 error；
+`npm run lint` 0 error；`npm run bench` 46 项自测 + 审计 16/16。
+
+**已知弱点（如实登记）**：变异"去掉 `getTool` 遗留名兼容"后 `toolNamePolicy.spec.ts` **仍全绿**
+（该用例未真正覆盖此路径）；生产行为已由直接探针证明：未变异时 `getTool` 以 `file.read` 命中 `FileRead`，变异后返回 `undefined`。待补强该用例。
+
+---
+
+## [2026-10-16] G4 档 1（第 1+2 步）：兄弟端口改为按身份解析 + L1 宿主登记件
+
+> 起因：`toolServicePorts` 是**进程级单例**，而域账本按 05 §9.4 属于**每个 L1 实例**。共享注入会让两个 L1 写进同一本账 —— 那比 `NOT_ENABLED` 更糟，因为它看起来是成功的。
+> 本批只做**解析层**，生产装配（真实同级 L1 工厂、监管裁决回投）留待方向，见 28 号 §6 G4。
+
+### 新增
+
+- **`Src/Core/Orchestration/l1HostRegistry.ts`**：`createL1HostRegistry()`（宿主 ⇄ 两本账的归属，**显式对象**、无模块级可变状态）+ `createSplitMergePortForHosts(registry, runtime)`（产出注入 Tools 层的解析器）。登记期三条判据：空 agentId 拒、**同一身份不得双宿主**、**`rootId` 必须等于 agentId**；`snapshotAll`/`reopen` 沿用 `snapshotLedgers`/`restoreLedgers`，**整批校验后整批落位**（不做半恢复）；端口**每次现取不缓存**（宿主 close/reopen 后不交陈旧账本）。
+
+### 变更
+
+- **`ToolServicePorts.splitMerge?: SplitMergePort` ⇒ `splitMergeFor?: (agentId: string) => SplitMergePort | undefined`**；`agentSplit` / `agentMerge` 改取 `splitMergeFor?.(context.agentId)`，解析不到 ⇒ `NOT_ENABLED`（文案带 agentId 与"未召唤任何同级 L1 / 未提交任何合并请求"）。
+- `Tests/Tools/agentSplitMerge.spec.ts` 的 fixture 域根参数化（`mkFixture(root)`），以支持双宿主用例。
+- **修 `Tests/Integration/agentPermissionSplit.spec.ts`**（10-15 批遗留红灯，本批全量跑才暴露）：用例前提"partner 与 prime_director 除 `agent.submit_review` 外工具集对等"已被 C6 打破 —— `orchestrator.compose` / `orchestrator.select` 的 `requiredRoles` 只含 `prime_director`。改为三段断言（partner 独有 submit_review / PD 独有两条 orchestrator.* / 去掉这两类后其余**全等**），差异写清而非放宽。
+
+### 取证
+
+- 新增 `Tests/Core/l1HostRegistry.spec.ts` **12 条**；`agentSplitMerge.spec` 27 ⇒ **31 条**（新增"两个宿主各写各域"、"未登记身份 ⇒ NOT_ENABLED 且两本账不动"、"B 的请求只进 B 的域"、"别域兄弟在本域请求合并被拒"）。
+- 变异检验 **10 项全杀**：M10（`agent.merge` 不按身份解析）首轮**存活** —— 原用例里发起端 `by` 仍取 `context.agentId`，被别的守卫挡住了；补"B 的请求只进 B 的域"后才被抓到。这条按实登记，不写成一次通过。
+- `npx tsc --noEmit` 干净；`Tools+Core` 全量 **45 文件 / 592 条**通过；`eslint` 对四个改动文件 0 error。
+- **全量** `vitest run`：**197 文件 / 2451 条**。首轮 1 红 = `Tests/Integration/agentPermissionSplit.spec.ts`（上述遗留）；修正后重跑仅剩 `AgentRuntime/realAgent.spec.ts` Round 3 红（真实 LLM 调用，全量并发下 145s 未 ok），**单跑该文件 4 条全绿**（Round 1/2/3 + 综合，230s）⇒ 判为负载敏感的真实调用抖动，非本批回归。
+
+### 明确未做（不由实现擅自补）
+
+- `main.ts` 未改动：**没有登记任何生产宿主**（前置是真实的 `openSiblingPeer`，用户后续给方向）。
+- ⚠️ `orchestration` 端口**仍是共享单例**，同族缺陷未动 —— 已登记为设计缺口 **D4**（28 号 §6.1），是否推广到按 run/身份解析需设计裁决。
+
+---
+
+## [2026-10-15] L1 编排设计落地批次：组件闭集 18 项补齐 + 兄弟账本链路（含 `agent.split` / `agent.merge`）
+
+> 按 14 号组件闭集逐行点名实施，**只认代码落点 + 测试，不认声明**。逐项状态与缺口清单见
+> [Docs/Dev/L1编排设计/28-设计实现覆盖清点.md](Docs/Dev/L1编排设计/28-设计实现覆盖清点.md)；设计文档口径同步见 [Docs/CHANGELOG.md](Docs/CHANGELOG.md)。
+
+### 新增
+
+- **P2 `GoalEvaluator`**（纯判定原语，含 `immutable_zone_digest` / `needs_reanchor`）· **P3 `NodeRunner`**（`Core/Orchestration/nodeRunner.ts`：loopId **唯一派生点**、grants 只能收紧、事件带节点自身 scope）。
+- **E1 `ReActCore`**（`Core/Orchestration/reactCore.ts`：包住十步循环不重写，控制由外部给）。
+- **S7↔S8 端口适配层**（`Core/Orchestration/assemblyPorts.ts`）+ 组装闭环串接；**S2 组件级监管快照**（`Core/Supervision/componentSnapshot.ts`，只读投影、不新增写者；连带给 `LifecycleController` 补上 `decisions()` 决策历史）。
+- **C6 的工具身份**：`Tools/Custom/orchestratorCompose.ts`（`orchestrator.compose`）· `orchestratorSelect.ts`（`orchestrator.select`）+ 端口实现 `Core/Orchestration/orchestrationToolPort.ts`。
+- **兄弟账本链路**（本批收口项）：`DomainLedger` 扩展 `requestMerge` / `mergeRequests` / `withdrawMerge` / `resolveMerge` / `dissolved` + 归属转换 `transferChildren`；端口实现 `Core/Orchestration/splitMergeToolPort.ts`；新工具 `Tools/Custom/agentSplit.ts`（`agent.split`，DANGEROUS）与 `agentMerge.ts`（`agent.merge`，CONTROLLED）。`BUILTIN_TOOLS` 由 17 增至 **19 个**。
+- **前端可见性**：`Client/src/ai-components/harness/toolVisuals.ts` 为两个新工具补标签与系统轨道图标（`gear`，与 `agent.recruit` 同族）。
+
+### 关键纪律（都有负向用例与变异取证）
+
+- **兄弟不是下级**：`splitMerge` 端口的依赖里**没有** `ChildRegistry`（构造上不可见，17 号反例 2）；分裂后下级账本快照一字未动。
+- **工具不合并**：`agent.merge` 成功返回恒带 `merged: false`，改域结构的唯一入口是 `DomainLedger.resolveMerge`（监管裁决侧，必须署名）。
+- **诚实失败**：端口未注入 ⇒ `NOT_ENABLED`（不假成功）；补偿动作本身失败（回收/撤销）⇒ 上报**分叉**而不是假装净零。
+- **恢复不能用活体不变量审既成事实**：`restoreLedgers` 改走 `validateDomainSnapshot` 的完整性校验，不自洽即**整体拒绝**，不做半恢复。
+- 修复新暴露的一处缺口：`addPeer` 原先**接受空冲突域**（等于允许无隔离面的分裂），现由账本自己拒（工具形状校验不替它兜底）。
+
+### 取证
+
+- 新账：`Tests/Tools/agentSplitMerge.spec.ts` **27 用例** + `Tests/Core/ledgers.spec.ts` **32 用例**；变异检验 **15 项全杀**（删补偿 / 删作废守卫 / 删同域守卫 / 让工具能改结构 / 删两侧证据长度守卫 等逐条注入）。
+- 回归：`Tests/Tools` + `Tests/Core` **44 文件 / 576 用例全绿**；`Tests/Client` **26 文件 / 211 用例全绿**；`npx tsc --noEmit` 无错。
+
+### 未做（如实登记，不在本批收口内）
+
+- **G4 生产 composition root**：`orchestration` / `splitMerge` 端口均未由 `main.ts` 注入 ⇒ 生产实调只会得到 `NOT_ENABLED`（属架构级改动，待用户确认）。
+- **G7 真实 Agent 调用回归（≥3 轮）**：依赖 G4，**当前所有证据都是组件级 + 集成级**，未声称已通过实调。
+- **G1 / G5**：组装体与 A 侧 `Decision/orchestrator` 的接入点、算子层未经 P3 —— 均为既有缺口，本批未触碰。
+
+---
+
 ## [2026-10-14] 新增代码量统计脚本 `Scripts/countLoc.py`
 
 > 代码规模统计工具：默认只统计**核心业务代码**（`Src` + `Client/src` + `Server/src/main/java`），`--all` 统计全量（含 Tests/Scripts/Benchmarks）；注释识别带词法状态机（字符串/模板串内的注释符不计入、支持跨行块注释、行首 BOM 按空白处理）。

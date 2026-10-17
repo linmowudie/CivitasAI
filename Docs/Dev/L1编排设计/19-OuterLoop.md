@@ -5,7 +5,7 @@
 > **适用范围**：**单个 L1 agent** 的外层循环 —— 持有组装体与对话级状态 · 每个外层周期选执行件 · 构造 `ReactInput` · 收 `needs_decision` · 判收敛 · 驱动组装变更。
 > 它是"外部控制器"的**宿主**：C1–C4 都由它持有，`ReActCore` 由它驱动。
 > **相关模块**：[14-核心层组件总表](14-核心层组件总表.md) · [01-双层循环总览](01-双层循环总览.md) · [16-LifecycleController](16-LifecycleController.md) · [17-账本-子代与兄弟](17-账本-子代与兄弟.md) · [18-ContextAssembler](18-ContextAssembler.md) · [04-递归组合与P&E](04-递归组合与P&E.md)
-> **上级索引**：[00-索引.md](00-索引.md)　|　**状态**：设计稿（未实现，未提交 git）
+> **上级索引**：[00-索引.md](00-索引.md)　|　**状态**：文中「现状 / ❌ / 不存在」各列均为**设计期快照**，不作为当前事实 —— 落地情况一律以 [28-设计实现覆盖清点](28-设计实现覆盖清点.md) 为准（2026-10-15：14 号组件闭集 18 项均有 TS 落点；**生产链路未装配** G4 · **未提交 git**）
 
 ---
 
@@ -30,6 +30,20 @@
 | 出 | 域进展 | `shared-ctx`（供自合并判定） | 是 |
 | 出 | 生命周期/决策事件 + 计量 | 事件总线 / 记账 | 是 |
 
+## 0.1 S7 落地状态（2026-10-15，已实现）
+
+✅ 已实现于 `Src/Core/Orchestration/outerLoop.ts`：`createOuterLoop(deps)`。
+宿主循环把 **S3–S6 的真实组件**串起来：`ChildRegistry` / `DomainLedger` / `ContextAssembler` /
+`LifecycleController`（工厂）与 S4 的落盘端口；**未用桩件替代**。
+
+**构造期纪律**：`selfTools` 必须 ⊆ `ORCHESTRATION_TOOLS`（`OrchestratorCompose` / `OrchestratorSelect`）——
+含 `read`/`write`/`execute` 等业务工具**直接拒绝创建**。
+
+验收：`Tests/Core/outerLoop.spec.ts` **16 条**（含 11 条负向）+ 3 次变异检验。
+清单见 [25-实现顺序与最小落地切分](25-实现顺序与最小落地切分.md) §7.17–§7.18。
+
+**仍待接线（S8）**：`AssemblerPort` / `ValidatorPort` / `RegistryPort` 目前由测试注入功能性实现；
+S8 将给出产品实现（含 `criteriaVersion` / `registryVersion` 版本记录）。
 ## 1. 定位
 
 | 是 | 不是 |
@@ -44,7 +58,7 @@
 |---|---|
 | **输入集** | 组装体 · 各组件状态摘要 · Goal · **子代收敛事件** · 域账本摘要 · 预算/截止 |
 | **输出集** | `outer`（结论，交上级/用户）· `governance`（组装变更留痕）· `supervision`（状态可见）· `shared-ctx`（域进展） |
-| **工具集** | **仅编排类**：`orchestrator.compose` · `orchestrator.select`。**不含** `read` / `write` / `execute` 等业务工具 |
+| **工具集** | **仅编排类**：`OrchestratorCompose` · `OrchestratorSelect`。**不含** `read` / `write` / `execute` 等业务工具 |
 
 > 你早前的原话就是这条：**"L1 外循环没必要看见写、读、执行等等工具"**。
 > 判据：**外层的输入集也不该包含业务上下文**（最小必要）——否则决策被执行细节淹没、成本失控。

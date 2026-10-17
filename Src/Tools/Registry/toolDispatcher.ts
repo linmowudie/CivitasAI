@@ -13,10 +13,10 @@
  *  - 本模块只做"角色门 + 执行 + 超时（复用 executeTool）+ 归一 + 埋点"。
  */
 
-import type { ToolResult, ToolExecutionContext } from '../Traits/toolSpec.js';
-import { executeTool, getTool } from './toolRegistry.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { getToolServicePorts } from './toolServicePorts.js';
+import type { ToolResult, ToolExecutionContext } from "../Traits/toolSpec.js";
+import { executeTool, getTool } from "./toolRegistry.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import { getToolServicePorts } from "./toolServicePorts.js";
 
 /** 派发结果（归一后的文本 + 遥测） */
 export interface DispatchOutcome {
@@ -32,8 +32,8 @@ export interface DispatchOutcome {
 
 /** 结果归一：把任意 content 转成文本（对象 → JSON，null/undefined → 空串） */
 export function normalizeToolContent(content: unknown): string {
-  if (content === null || content === undefined) return '';
-  if (typeof content === 'string') return content;
+  if (content === null || content === undefined) return "";
+  if (typeof content === "string") return content;
   try {
     return JSON.stringify(content);
   } catch {
@@ -43,10 +43,15 @@ export function normalizeToolContent(content: unknown): string {
 
 /** 从错误码推断分类（便于统计"派发级拒绝"与"执行期失败"） */
 function classifyError(code?: string): string {
-  if (!code) return 'EXECUTION_ERROR';
-  if (code === 'TOOL_NOT_FOUND' || code === 'ROLE_FORBIDDEN' || code === 'INVALID_INPUT') return 'DISPATCH_REJECTED';
-  if (code === 'TOOL_TIMEOUT') return 'TOOL_TIMEOUT';
-  return 'EXECUTION_ERROR';
+  if (!code) return "EXECUTION_ERROR";
+  if (
+    code === "TOOL_NOT_FOUND" ||
+    code === "ROLE_FORBIDDEN" ||
+    code === "INVALID_INPUT"
+  )
+    return "DISPATCH_REJECTED";
+  if (code === "TOOL_TIMEOUT") return "TOOL_TIMEOUT";
+  return "EXECUTION_ERROR";
 }
 
 /**
@@ -70,23 +75,24 @@ export async function dispatchToolCall(input: {
   //   端口由组合根注入（main.ts ⑫.6）；未注入 → 缓存增强不启用（静默跳过，不伪造命中）
   const cache = ports.toolResultCache;
   const toolDef = getTool(input.toolName);
-  const cacheable = !!toolDef
-    && toolDef.spec.dangerLevel === 'SAFE'
-    && toolDef.spec.idempotency === 'YES';
+  const cacheable =
+    !!toolDef &&
+    toolDef.spec.dangerLevel === "SAFE" &&
+    toolDef.spec.idempotency === "YES";
   if (cacheable && cache) {
     const cached = cache.get(input.toolName, input.arguments);
     if (cached !== null && cached.ok) {
       const durationMs = Date.now() - startedAt;
-      logger.info('工具结果缓存命中，跳过执行', {
-        source: 'toolDispatcher/dispatchToolCall',
+      logger.info("工具结果缓存命中，跳过执行", {
+        source: "toolDispatcher/dispatchToolCall",
         toolName: input.toolName,
         durationMs,
       });
       return {
         result: {
-          role: 'tool',
+          role: "tool",
           tool_call_id: input.context.operationId,
-          status: 'success',
+          status: "success",
           recoverable: false,
           content: cached.value,
         },
@@ -96,8 +102,8 @@ export async function dispatchToolCall(input: {
     }
   }
 
-  logger.info('派发工具调用', {
-    source: 'toolDispatcher/dispatchToolCall',
+  logger.info("派发工具调用", {
+    source: "toolDispatcher/dispatchToolCall",
     toolName: input.toolName,
     agentId: input.context.agentId,
     agentRole: input.context.agentRole,
@@ -105,21 +111,25 @@ export async function dispatchToolCall(input: {
     operationId: input.context.operationId,
   });
 
-  // FE-066：Hook 触发点（统一收口层——覆盖工具头部调用与 tool.execute 借壳路径）
+  // FE-066：Hook 触发点（统一收口层——覆盖工具头部调用与 ToolExecute 借壳路径）
   //   端口由组合根注入（main.ts ⑫.6）；未注入 → 跳过（审计增强不启用）
-  await ports.dispatchHook?.('PreToolExecute', {
+  await ports.dispatchHook?.("PreToolExecute", {
     toolName: input.toolName,
     agentId: input.context.agentId,
     traceId: input.context.traceId,
     arguments: input.arguments,
   });
 
-  const result = await executeTool(input.toolName, input.arguments, input.context);
+  const result = await executeTool(
+    input.toolName,
+    input.arguments,
+    input.context,
+  );
   const durationMs = Date.now() - startedAt;
   const text = normalizeToolContent(result.content);
 
   // FE-066：执行后 Hook（成功/失败均触发——审计/指标消费）
-  await ports.dispatchHook?.('PostToolExecute', {
+  await ports.dispatchHook?.("PostToolExecute", {
     toolName: input.toolName,
     agentId: input.context.agentId,
     traceId: input.context.traceId,
@@ -127,10 +137,10 @@ export async function dispatchToolCall(input: {
     durationMs,
   });
 
-  if (result.status === 'error') {
+  if (result.status === "error") {
     const errorClass = classifyError(result.error?.code);
-    logger.warn('工具派发失败', {
-      source: 'toolDispatcher/dispatchToolCall',
+    logger.warn("工具派发失败", {
+      source: "toolDispatcher/dispatchToolCall",
       toolName: input.toolName,
       durationMs,
       errorClass,
@@ -144,13 +154,13 @@ export async function dispatchToolCall(input: {
   if (cache) {
     if (cacheable) {
       cache.put(input.toolName, input.arguments, result.content);
-    } else if (toolDef && toolDef.spec.dangerLevel !== 'SAFE') {
+    } else if (toolDef && toolDef.spec.dangerLevel !== "SAFE") {
       cache.clear();
     }
   }
 
-  logger.info('工具派发完成', {
-    source: 'toolDispatcher/dispatchToolCall',
+  logger.info("工具派发完成", {
+    source: "toolDispatcher/dispatchToolCall",
     toolName: input.toolName,
     durationMs,
     resultLength: text.length,

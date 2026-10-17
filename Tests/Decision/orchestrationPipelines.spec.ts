@@ -6,7 +6,7 @@
  *
  *  1. 派发链路：receiveTask → 三模式（DELEGATION / ASSEMBLY_LINE / CONSORTIUM）
  *     全部落库（tasks 行 + sessions 基座 + subtasks 派发），Agent 真实指派（ready → running）；
- *  2. 评审链路：agent.submit_review 实装 —— 提交（awaitingApproval）→
+ *  2. 评审链路：AgentSubmitReview 实装 —— 提交（awaitingApproval）→
  *     独立 Reviewer 创建/复用（Maker-Checker 分离）→ 规则审核 → subtasks 台账回写；
  *  3. 聚合链路：最后一个子任务终态 → TASK_COMPLETED(assignmentId) 事件驱动
  *     finalizeOrchestration → aggregateResults → tasks 行回写终态、计划出册。
@@ -134,7 +134,7 @@ function fullReset(): void {
   clearRegistry();
   registerBuiltinTools();
   setActiveOwner(OWNER);
-  // 分层修正（2026-10-04）：agent.submit_review 经端口注入评审链路服务（Tools 不可直连 Services/Core）
+  // 分层修正（2026-10-04）：AgentSubmitReview 经端口注入评审链路服务（Tools 不可直连 Services/Core）
   configureToolServicePorts({
     review: {
       submitForReview,
@@ -383,7 +383,7 @@ describe("FE-050 · 评审链路", () => {
     expect(getAgent(workerId)!.status).toBe("running");
 
     const exec = await executeTool(
-      "agent.submit_review",
+      "AgentSubmitReview",
       {
         taskId: first.subtask_id,
         summary: "后端模块开发完成（含单元测试）",
@@ -447,7 +447,7 @@ describe("FE-050 · 评审链路", () => {
         (r) => r.subtask_id === assignment.assignmentId,
       )!;
       const exec = await executeTool(
-        "agent.submit_review",
+        "AgentSubmitReview",
         {
           taskId: assignment.assignmentId,
           summary: `子任务 ${assignment.subtaskIndex + 1} 完成`,
@@ -471,7 +471,7 @@ describe("FE-050 · 评审链路", () => {
 
   it("★ 非执行级角色 → ROLE_FORBIDDEN（requiredRoles 硬校验）", async () => {
     const denied = await executeTool(
-      "agent.submit_review",
+      "AgentSubmitReview",
       {
         taskId: "whatever",
         summary: "无权限提交",
@@ -514,7 +514,7 @@ describe("FE-050 · 聚合链路", () => {
         (r) => r.subtask_id === assignment.assignmentId,
       )!;
       const exec = await executeTool(
-        "agent.submit_review",
+        "AgentSubmitReview",
         {
           taskId: assignment.assignmentId,
           summary: "完成",

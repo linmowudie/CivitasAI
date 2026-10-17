@@ -6,41 +6,79 @@
  * 支持开除后重新招募（新 Agent 继承上下文）。
  */
 
-import type { RecruitmentRequest } from '../../Core/Decision/types.js';
-import type { AgentInstance } from '../../Core/AgentRuntime/types.js';
-import { createAgent } from '../../Core/AgentRuntime/agentFactory.js';
-import { getAgent, getAllAgents, updateAgent, setAgentParent, getAgentParent } from '../../Core/AgentRuntime/agentRegistry.js';
-import { handleAgentEvent } from '../../Core/AgentRuntime/agentRuntime.js';
-import { EventType } from '../EventBus/eventTypes.js';
-import { createEvent, publish } from '../EventBus/eventBus.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
-import { getRoutingConfig } from '../../Infra/Llm/Router/modelRouter.js';
+import type { RecruitmentRequest } from "../../Core/Decision/types.js";
+import type { AgentInstance } from "../../Core/AgentRuntime/types.js";
+import { createAgent } from "../../Core/AgentRuntime/agentFactory.js";
+import {
+  getAgent,
+  getAllAgents,
+  updateAgent,
+  setAgentParent,
+  getAgentParent,
+} from "../../Core/AgentRuntime/agentRegistry.js";
+import { handleAgentEvent } from "../../Core/AgentRuntime/agentRuntime.js";
+import { EventType } from "../EventBus/eventTypes.js";
+import { createEvent, publish } from "../EventBus/eventBus.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
+import { getRoutingConfig } from "../../Infra/Llm/Router/modelRouter.js";
 
-import * as agentRepository from '../../Infra/Db/Repositories/agentRepository.js';
+import * as agentRepository from "../../Infra/Db/Repositories/agentRepository.js";
 
-import { recordTermination } from './terminationRationale.js';
+import { recordTermination } from "./terminationRationale.js";
+
+// ── 派生深度（SUB-SEC-DEPTH，设计 §3.6）─────────────────────────────
+//
+// 设计口径：**partner 不可无限再招募 partner** —— 派生必须有深度上限，
+// 否则一次"多 Agent"任务可以在几步内指数级造 Agent（且每个都带预算）。
+
+/** 最大派生深度（根 = 0；招募出的子代 = 1，再派生的孙代 = 2） */
+export const MAX_DERIVE_DEPTH = 2;
+
+/** 查询某 Agent 的派生深度（根 = 0；父链缺失时按 0 处理，带环保护） */
+export function getDeriveDepth(agentId: string): number {
+  let depth = 0;
+  let cursor = getAgentParent(agentId);
+  const guard = new Set<string>([agentId]);
+  while (cursor && !guard.has(cursor)) {
+    guard.add(cursor);
+    depth++;
+    cursor = getAgentParent(cursor);
+  }
+  return depth;
+}
 
 // ── 招募入口 ────────────────────────────────────────────────────────
 
 /**
  * 招募 Agent。
- * 流程：解析需求 → 创建 Agent → 配置工具 → 注册 → 广播事件。
+ * 流程：解析需求 → **深度校验** → 创建 Agent → 配置工具 → 注册 → 广播事件。
  */
-export function recruitAgent(request: RecruitmentRequest): Result<AgentInstance> {
-  if (!request.traceId) return err('traceId 不能为空');
-  if (!request.parentAgentId) return err('parentAgentId 不能为空');
-  if (request.tokenBudget <= 0) return err('Token 预算必须大于 0');
+export function recruitAgent(
+  request: RecruitmentRequest,
+): Result<AgentInstance> {
+  if (!request.traceId) return err("traceId 不能为空");
+  if (!request.parentAgentId) return err("parentAgentId 不能为空");
+  if (request.tokenBudget <= 0) return err("Token 预算必须大于 0");
+
+  // 派生深度上限（SUB-SEC-DEPTH）：父代已在最大深度时拒绝再派生。
+  const parentDepth = getDeriveDepth(request.parentAgentId);
+  if (parentDepth + 1 > MAX_DERIVE_DEPTH) {
+    return err(
+      `派生深度超限：父代 ${request.parentAgentId} 深度 ${parentDepth}，上限 ${MAX_DERIVE_DEPTH}（禁止无限再招募）`,
+    );
+  }
 
   // 创建 Agent
   // FE-072：按角色解析**真实模型**（此前硬编码 'worker-model' 占位——执行时无可解析模型）；
   //   routing 未配置时保留占位（由执行入口的兜底解析处理）。
   const routing = getRoutingConfig();
-  const roleModel = request.role === 'reviewer'
-    ? (routing?.verifierModel || routing?.defaultModel)
-    : (routing?.workerModel || routing?.defaultModel);
+  const roleModel =
+    request.role === "reviewer"
+      ? routing?.verifierModel || routing?.defaultModel
+      : routing?.workerModel || routing?.defaultModel;
   const createResult = createAgent(
-    { role: request.role, model: roleModel || 'worker-model' },
+    { role: request.role, model: roleModel || "worker-model" },
     request.traceId,
   );
   if (!createResult.ok) return createResult;
@@ -74,29 +112,34 @@ export function recruitAgent(request: RecruitmentRequest): Result<AgentInstance>
   });
 
   // 发布招募事件
-  publish(createEvent({
-    eventType: EventType.AGENT_RECRUITED,
-    source: 'Recruitment/recruitAgent',
-    traceId: request.traceId,
-    payload: {
-      agentId: agent.agentId,
-      role: request.role,
-      domain: request.domain,
-      parentAgentId: request.parentAgentId,
-      tokenBudget: request.tokenBudget,
-    },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.AGENT_RECRUITED,
+      source: "Recruitment/recruitAgent",
+      traceId: request.traceId,
+      payload: {
+        agentId: agent.agentId,
+        role: request.role,
+        domain: request.domain,
+        parentAgentId: request.parentAgentId,
+        tokenBudget: request.tokenBudget,
+      },
+    }),
+  );
 
   return ok(agent);
 }
 
 // ── 批量招募 ────────────────────────────────────────────────────────
 
-export function recruitAgents(requests: RecruitmentRequest[]): Result<AgentInstance[]> {
+export function recruitAgents(
+  requests: RecruitmentRequest[],
+): Result<AgentInstance[]> {
   const agents: AgentInstance[] = [];
   for (const req of requests) {
     const result = recruitAgent(req);
-    if (!result.ok) return err(`招募第 ${agents.length + 1} 个 Agent 失败: ${result.error}`);
+    if (!result.ok)
+      return err(`招募第 ${agents.length + 1} 个 Agent 失败: ${result.error}`);
     agents.push(result.value);
   }
   return ok(agents);
@@ -113,7 +156,7 @@ export function expelAgent(params: {
   agentId: string;
   taskId: string;
   traceId: string;
-  reason: 'capability' | 'laziness' | 'goal_unreasonable' | 'external_error';
+  reason: "capability" | "laziness" | "goal_unreasonable" | "external_error";
   evidence: string[];
   decidedBy: string;
 }): Result<void> {
@@ -135,23 +178,25 @@ export function expelAgent(params: {
 
   // 执行开除：状态 → expelled
   const expelResult = handleAgentEvent(params.agentId, {
-    type: 'EXPEL',
+    type: "EXPEL",
     reason: params.reason,
   });
   if (!expelResult.ok) return expelResult;
 
   // 发布开除事件
-  publish(createEvent({
-    eventType: EventType.AGENT_EXPELLED,
-    source: 'Recruitment/expelAgent',
-    traceId: params.traceId,
-    payload: {
-      agentId: params.agentId,
-      reason: params.reason,
-      decidedBy: params.decidedBy,
-      consecutiveFailures,
-    },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.AGENT_EXPELLED,
+      source: "Recruitment/expelAgent",
+      traceId: params.traceId,
+      payload: {
+        agentId: params.agentId,
+        reason: params.reason,
+        decidedBy: params.decidedBy,
+        consecutiveFailures,
+      },
+    }),
+  );
 
   return ok(undefined);
 }
@@ -166,7 +211,7 @@ export function expelAndReplace(params: {
   agentId: string;
   taskId: string;
   traceId: string;
-  reason: 'capability' | 'laziness' | 'goal_unreasonable' | 'external_error';
+  reason: "capability" | "laziness" | "goal_unreasonable" | "external_error";
   evidence: string[];
   decidedBy: string;
   originalRequest: RecruitmentRequest;
@@ -189,13 +234,15 @@ export function expelAndReplace(params: {
  * 不能被误算成子 Agent。
  */
 export function getRecruitedAgents(traceId: string): AgentInstance[] {
-  return getAllAgents().filter(a => a.traceId === traceId && getAgentParent(a.agentId) !== undefined);
+  return getAllAgents().filter(
+    (a) => a.traceId === traceId && getAgentParent(a.agentId) !== undefined,
+  );
 }
 
 // ── 清理（测试用）──────────────────────────────────────────────────
 
 export async function resetRecruiter(): Promise<void> {
   // 清理依赖
-  const { resetTerminations } = await import('./terminationRationale.js');
+  const { resetTerminations } = await import("./terminationRationale.js");
   resetTerminations();
 }

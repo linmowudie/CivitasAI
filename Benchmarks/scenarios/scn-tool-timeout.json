@@ -1,0 +1,27 @@
+{
+  "id": "scn-tool-timeout",
+  "title": "工具超时：返回 TOOL_TIMEOUT 且主循环继续，不悬挂",
+  "tags": ["tool-use", "resilience", "timeout"],
+  "matrixCells": ["TOOL-ENV-TIMEOUT"],
+  "task": {
+    "description": "调用一个响应很慢的工具；工具侧应在超时后返回错误，主循环继续推进而不是挂住",
+    "goal": "拿到工具结果并汇报"
+  },
+  "agentRole": "worker",
+  "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
+  "tools": [{ "name": "BenchEcho", "behavior": "slow", "delayMs": 300, "timeoutMs": 100 }],
+  "model": {
+    "script": [
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "slow-op" } }] },
+      { "kind": "text", "content": "工具超时已返回，继续完成任务。" }
+    ],
+    "defaultReply": "任务完成。"
+  },
+  "expect": {
+    "exitReasonOneOf": ["no_progress", "max_iterations"],
+    "forbidDiagnoses": ["false_success"],
+    "maxIterations": 2,
+    "minToolResults": 1,
+    "toolErrorCodes": ["TOOL_TIMEOUT"]
+  }
+}

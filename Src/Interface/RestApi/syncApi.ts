@@ -17,10 +17,13 @@
  * 仅当没有对应副作用记录时才使用新键 `tool:<event_id>`。
  */
 
-import { json, registerRoute } from './router.js';
-import { getActiveOwner } from '../../Services/AccountScope/activeAccount.js';
-import { getDatabases, isDatabaseInitialized } from '../../Infra/Db/database.js';
-import { logger } from '../../Infra/Logging/logger.js';
+import { json, registerRoute } from "./router.js";
+import { getActiveOwner } from "../../Services/AccountScope/activeAccount.js";
+import {
+  getDatabases,
+  isDatabaseInitialized,
+} from "../../Infra/Db/database.js";
+import { logger } from "../../Infra/Logging/logger.js";
 
 export interface DerivedStatEvent {
   kind: string;
@@ -72,10 +75,11 @@ export function deriveStatsEvents(
     return { events, counts, since, nextSince: since, truncated: false };
   }
 
-  let main: import('better-sqlite3').Database;
+  let main: import("better-sqlite3").Database;
   try {
     main = getDatabases().main;
-    if (!main) return { events, counts, since, nextSince: since, truncated: false };
+    if (!main)
+      return { events, counts, since, nextSince: since, truncated: false };
   } catch {
     return { events, counts, since, nextSince: since, truncated: false };
   }
@@ -84,7 +88,9 @@ export function deriveStatsEvents(
   const safeParseObject = (raw: string): Record<string, unknown> => {
     try {
       const parsed: unknown = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+      return parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
@@ -96,9 +102,9 @@ export function deriveStatsEvents(
     } catch (e) {
       // 表可能不存在（未迁移）——按空结果处理；但**必须留日志**：
       // 静默吞错曾掩盖了一次 schema 变更失败（统计会"静默变空"，很难发现）。
-      logger.warn('统计派生查询失败（按空结果处理）', {
-        source: 'syncApi',
-        sql: sql.trim().split('\n')[0],
+      logger.warn("统计派生查询失败（按空结果处理）", {
+        source: "syncApi",
+        sql: sql.trim().split("\n")[0],
         error: e instanceof Error ? e.message : String(e),
       });
       return [];
@@ -110,7 +116,11 @@ export function deriveStatsEvents(
   const perSourceLimit = limit + 1;
 
   // ① 会话轮次：助手消息（**只统计当前账号**，否则 B 会把 A 的轮次算进自己的统计）
-  const messageRows = safeAll<{ message_id: string; created_at: number; model: string | null }>(
+  const messageRows = safeAll<{
+    message_id: string;
+    created_at: number;
+    model: string | null;
+  }>(
     `SELECT message_id, created_at, model FROM chat_messages
      WHERE role = 'assistant' AND owner_user_id = ? AND created_at > ? AND created_at <= ?
      ORDER BY created_at ASC LIMIT ?`,
@@ -118,7 +128,7 @@ export function deriveStatsEvents(
   );
   for (const row of messageRows) {
     events.push({
-      kind: 'chat.turn',
+      kind: "chat.turn",
       value: 1,
       occurredAt: row.created_at,
       clientEventId: `msg:${row.message_id}`,
@@ -128,7 +138,12 @@ export function deriveStatsEvents(
   }
 
   // ② Token 消耗：交易流水（按属主）
-  const txRows = safeAll<{ transaction_id: string; amount: number; created_at: number; type: string }>(
+  const txRows = safeAll<{
+    transaction_id: string;
+    amount: number;
+    created_at: number;
+    type: string;
+  }>(
     `SELECT transaction_id, amount, created_at, type FROM token_transactions
      WHERE owner_user_id = ? AND created_at > ? AND created_at <= ?
      ORDER BY created_at ASC LIMIT ?`,
@@ -136,7 +151,7 @@ export function deriveStatsEvents(
   );
   for (const row of txRows) {
     events.push({
-      kind: 'token.consumed',
+      kind: "token.consumed",
       value: Math.abs(Number(row.amount) || 0),
       occurredAt: row.created_at,
       clientEventId: `tx:${row.transaction_id}`,
@@ -148,7 +163,7 @@ export function deriveStatsEvents(
   // ③ 工具调用（FE-027：覆盖**全部**工具调用，且不重复计数）
   //
   //  数据源 A：`ai_events` 的 `agent:tool_call_result` —— 每次工具调用一条，
-  //            包含安全只读工具（dir.list/file.read/…），修复了此前"只统计副作用日志"的口径缺口。
+  //            包含安全只读工具（DirList/FileRead/…），修复了此前"只统计副作用日志"的口径缺口。
   //  数据源 B：`effect_journal` —— 危险/非幂等工具的副作用记录（历史上已按 `eff:<effect_id>` 同步过）。
   //
   //  幂等键稳定性：**绝不新增键**。若一次调用同时存在于两个来源，则优先沿用历史键 `eff:<effect_id>`
@@ -157,14 +172,23 @@ export function deriveStatsEvents(
   //  这样即使客户端重置水位、全量重传，也不会把同一次调用算两次。
   const effectWindowStart = Math.max(0, since - PAIRING_LOOKBACK_MS);
   const effectRows = safeAll<{
-    effect_id: string; kind: string; started_at: number; status: string; iteration: number; tool_call_id: string | null;
+    effect_id: string;
+    kind: string;
+    started_at: number;
+    status: string;
+    iteration: number;
+    tool_call_id: string | null;
   }>(
     `SELECT effect_id, kind, started_at, status, iteration, tool_call_id FROM effect_journal
      WHERE owner_user_id = ? AND started_at > ? AND started_at <= ?
      ORDER BY started_at ASC LIMIT ?`,
     [owner, effectWindowStart, now, perSourceLimit],
   );
-  const toolEventRows = safeAll<{ event_id: string; ts: number; data_json: string }>(
+  const toolEventRows = safeAll<{
+    event_id: string;
+    ts: number;
+    data_json: string;
+  }>(
     `SELECT event_id, ts, data_json FROM ai_events
      WHERE owner_user_id = ? AND type = 'agent:tool_call_result' AND ts > ? AND ts <= ?
      ORDER BY ts ASC LIMIT ?`,
@@ -179,13 +203,19 @@ export function deriveStatsEvents(
   // ① 先处理工具事件：能配到 effect 的沿用 `eff:`，否则用 `tool:`
   for (const row of toolEventRows) {
     const payload = safeParseObject(row.data_json);
-    const toolCallId = typeof payload['toolCallId'] === 'string' ? payload['toolCallId'] : '';
-    const toolName = typeof payload['toolName'] === 'string' ? payload['toolName'] : '';
-    const status = typeof payload['status'] === 'string' ? payload['status'] : '';
+    const toolCallId =
+      typeof payload["toolCallId"] === "string" ? payload["toolCallId"] : "";
+    const toolName =
+      typeof payload["toolName"] === "string" ? payload["toolName"] : "";
+    const status =
+      typeof payload["status"] === "string" ? payload["status"] : "";
 
     // 精确配对（tool_call_id）优先
     let matched = toolCallId
-      ? effectRows.find((e) => e.tool_call_id === toolCallId && !claimedEffects.has(e.effect_id))
+      ? effectRows.find(
+          (e) =>
+            e.tool_call_id === toolCallId && !claimedEffects.has(e.effect_id),
+        )
       : undefined;
     // 旧数据（无 tool_call_id）退化为时间近似配对：取时间最近且未被认领的 effect
     if (!matched) {
@@ -204,19 +234,19 @@ export function deriveStatsEvents(
       claimedEffects.add(matched.effect_id);
       if (matched.tool_call_id) claimedToolCallIds.add(matched.tool_call_id);
       events.push({
-        kind: 'tool.call',
+        kind: "tool.call",
         value: 1,
         occurredAt: row.ts,
         clientEventId: `eff:${matched.effect_id}`,
-        meta: { toolName, status, source: 'effect+event' },
+        meta: { toolName, status, source: "effect+event" },
       });
     } else {
       events.push({
-        kind: 'tool.call',
+        kind: "tool.call",
         value: 1,
         occurredAt: row.ts,
         clientEventId: `tool:${row.event_id}`,
-        meta: { toolName, status, source: 'event' },
+        meta: { toolName, status, source: "event" },
       });
     }
     counts.toolCall++;
@@ -228,27 +258,32 @@ export function deriveStatsEvents(
     // 已被某个 toolCallId 认领（同一调用的事件已上报）→ 跳过，避免重复
     if (row.tool_call_id && claimedToolCallIds.has(row.tool_call_id)) continue;
     events.push({
-      kind: 'tool.call',
+      kind: "tool.call",
       value: 1,
       occurredAt: row.started_at,
       clientEventId: `eff:${row.effect_id}`,
-      meta: { effectKind: row.kind, status: row.status, source: 'effect' },
+      meta: { effectKind: row.kind, status: row.status, source: "effect" },
     });
     counts.toolCall++;
   }
 
   // 全局排序（三类合并后按时间升序），并按 limit 截断
-  events.sort((a, b) => a.occurredAt - b.occurredAt || a.clientEventId.localeCompare(b.clientEventId));
+  events.sort(
+    (a, b) =>
+      a.occurredAt - b.occurredAt ||
+      a.clientEventId.localeCompare(b.clientEventId),
+  );
   const truncated = events.length > limit;
   const sliced = truncated ? events.slice(0, limit) : events;
-  const nextSince = sliced.length > 0 ? sliced[sliced.length - 1]!.occurredAt : since;
+  const nextSince =
+    sliced.length > 0 ? sliced[sliced.length - 1]!.occurredAt : since;
 
   return {
     events: sliced,
     counts: {
-      chatTurn: sliced.filter((e) => e.kind === 'chat.turn').length,
-      tokenConsumed: sliced.filter((e) => e.kind === 'token.consumed').length,
-      toolCall: sliced.filter((e) => e.kind === 'tool.call').length,
+      chatTurn: sliced.filter((e) => e.kind === "chat.turn").length,
+      tokenConsumed: sliced.filter((e) => e.kind === "token.consumed").length,
+      toolCall: sliced.filter((e) => e.kind === "tool.call").length,
     },
     since,
     nextSince,
@@ -258,9 +293,12 @@ export function deriveStatsEvents(
 
 /** 注册同步相关本地路由 */
 export function registerSyncRoutes(): void {
-  registerRoute('GET', '/api/sync/stats-events', async (req) => {
-    const since = Number(req.query['since'] ?? DEFAULT_SINCE) || 0;
-    const limit = Math.min(Number(req.query['limit'] ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, MAX_LIMIT);
+  registerRoute("GET", "/api/sync/stats-events", async (req) => {
+    const since = Number(req.query["since"] ?? DEFAULT_SINCE) || 0;
+    const limit = Math.min(
+      Number(req.query["limit"] ?? DEFAULT_LIMIT) || DEFAULT_LIMIT,
+      MAX_LIMIT,
+    );
     return json(deriveStatsEvents(since, limit));
   });
 }

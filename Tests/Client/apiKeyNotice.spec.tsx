@@ -29,7 +29,9 @@ describe('MISSING_API_KEY 标记', () => {
       resolve(import.meta.dirname, '../../Src/Interface/IpcBridge/ipcBridge.ts'),
       'utf8',
     );
-    const m = backendSrc.match(/export const MISSING_API_KEY_MARKER = '([^']*)'/);
+    // 引号风格无关（2026-10-15）：后端源码已统一为双引号，原正则只认单引号 → 误报。
+    // 断言意图不变：仍严格比对两侧**取值**（下一行 expect(m![1]).toBe(...)）。
+    const m = backendSrc.match(/export const MISSING_API_KEY_MARKER\s*=\s*['"]([^'"]*)['"]/);
     expect(m).not.toBeNull();
     expect(m![1]).toBe(MISSING_API_KEY_MARKER);
   });

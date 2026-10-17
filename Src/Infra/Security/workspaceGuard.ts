@@ -5,8 +5,8 @@
  *
  * 规则：
  * - 每个会话/任务绑定一个工作目录；未指定时使用 `<项目根>/Data/workspaces/<sessionId>/`（空目录）
- * - 所有路径型工具（file.read / file.write / file.edit / dir.list / file.grep）
- *   与 shell.exec 都以该目录为**根**
+ * - 所有路径型工具（FileRead / FileWrite / FileEdit / DirList / FileGrep）
+ *   与 ShellExec 都以该目录为**根**
  * - 解析后的真实路径必须落在根内：拒绝 `../` 逃逸、根外绝对路径、
  *   以及经符号链接逃逸（对最深的已存在祖先做 realpath 后再比较）
  *
@@ -15,15 +15,15 @@
  * - `workspaceGuard`：任务级约束（会话工作目录），更细粒度、在工具执行期生效
  */
 
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
-import { getWorkspaceRoot, ensureDirSafe } from '../Fs/pathResolver.js';
+import type { Result } from "../types.js";
+import { ok, err } from "../types.js";
+import { getWorkspaceRoot, ensureDirSafe } from "../Fs/pathResolver.js";
 
 /** 工作目录根名（位于工作空间根下，与 workspaceIsolator 的 `Workspace/` 区分） */
-const WORKSPACES_DIR_NAME = 'workspaces';
+const WORKSPACES_DIR_NAME = "workspaces";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -49,7 +49,10 @@ export function workspaceBaseDir(): string {
  * 计算会话的默认工作目录：`<workspaces 基址>/<sessionId>/`
  * 基址缺省为项目根 `Data/workspaces/`。
  */
-export function defaultWorkspaceDir(sessionId: string, baseDir?: string): string {
+export function defaultWorkspaceDir(
+  sessionId: string,
+  baseDir?: string,
+): string {
   return resolve(baseDir ?? workspaceBaseDir(), sessionId);
 }
 
@@ -63,11 +66,11 @@ export function ensureWorkspaceDir(dir: string): Result<string> {
     if (!existsSync(abs)) {
       mkdirSync(abs, { recursive: true });
     } else if (!statSync(abs).isDirectory()) {
-      return err(`工作目录不是目录: ${abs}`, 'ERROR');
+      return err(`工作目录不是目录: ${abs}`, "ERROR");
     }
     return ok(abs);
   } catch (e) {
-    return err(`创建工作目录失败: ${abs} — ${errorMessage(e)}`, 'ERROR');
+    return err(`创建工作目录失败: ${abs} — ${errorMessage(e)}`, "ERROR");
   }
 }
 
@@ -89,7 +92,10 @@ function realPathOf(target: string): string {
 }
 
 /** 目标路径（真实化后）是否落在工作目录内 */
-export function isWithinWorkspace(target: string, workspaceRoot: string): boolean {
+export function isWithinWorkspace(
+  target: string,
+  workspaceRoot: string,
+): boolean {
   const root = realPathOf(workspaceRoot);
   const abs = realPathOf(isAbsolute(target) ? target : resolve(root, target));
   if (abs === root) return true;
@@ -115,18 +121,21 @@ export function isWithinWorkspace(target: string, workspaceRoot: string): boolea
  */
 function stripDuplicatedRootPrefix(root: string, target: string): string {
   const rootSegs = root.split(/[\\/]+/).filter(Boolean);
-  const head = target.split(/[\\/]+/).filter(s => s !== '' && s !== '.');
+  const head = target.split(/[\\/]+/).filter((s) => s !== "" && s !== ".");
   if (head.length === 0) return target;
 
   const max = Math.min(rootSegs.length, head.length);
   for (let n = max; n >= 1; n--) {
-    const suffix = rootSegs.slice(rootSegs.length - n).join('/').toLowerCase();
-    const prefix = head.slice(0, n).join('/').toLowerCase();
+    const suffix = rootSegs
+      .slice(rootSegs.length - n)
+      .join("/")
+      .toLowerCase();
+    const prefix = head.slice(0, n).join("/").toLowerCase();
     if (suffix !== prefix) continue;
     // n==1：根内存在同名子目录 → 视为真实相对路径，不剥离
     if (n === 1 && existsSync(join(root, head[0]!))) return target;
     const rest = head.slice(n);
-    return rest.length > 0 ? rest.join(sep) : '.';
+    return rest.length > 0 ? rest.join(sep) : ".";
   }
   return target;
 }
@@ -135,17 +144,24 @@ function stripDuplicatedRootPrefix(root: string, target: string): string {
  * 把工具入参路径解析为工作目录内的绝对路径。
  * 越界一律拒绝（FATAL，不可重试）。
  */
-export function resolveWithinWorkspace(target: string, workspaceRoot: string): Result<string> {
-  if (!target || target.trim() === '') {
-    return err('路径不能为空', 'ERROR');
+export function resolveWithinWorkspace(
+  target: string,
+  workspaceRoot: string,
+): Result<string> {
+  if (!target || target.trim() === "") {
+    return err("路径不能为空", "ERROR");
   }
   const root = resolve(workspaceRoot);
   const trimmed = target.trim();
   // 相对路径先做"重复根"归一化（模型可能把工作目录尾部也写进相对路径）
-  const effective = isAbsolute(trimmed) ? trimmed : stripDuplicatedRootPrefix(root, trimmed);
-  const abs = isAbsolute(effective) ? resolve(effective) : resolve(root, effective);
+  const effective = isAbsolute(trimmed)
+    ? trimmed
+    : stripDuplicatedRootPrefix(root, trimmed);
+  const abs = isAbsolute(effective)
+    ? resolve(effective)
+    : resolve(root, effective);
   if (!isWithinWorkspace(abs, root)) {
-    return err(`路径越界：'${target}' 不在工作目录内（${root}）`, 'FATAL');
+    return err(`路径越界：'${target}' 不在工作目录内（${root}）`, "FATAL");
   }
   return ok(abs);
 }
@@ -159,23 +175,35 @@ export function resolveWithinWorkspace(target: string, workspaceRoot: string): R
  *
  * @returns 首个越界片段；未发现返回 null
  */
-export function findEscapingPathInCommand(command: string, workspaceRoot: string): string | null {
+export function findEscapingPathInCommand(
+  command: string,
+  workspaceRoot: string,
+): string | null {
   const tokens = command.split(/\s+/).filter(Boolean);
   for (const raw of tokens) {
-    const token = raw.replace(/^["']|["']$/g, '');
+    const token = raw.replace(/^["']|["']$/g, "");
 
     // 跳过命令行开关（`-x` / `--long`；Windows 下 `dir /s`、`taskkill /f` 这类 `/x`）
     // 注：Windows 下单段 `/x` 会被当作开关跳过——这是为避免误伤正常命令做的取舍；
     // 真实的越界路径通常含更深的层级（`/etc/passwd`、`C:\Windows\...`），仍会被检出。
     if (/^-/.test(token)) continue;
-    if (process.platform === 'win32' && /^\/[A-Za-z][\w-]*$/.test(token)) continue;
+    if (process.platform === "win32" && /^\/[A-Za-z][\w-]*$/.test(token))
+      continue;
 
-    const looksAbsolute = /^[A-Za-z]:[\\/]/.test(token) || token.startsWith('/') || token.startsWith('\\\\');
-    const looksEscaping = token.includes('..');
+    const looksAbsolute =
+      /^[A-Za-z]:[\\/]/.test(token) ||
+      token.startsWith("/") ||
+      token.startsWith("\\\\");
+    const looksEscaping = token.includes("..");
     if (!looksAbsolute && !looksEscaping) continue;
     if (!/^[A-Za-z]:[\\/]|^\/|^\\\\|\.\./.test(token)) continue;
 
-    if (!isWithinWorkspace(looksAbsolute ? token : resolve(workspaceRoot, token), workspaceRoot)) {
+    if (
+      !isWithinWorkspace(
+        looksAbsolute ? token : resolve(workspaceRoot, token),
+        workspaceRoot,
+      )
+    ) {
       return token;
     }
   }

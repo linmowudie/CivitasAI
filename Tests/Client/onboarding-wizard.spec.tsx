@@ -279,6 +279,60 @@ describe('OnboardingWizard', () => {
     expect((screen.getByRole('button', { name: /下一步/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  /**
+   * 端点不提供 /models（实测华为云 MaaS Token Plan 的 /plan/v2 返回 404 APIG.0101）：
+   * 旧实现下列表恒为空 ⇒ 模型勾选区不渲染 ⇒ `canProceed` 永远挡住"下一步"，
+   * 引导无法完成。修复后必须能从界面手填模型名继续。
+   */
+  it('端点不提供 /models：可手填模型名 → 勾选 → 才能继续（否则引导卡死）', async () => {
+    installElectronApi({
+      onboarding: {
+        getState: vi.fn(async () => ({ ok: true, data: SNAPSHOT })),
+        testProvider: vi.fn(async () => ({
+          ok: true,
+          data: {
+            ...PROBE_OK,
+            ok: true,
+            listOk: false,
+            listNotProvided: true,
+            listStatus: 404,
+            models: [],
+            modelsFromFallback: false,
+            chatOk: true,
+            chatModelUsed: 'GLM-5.1',
+            suggestedModel: 'GLM-5.1',
+            hint: '该端点不提供模型列表（GET /models 返回 404）：请手动填写一个模型名后再测试。',
+          },
+        })),
+      },
+    });
+    await useOnboardingStore.getState().check();
+    useOnboardingStore.setState({
+      needed: true,
+      step: 3,
+      draft: { providerId: 'custom-x', displayName: 'X', baseUrl: 'https://api.internal.corp/plan/v2', apiKey: 'sk' },
+    });
+
+    render(<OnboardingWizard onFinish={vi.fn()} />);
+    fireEvent.click(screen.getByText('测试连接'));
+
+    // 端点不提供列表时，必须出现手填入口，且如实说明"这不代表 Key 有问题"
+    await waitFor(() => expect(screen.getByLabelText('手动添加模型名')).toBeTruthy());
+    expect(screen.getAllByText(/该端点不提供模型列表/).length).toBeGreaterThan(0);
+    expect((screen.getByRole('button', { name: /下一步/ }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('手动添加模型名'), { target: { value: 'GLM-5.1' } });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    await waitFor(() =>
+      expect(useOnboardingStore.getState().probe?.models.map((m) => m.id)).toEqual(['GLM-5.1']),
+    );
+
+    // 手填的模型进入可勾选列表；勾选后才允许继续
+    fireEvent.click(screen.getByRole('button', { name: /GLM-5.1/ }));
+    await waitFor(() => expect(useOnboardingStore.getState().selectedModels.length).toBe(1));
+    expect((screen.getByRole('button', { name: /下一步/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('路由步骤：仲裁模型不足 3 个时不可继续', async () => {
     installElectronApi();
     await useOnboardingStore.getState().check();

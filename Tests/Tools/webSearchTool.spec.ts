@@ -1,5 +1,5 @@
 /**
- * FE-067 回归测试：web.search 真实实现 / 诚实失败（替代“恒空成功”桩）
+ * FE-067 回归测试：WebSearch 真实实现 / 诚实失败（替代“恒空成功”桩）
  *
  * 覆盖：
  *  - 未配置搜索服务 → NOT_ENABLED（fail-closed，绝不伪造成功）；
@@ -10,19 +10,27 @@
  * 说明：网络层经 vi.stubGlobal('fetch') 拦截（不发起真实请求）。
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { webSearch } from '../../Src/Tools/Builtin/Search/webSearch.js';
-import type { ToolExecutionContext } from '../../Src/Tools/Traits/toolSpec.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { webSearch } from "../../Src/Tools/Builtin/Search/webSearch.js";
+import {
+  initWhitelist,
+  clearWhitelist,
+} from "../../Src/Infra/Security/whitelist.js";
+import type { ToolExecutionContext } from "../../Src/Tools/Traits/toolSpec.js";
 
 const ctx = {
-  operationId: 'op-web-1',
-  agentId: 'agent-web-1',
-  agentRole: 'worker',
-  loopId: 'loop-web-1',
-  traceId: 'trace-web-1',
+  operationId: "op-web-1",
+  agentId: "agent-web-1",
+  agentRole: "worker",
+  loopId: "loop-web-1",
+  traceId: "trace-web-1",
 } as ToolExecutionContext;
 
-const ENV_KEYS = ['CIVITAS_WEB_SEARCH_API_KEY', 'SERPER_API_KEY', 'CIVITAS_WEB_SEARCH_ENDPOINT'] as const;
+const ENV_KEYS = [
+  "CIVITAS_WEB_SEARCH_API_KEY",
+  "SERPER_API_KEY",
+  "CIVITAS_WEB_SEARCH_ENDPOINT",
+] as const;
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -30,94 +38,142 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
+  // 出网白名单（矩阵 cell TOOL-SEC-EGRESS）：联网前必须命中白名单。
+  // 这里显式放行测试用端点；"未命中即拒"由专门用例覆盖。
+  initWhitelist({ networkWhitelist: ["google.serper.dev", "search.internal"] });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearWhitelist();
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
 });
 
-describe('FE-067 · web.search 工具', () => {
-  it('未配置搜索服务 → NOT_ENABLED（不伪造“成功空结果”）', async () => {
-    const result = await webSearch.execute({ query: 'Civitas-AI' }, ctx);
-    expect(result.status).toBe('error');
-    expect(result.error?.code).toBe('NOT_ENABLED');
+describe("FE-067 · WebSearch 工具", () => {
+  it("未配置搜索服务 → NOT_ENABLED（不伪造“成功空结果”）", async () => {
+    const result = await webSearch.execute({ query: "Civitas-AI" }, ctx);
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("NOT_ENABLED");
     expect(result.recoverable).toBe(false);
   });
 
-  it('空 query → INVALID_INPUT（先于配置检查）', async () => {
-    const result = await webSearch.execute({ query: '   ' }, ctx);
-    expect(result.status).toBe('error');
-    expect(result.error?.code).toBe('INVALID_INPUT');
+  it("空 query → INVALID_INPUT（先于配置检查）", async () => {
+    const result = await webSearch.execute({ query: "   " }, ctx);
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("INVALID_INPUT");
   });
 
-  it('配置 API Key → 真实调用（断言请求参数）并映射结果', async () => {
-    process.env['CIVITAS_WEB_SEARCH_API_KEY'] = 'test-key-123';
+  it("配置 API Key → 真实调用（断言请求参数）并映射结果", async () => {
+    process.env["CIVITAS_WEB_SEARCH_API_KEY"] = "test-key-123";
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
       json: async () => ({
         organic: [
-          { title: 'Civitas-AI 简介', link: 'https://example.com/a', snippet: '多智能体系统' },
-          { title: '第二条', link: 'https://example.com/b', snippet: '…' },
-          { title: '第三条', link: 'https://example.com/c', snippet: '…' },
+          {
+            title: "Civitas-AI 简介",
+            link: "https://example.com/a",
+            snippet: "多智能体系统",
+          },
+          { title: "第二条", link: "https://example.com/b", snippet: "…" },
+          { title: "第三条", link: "https://example.com/c", snippet: "…" },
         ],
       }),
     }));
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal("fetch", fetchMock);
 
-    const result = await webSearch.execute({ query: 'Civitas-AI 多智能体', maxResults: 2 }, ctx);
-    expect(result.status).toBe('success');
+    const result = await webSearch.execute(
+      { query: "Civitas-AI 多智能体", maxResults: 2 },
+      ctx,
+    );
+    expect(result.status).toBe("success");
 
     // 请求参数
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { method: string; headers: Record<string, string>; body: string }];
-    expect(url).toBe('https://google.serper.dev/search');
-    expect(init.method).toBe('POST');
-    expect(init.headers['X-API-KEY']).toBe('test-key-123');
-    expect(JSON.parse(init.body)).toEqual({ q: 'Civitas-AI 多智能体', num: 2 });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { method: string; headers: Record<string, string>; body: string },
+    ];
+    expect(url).toBe("https://google.serper.dev/search");
+    expect(init.method).toBe("POST");
+    expect(init.headers["X-API-KEY"]).toBe("test-key-123");
+    expect(JSON.parse(init.body)).toEqual({ q: "Civitas-AI 多智能体", num: 2 });
 
     // 结果映射（截取 maxResults）
-    const payload = JSON.parse(String(result.content)) as { count: number; results: Array<{ title: string; url: string }> };
+    const payload = JSON.parse(String(result.content)) as {
+      count: number;
+      results: Array<{ title: string; url: string }>;
+    };
     expect(payload.count).toBe(2);
-    expect(payload.results[0]!.title).toBe('Civitas-AI 简介');
-    expect(payload.results[0]!.url).toBe('https://example.com/a');
+    expect(payload.results[0]!.title).toBe("Civitas-AI 简介");
+    expect(payload.results[0]!.url).toBe("https://example.com/a");
   });
 
-  it('搜索服务 5xx → SEARCH_FAILED（可重试）', async () => {
-    process.env['CIVITAS_WEB_SEARCH_API_KEY'] = 'test-key';
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })));
+  it("搜索服务 5xx → SEARCH_FAILED（可重试）", async () => {
+    process.env["CIVITAS_WEB_SEARCH_API_KEY"] = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })),
+    );
 
-    const result = await webSearch.execute({ query: 'x' }, ctx);
-    expect(result.status).toBe('error');
-    expect(result.error?.code).toBe('SEARCH_FAILED');
+    const result = await webSearch.execute({ query: "x" }, ctx);
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("SEARCH_FAILED");
     expect(result.recoverable).toBe(true);
   });
 
-  it('超时（AbortError）→ SEARCH_TIMEOUT', async () => {
-    process.env['CIVITAS_WEB_SEARCH_API_KEY'] = 'test-key';
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      const e = new Error('aborted');
-      e.name = 'AbortError';
-      throw e;
-    }));
+  it("超时（AbortError）→ SEARCH_TIMEOUT", async () => {
+    process.env["CIVITAS_WEB_SEARCH_API_KEY"] = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const e = new Error("aborted");
+        e.name = "AbortError";
+        throw e;
+      }),
+    );
 
-    const result = await webSearch.execute({ query: 'x' }, ctx);
-    expect(result.status).toBe('error');
-    expect(result.error?.code).toBe('SEARCH_TIMEOUT');
+    const result = await webSearch.execute({ query: "x" }, ctx);
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("SEARCH_TIMEOUT");
   });
 
-  it('自定义端点（CIVITAS_WEB_SEARCH_ENDPOINT）生效', async () => {
-    process.env['CIVITAS_WEB_SEARCH_API_KEY'] = 'test-key';
-    process.env['CIVITAS_WEB_SEARCH_ENDPOINT'] = 'https://search.internal:8443/';
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ organic: [] }) }));
-    vi.stubGlobal('fetch', fetchMock);
+  it("自定义端点（CIVITAS_WEB_SEARCH_ENDPOINT）生效", async () => {
+    process.env["CIVITAS_WEB_SEARCH_API_KEY"] = "test-key";
+    process.env["CIVITAS_WEB_SEARCH_ENDPOINT"] =
+      "https://search.internal:8443/";
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ organic: [] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
 
-    await webSearch.execute({ query: 'x' }, ctx);
+    await webSearch.execute({ query: "x" }, ctx);
     const [url] = fetchMock.mock.calls[0] as unknown as [string];
-    expect(url).toBe('https://search.internal:8443/search'); // 尾部斜杠归一化
+    expect(url).toBe("https://search.internal:8443/search"); // 尾部斜杠归一化
+  });
+
+  it("TOOL-SEC-EGRESS: 未列入网络白名单的端点被拒绝，且不发请求", async () => {
+    // 矩阵 cell TOOL-SEC-EGRESS 的 oracle：联网工具调用前经白名单判定，未命中即拒绝并留痕。
+    // 旧实现直接 fetch —— 整张 networkWhitelist 被绕过（空白名单也能外联）。
+    process.env["CIVITAS_WEB_SEARCH_API_KEY"] = "test-key";
+    process.env["CIVITAS_WEB_SEARCH_ENDPOINT"] = "https://evil.example.com";
+    initWhitelist({ networkWhitelist: ["google.serper.dev"] }); // evil.example.com 不在名单
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ organic: [] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await webSearch.execute({ query: "x" }, ctx);
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("NETWORK_FORBIDDEN");
+    expect(result.recoverable).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled(); // 拒绝发生在请求之前
   });
 });

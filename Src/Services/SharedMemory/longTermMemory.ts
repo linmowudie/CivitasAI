@@ -10,15 +10,15 @@
  * 修复"重启即丢记忆"与"memory_id 重启后重用"（后者会污染云端幂等键）。
  */
 
-import type { AssertionLevel } from '../EventBus/eventTypes.js';
-import { EventType } from '../EventBus/eventTypes.js';
-import { createEvent, publish } from '../EventBus/eventBus.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
-import { logger } from '../../Infra/Logging/logger.js';
+import type { AssertionLevel } from "../EventBus/eventTypes.js";
+import { EventType } from "../EventBus/eventTypes.js";
+import { createEvent, publish } from "../EventBus/eventBus.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
+import { logger } from "../../Infra/Logging/logger.js";
 
-import { isEligibleForLongTerm } from './writeGuard.js';
-import { textRelevanceScore } from '../Retrieval/textScore.js';
+import { isEligibleForLongTerm } from "./writeGuard.js";
+import { textRelevanceScore } from "../Retrieval/textScore.js";
 import {
   persistMemory,
   persistAccess,
@@ -26,13 +26,16 @@ import {
   loadAllRows,
   rowToEntry,
   isPersistenceAvailable,
-} from './longTermMemoryStore.js';
-import { projectMemoryEntry, backfillMemoryEntries } from './memoryEntryStore.js';
+} from "./longTermMemoryStore.js";
+import {
+  projectMemoryEntry,
+  backfillMemoryEntries,
+} from "./memoryEntryStore.js";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
-export type MemoryCategory = 'rule' | 'fact' | 'decision' | 'pattern';
-export type MemoryStatus = 'active' | 'deprecated' | 'contradicted';
+export type MemoryCategory = "rule" | "fact" | "decision" | "pattern";
+export type MemoryStatus = "active" | "deprecated" | "contradicted";
 
 export interface LongTermMemoryEntry {
   memoryId: string;
@@ -61,9 +64,13 @@ let memoryCounter = 0;
  * `Src/Services/AccountScope/activeAccount.ts` 的属主为唯一真源，
  * 避免各处各有一套状态导致隔离出现缺口。
  */
-import { getActiveOwner } from '../AccountScope/activeAccount.js';
+import { getActiveOwner } from "../AccountScope/activeAccount.js";
 
-export { LOCAL_OWNER, setActiveOwner, getActiveOwner } from '../AccountScope/activeAccount.js';
+export {
+  LOCAL_OWNER,
+  setActiveOwner,
+  getActiveOwner,
+} from "../AccountScope/activeAccount.js";
 
 // ── 写入 ────────────────────────────────────────────────────────────
 
@@ -74,15 +81,18 @@ export function writeMemory(params: {
   title: string;
   content: string;
   category: MemoryCategory;
-  sourceTraceIds: string[];
+  /** 溯源 trace（可缺省；缺省=未提供溯源，不阻断写入） */
+  sourceTraceIds?: string[];
   sourceArbitrationIds?: string[];
   assertion?: AssertionLevel;
 }): Result<LongTermMemoryEntry> {
-  const assertion = params.assertion ?? 'observed';
+  const assertion = params.assertion ?? "observed";
 
   // §8.4: inferred/assumed 不进入长期记忆
   if (!isEligibleForLongTerm(assertion)) {
-    return err(`assertion="${assertion}" 不允许进入长期记忆（仅 observed 可入）`);
+    return err(
+      `assertion="${assertion}" 不允许进入长期记忆（仅 observed 可入）`,
+    );
   }
 
   const now = Date.now();
@@ -93,21 +103,23 @@ export function writeMemory(params: {
     title: params.title,
     content: params.content,
     category: params.category,
-    sourceTraceIds: [...params.sourceTraceIds],
+    // AG-SEC-POISON（设计 §3.4）：无溯源信息不构成拒绝理由——缺省按空数组处理，
+    // 不能因 params.sourceTraceIds 未传而抛 "not iterable"（调用方崩溃 ≠ 数据被隔离）。
+    sourceTraceIds: [...(params.sourceTraceIds ?? [])],
     sourceArbitrationIds: params.sourceArbitrationIds,
     assertion,
     createdAt: now,
     lastAccessedAt: now,
     accessCount: 0,
-    status: 'active',
+    status: "active",
   };
 
   memories.set(memoryId, entry);
   // 持久化（fail-safe：失败只告警，内存副本仍可用，不中断调用方）
   const persisted = persistMemory(entry, getActiveOwner());
   if (!persisted.ok) {
-    logger.warn('长时记忆写入未落库（重启后会丢失）', {
-      source: 'SharedMemory/LongTermMemory',
+    logger.warn("长时记忆写入未落库（重启后会丢失）", {
+      source: "SharedMemory/LongTermMemory",
       memoryId,
       error: persisted.error,
     });
@@ -134,7 +146,7 @@ function parseCounter(memoryId: string): number {
  */
 export function hydrateLongTermMemory(): Result<number> {
   if (!isPersistenceAvailable()) {
-    return err('数据库未初始化，无法回灌长时记忆');
+    return err("数据库未初始化，无法回灌长时记忆");
   }
   // 回灌 = "把当前属主的记忆载入内存"：先清空，
   // 否则切换账号后内存里仍残留上一个账号的记忆（FE-032 的关键一环）
@@ -152,8 +164,8 @@ export function hydrateLongTermMemory(): Result<number> {
   // 补齐共享记忆 KV 视图的存量投影（FE-034：历史记忆可能从未投影过；
   // INSERT OR IGNORE 幂等，不覆盖已有投影、不误 bump version）
   backfillMemoryEntries([...memories.values()], getActiveOwner());
-  logger.info('长时记忆已按属主回灌', {
-    source: 'SharedMemory/LongTermMemory',
+  logger.info("长时记忆已按属主回灌", {
+    source: "SharedMemory/LongTermMemory",
     owner: getActiveOwner(),
     count: rows.length,
     counter: memoryCounter,
@@ -170,11 +182,19 @@ export function listAllMemories(): LongTermMemoryEntry[] {
  * 批量导入（从云端恢复或本地库回灌）：按 memoryId 幂等 upsert，
  * 同时落库并把 ID 计数器推进到最大序号之后。导入目标为**当前属主**。
  */
-export function importMemories(entries: LongTermMemoryEntry[]): Result<{ imported: number; updated: number }> {
+export function importMemories(
+  entries: LongTermMemoryEntry[],
+): Result<{ imported: number; updated: number }> {
   for (const entry of entries) {
     // 类型/字段兜底：云端数据可能缺字段（防御性校验，避免脏数据入库）
-    if (!entry.memoryId || typeof entry.title !== 'string' || typeof entry.content !== 'string') {
-      return err(`导入失败：记忆条目缺少必要字段（memoryId=${String(entry.memoryId)}）`);
+    if (
+      !entry.memoryId ||
+      typeof entry.title !== "string" ||
+      typeof entry.content !== "string"
+    ) {
+      return err(
+        `导入失败：记忆条目缺少必要字段（memoryId=${String(entry.memoryId)}）`,
+      );
     }
   }
   let imported = 0;
@@ -206,18 +226,24 @@ export function searchMemory(query: {
   status?: MemoryStatus;
   limit?: number;
 }): LongTermMemoryEntry[] {
-  let result = [...memories.values()].filter(m => m.status !== 'deprecated');
-  if (query.category) result = result.filter(m => m.category === query.category);
-  if (query.status) result = result.filter(m => m.status === query.status);
+  let result = [...memories.values()].filter((m) => m.status !== "deprecated");
+  if (query.category)
+    result = result.filter((m) => m.category === query.category);
+  if (query.status) result = result.filter((m) => m.status === query.status);
   if (query.limit && query.limit > 0) result = result.slice(0, query.limit);
   // 更新访问时间
   const now = Date.now();
   for (const m of result) {
     m.lastAccessedAt = now;
     m.accessCount++;
-    persistAccess(m.memoryId, m.accessCount, m.lastAccessedAt, getActiveOwner());
+    persistAccess(
+      m.memoryId,
+      m.accessCount,
+      m.lastAccessedAt,
+      getActiveOwner(),
+    );
   }
-  return result.map(m => ({ ...m }));
+  return result.map((m) => ({ ...m }));
 }
 
 /**
@@ -241,28 +267,37 @@ export function searchMemories(
   const limit = options.limit && options.limit > 0 ? options.limit : 10;
   const minScore = options.minScore ?? 0.05;
 
-  let pool = [...memories.values()].filter(m => m.status !== 'deprecated');
-  if (options.category) pool = pool.filter(m => m.category === options.category);
-  if (options.status) pool = pool.filter(m => m.status === options.status);
+  let pool = [...memories.values()].filter((m) => m.status !== "deprecated");
+  if (options.category)
+    pool = pool.filter((m) => m.category === options.category);
+  if (options.status) pool = pool.filter((m) => m.status === options.status);
 
   const q = query.trim();
   let scored: Array<{ entry: LongTermMemoryEntry; score: number }>;
 
-  if (q === '') {
+  if (q === "") {
     // 空查询：浏览语义——按最近访问/访问频次排序（score=0，可由调用方忽略）
     scored = pool
-      .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt || b.accessCount - a.accessCount)
-      .map(entry => ({ entry, score: 0 }));
+      .sort(
+        (a, b) =>
+          b.lastAccessedAt - a.lastAccessedAt || b.accessCount - a.accessCount,
+      )
+      .map((entry) => ({ entry, score: 0 }));
   } else {
     scored = pool
-      .map(entry => ({
+      .map((entry) => ({
         entry,
-        score: Math.min(1,
-          textRelevanceScore(q, entry.title) * 0.6 + textRelevanceScore(q, entry.content) * 0.4,
+        score: Math.min(
+          1,
+          textRelevanceScore(q, entry.title) * 0.6 +
+            textRelevanceScore(q, entry.content) * 0.4,
         ),
       }))
-      .filter(s => s.score >= minScore)
-      .sort((a, b) => b.score - a.score || b.entry.lastAccessedAt - a.entry.lastAccessedAt);
+      .filter((s) => s.score >= minScore)
+      .sort(
+        (a, b) =>
+          b.score - a.score || b.entry.lastAccessedAt - a.entry.lastAccessedAt,
+      );
   }
 
   const result = scored.slice(0, limit);
@@ -270,9 +305,14 @@ export function searchMemories(
   for (const { entry } of result) {
     entry.lastAccessedAt = now;
     entry.accessCount++;
-    persistAccess(entry.memoryId, entry.accessCount, entry.lastAccessedAt, getActiveOwner());
+    persistAccess(
+      entry.memoryId,
+      entry.accessCount,
+      entry.lastAccessedAt,
+      getActiveOwner(),
+    );
   }
-  return result.map(r => ({ entry: { ...r.entry }, score: r.score }));
+  return result.map((r) => ({ entry: { ...r.entry }, score: r.score }));
 }
 
 export function getMemory(memoryId: string): LongTermMemoryEntry | undefined {
@@ -283,38 +323,46 @@ export function getMemory(memoryId: string): LongTermMemoryEntry | undefined {
   persistAccess(m.memoryId, m.accessCount, m.lastAccessedAt);
 
   // 自增强检测：当访问次数达到阈值时，发布 memory:self_reinforcing 事件
-  if (m.accessCount >= SELF_REINFORCING_THRESHOLD && m.status === 'active') {
-    publish(createEvent({
-      eventType: EventType.MEMORY_SELF_REINFORCING,
-      source: 'SharedMemory/LongTermMemory',
-      payload: {
-        memoryId: m.memoryId,
-        title: m.title,
-        accessCount: m.accessCount,
-        category: m.category,
-      },
-    }));
+  if (m.accessCount >= SELF_REINFORCING_THRESHOLD && m.status === "active") {
+    publish(
+      createEvent({
+        eventType: EventType.MEMORY_SELF_REINFORCING,
+        source: "SharedMemory/LongTermMemory",
+        payload: {
+          memoryId: m.memoryId,
+          title: m.title,
+          accessCount: m.accessCount,
+          category: m.category,
+        },
+      }),
+    );
   }
 
   return { ...m };
 }
 
-export function deprecateMemory(memoryId: string, _reason?: string): Result<void> {
+export function deprecateMemory(
+  memoryId: string,
+  _reason?: string,
+): Result<void> {
   const m = memories.get(memoryId);
   if (!m) return err(`Memory ${memoryId} 不存在`);
-  m.status = 'deprecated';
-  persistStatus(memoryId, 'deprecated', undefined, getActiveOwner());
+  m.status = "deprecated";
+  persistStatus(memoryId, "deprecated", undefined, getActiveOwner());
   // 状态变更同步镜像到 KV 视图（FE-034）
   projectMemoryEntry(m, getActiveOwner());
   return ok(undefined);
 }
 
-export function contradictMemory(memoryId: string, contradictedBy: string): Result<void> {
+export function contradictMemory(
+  memoryId: string,
+  contradictedBy: string,
+): Result<void> {
   const m = memories.get(memoryId);
   if (!m) return err(`Memory ${memoryId} 不存在`);
-  m.status = 'contradicted';
+  m.status = "contradicted";
   m.contradictedBy = contradictedBy;
-  persistStatus(memoryId, 'contradicted', contradictedBy, getActiveOwner());
+  persistStatus(memoryId, "contradicted", contradictedBy, getActiveOwner());
   // 状态变更同步镜像到 KV 视图（FE-034）
   projectMemoryEntry(m, getActiveOwner());
   return ok(undefined);

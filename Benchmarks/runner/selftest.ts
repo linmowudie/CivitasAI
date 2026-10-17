@@ -119,7 +119,7 @@ function assertEqual<T>(name: string, actual: T, expected: T): void {
     iterations: [
       turn({
         index: 1,
-        toolCalls: [{ name: "bench.read", arguments: { path: "a" } }],
+        toolCalls: [{ name: "BenchRead", arguments: { path: "a" } }],
         toolResultStatuses: ["success"],
         outputChars: 0,
       }),
@@ -139,7 +139,7 @@ function assertEqual<T>(name: string, actual: T, expected: T): void {
   const iter = [1, 2, 3, 4].map((i) =>
     turn({
       index: i,
-      toolCalls: [{ name: "bench.echo", arguments: { text: `s-${i}` } }],
+      toolCalls: [{ name: "BenchEcho", arguments: { text: `s-${i}` } }],
       toolResultStatuses: ["success"],
       outputChars: 0,
     }),
@@ -199,7 +199,7 @@ function assertEqual<T>(name: string, actual: T, expected: T): void {
   const calls = [1, 2, 3].map((i) =>
     turn({
       index: i,
-      toolCalls: [{ name: "bench.echo", arguments: { text: "same" } }],
+      toolCalls: [{ name: "BenchEcho", arguments: { text: "same" } }],
       toolResultStatuses: ["success"],
     }),
   );
@@ -220,7 +220,7 @@ function assertEqual<T>(name: string, actual: T, expected: T): void {
     iterations: [
       turn({
         index: 1,
-        toolCalls: [{ name: "bench.read", arguments: {} }],
+        toolCalls: [{ name: "BenchRead", arguments: {} }],
         toolResultStatuses: [],
       }),
     ],
@@ -248,7 +248,7 @@ function assertEqual<T>(name: string, actual: T, expected: T): void {
     iterations: [
       turn({
         index: 1,
-        toolCalls: [{ name: "bench.fail", arguments: {} }],
+        toolCalls: [{ name: "BenchFail", arguments: {} }],
         toolResultStatuses: ["error"],
       }),
     ],
@@ -314,6 +314,55 @@ function checkPassed(t: RunTrace, id: string): boolean | undefined {
   assertEqual(
     "K1 出现被禁止形态 → 判据失败",
     checkPassed(t, "CHK-NO-FORBIDDEN-DIAGNOSIS"),
+    false,
+  );
+}
+{
+  /*
+   * 反面证据 vs 正面证据（2026-10-17 实测踩到的假绿）。
+   *
+   * AG-ENV-TOOLLOOP 的 oracle 是「诊断出 tool_loop 且退出类别不是 success」。
+   * 若场景只写 forbidDiagnoses / exitReasonOneOf，那么"系统压根没识别出极限环、
+   * 只是耗尽迭代上限"也会通过 —— 于是 cell 声称的能力比实际测到的强。
+   *
+   * K2：同工具同参 3 次 → 真的诊断出 tool_loop，正面判据通过；
+   * K3：每次参数都不同（无极限环）→ 必须判 failed，不能因为"没被禁止"就放行。
+   */
+  const loopTurns = [1, 2, 3].map((i) =>
+    turn({
+      index: i,
+      toolCalls: [{ name: "BenchEcho", arguments: { text: "same" } }],
+      toolResultStatuses: ["success"],
+    }),
+  );
+  const loopTrace = trace({
+    exitReason: "no_progress",
+    totalIterations: 3,
+    iterations: loopTurns,
+    expect: { requiredDiagnoses: ["tool_loop"], allowDiagnoses: ["tool_loop"] },
+  });
+  assertEqual(
+    "K2 真的诊断出 tool_loop → CHK-REQUIRED-DIAGNOSIS 通过（info 降级不影响类型匹配）",
+    checkPassed(loopTrace, "CHK-REQUIRED-DIAGNOSIS"),
+    true,
+  );
+
+  const distinctTurns = [1, 2, 3].map((i) =>
+    turn({
+      index: i,
+      toolCalls: [{ name: "BenchEcho", arguments: { text: `attempt-${i}` } }],
+      toolResultStatuses: ["success"],
+    }),
+  );
+  const noLoopTrace = trace({
+    exitReason: "no_progress",
+    totalIterations: 3,
+    iterations: distinctTurns,
+    expect: { requiredDiagnoses: ["tool_loop"] },
+  });
+  assertEqual(
+    "K3 未诊断出被测形态 → CHK-REQUIRED-DIAGNOSIS 失败（不许用反向断言冒充正向证据）",
+    checkPassed(noLoopTrace, "CHK-REQUIRED-DIAGNOSIS"),
     false,
   );
 }
@@ -478,8 +527,37 @@ function checkPassed(t: RunTrace, id: string): boolean | undefined {
 // ═══════════════════════════════════════════════════════════════════
 
 const GUARD = resolve(BENCH_ROOT, "..", "Scripts", "experimentMatrix.cjs");
+const STATIC_RECON = resolve(BENCH_ROOT, "..", "Scripts", "staticRecon.cjs");
 const REAL_MATRIX_PATH = join(BENCH_ROOT, "experimentMatrix.json");
 const TMP = join(tmpdir(), `bench-selftest-${process.pid}`);
+
+/**
+ * 取一个"**当前确实为红**"的静态检查 id。
+ *
+ * Q8 是**负向**用例：它需要一个静态锁不成立的检查当夹具。
+ * 早期这里硬编码了 `SC-GAP-TOOL-EGRESS`；2026-10-17 该缺口真被修好后，
+ * 夹具前提失效 → 自测变红（自测确实盯着真实状态，但硬编码把维护成本转嫁给了
+ * "修缺口的人"）。改为每次从 `staticRecon --json` 的实跑结果里取第一个红色检查：
+ * 缺口修掉就自动换下一个，自测不再因"债被还了"而假红。
+ */
+function firstFailingStaticCheckId(): string {
+  try {
+    const out = execFileSync(process.execPath, [STATIC_RECON, "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsed = JSON.parse(out) as {
+      checks?: Array<{ id?: string; passed?: boolean }>;
+    };
+    const red = (parsed.checks ?? []).find(
+      (c) => c.passed === false && typeof c.id === "string",
+    );
+    if (red?.id) return red.id;
+  } catch {
+    /* 落回兜底 id */
+  }
+  return "SC-GAP-TOOL-SANDBOX";
+}
 
 interface GuardReport {
   cells: number;
@@ -615,9 +693,12 @@ function brokenMatrix(mutate: (m: any) => void, name: string): string {
   // 这三条不测"能通过"，只测"**能拦下来**"：一个只会放行的守卫与没有守卫等价。
 
   // Q8：标 existing-covered 但静态检查未通过（锁不成立）→ 必须报错
+  // 夹具的 ref 必须指向"今天确实为红"的检查 —— 动态取第一个红色检查，
+  // 避免缺口被修好后夹具前提失效（2026-10-17 踩到：原硬编码 SC-GAP-TOOL-EGRESS 已翻绿）。
   const p8 = brokenMatrix((m) => {
     m.cells[0].status = "existing-covered";
-    m.cells[0].anchor = { kind: "static", ref: "SC-GAP-TOOL-EGRESS" }; // 该检查今天为红
+    m.cells[0].anchor = { kind: "static", ref: firstFailingStaticCheckId() };
+    m.cells[0].attestation = "static"; // 与 anchor.kind 一致，让违规只剩"静态检查未通过"这一条
   }, "broken-static-lock.json");
   const r8 = runGuard(p8);
   assert(

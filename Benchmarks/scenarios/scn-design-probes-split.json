@@ -1,0 +1,85 @@
+{
+  "id": "scn-design-probes-split",
+  "title": "设计契约探针·Agent 分裂：血缘/继承/深度/授权/可见性/自分裂/自合并/相似度/闭环/冲突域/同级/每步一个/合并形态",
+  "tags": [
+    "design-contract",
+    "real-call"
+  ],
+  "matrixCells": [
+    "SPLIT-SEM-BLOODLINE",
+    "SPLIT-SEM-INHERIT",
+    "SPLIT-SEM-DEPTH",
+    "SPLIT-SEM-AUTH",
+    "SPLIT-SEM-VISIBILITY",
+    "SPLIT-SEM-SELFSPLIT",
+    "SPLIT-SEM-SELFMERGE",
+    "SPLIT-SEM-SIMILARITY",
+    "SPLIT-SEM-CLOSURE",
+    "SPLIT-SEM-CONFLICTDOMAIN",
+    "SPLIT-SEM-PEER",
+    "SPLIT-SEM-ONEPERSTEP",
+    "SPLIT-SEM-MERGEKIND"
+  ],
+  "task": {
+    "description": "按设计文档声明的接口与 oracle 做真实调用验证（不读 Src 实现；接口缺失/不符即红）",
+    "goal": "让每个设计点在实验里都有可运行的证据"
+  },
+  "agentRole": "worker",
+  "assertProbes": [
+    "SPLIT-SEM-BLOODLINE",
+    "SPLIT-SEM-INHERIT",
+    "SPLIT-SEM-DEPTH",
+    "SPLIT-SEM-AUTH",
+    "SPLIT-SEM-VISIBILITY",
+    "SPLIT-SEM-SELFSPLIT",
+    "SPLIT-SEM-SELFMERGE",
+    "SPLIT-SEM-SIMILARITY",
+    "SPLIT-SEM-CLOSURE",
+    "SPLIT-SEM-CONFLICTDOMAIN",
+    "SPLIT-SEM-PEER",
+    "SPLIT-SEM-ONEPERSTEP",
+    "SPLIT-SEM-MERGEKIND"
+  ],
+  "loop": {
+    "maxIterations": 1,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "BenchEcho",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "设计契约探针场景：无需工具调用。"
+      }
+    ],
+    "defaultReply": "设计契约探针场景：无需工具调用。"
+  },
+  "expect": {
+    "exitReasonOneOf": [
+      "success",
+      "max_iterations"
+    ],
+    "assertProbesMustPass": [
+      "SPLIT-SEM-BLOODLINE",
+      "SPLIT-SEM-INHERIT",
+      "SPLIT-SEM-DEPTH",
+      "SPLIT-SEM-AUTH",
+      "SPLIT-SEM-VISIBILITY",
+      "SPLIT-SEM-SELFSPLIT",
+      "SPLIT-SEM-SELFMERGE",
+      "SPLIT-SEM-SIMILARITY",
+      "SPLIT-SEM-CLOSURE",
+      "SPLIT-SEM-CONFLICTDOMAIN",
+      "SPLIT-SEM-PEER",
+      "SPLIT-SEM-ONEPERSTEP",
+      "SPLIT-SEM-MERGEKIND"
+    ]
+  }
+}

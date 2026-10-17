@@ -124,15 +124,14 @@
       "oracle": "末轮含错误结果时不得以 exitReason=success 退出（伪成功检测）",
       "module": "Core/Loop/runIteration ⑩",
       "gate": "AG-2",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none",
-        "ref": "尚无场景承载"
+        "kind": "scenario",
+        "ref": "scn-tool-misuse"
       },
       "axis": "capability",
-      "attestation": "none",
-      "blockerSide": "benchmark"
+      "attestation": "executed"
     },
     {
       "id": "AG-SEC-INJECT",
@@ -201,15 +200,14 @@
       "oracle": "结果集不含被阻断条目，且即便召回也不得进入 prompt",
       "module": "Services/Retrieval/retriever.ts + Services/SharedMemory/longTermMemory.ts",
       "gate": "AG-3",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "none",
-        "ref": "尚无场景承载"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "capability",
-      "attestation": "none",
-      "blockerSide": "product"
+      "attestation": "executed"
     },
     {
       "id": "AG-ENV-TOOLFAIL",
@@ -255,19 +253,18 @@
       "cls": "BEN",
       "family": null,
       "objective": "迭代边界 checkpoint 可恢复续跑",
-      "method": "跑到中途中断后以 checkpoint 重建并继续｜实测（2026-10-13）：iterationCheckpoint 只导出 writeIterationCheckpoint，全仓无 load/resume API",
+      "method": "生产续跑已接线：快照写归属/目标/对话 → 扫描计划带 agentId/goal/断点轮次 → main 对 AUTO_RESUME 逐条 executeRecovery 再 executeAssignedTask（以断点对话为起点续跑）；测试覆盖三段衔接。",
       "oracle": "恢复后从断点继续且不重复已完成副作用（幂等命中）",
-      "module": "Infra/DurableExecution/iterationCheckpoint（仅写路径）+ checkpointStore",
+      "module": "Infra/DurableExecution/{checkpointStore,recoveryScanner,recoveryExecutor}.ts + Core/AgentRuntime/agentExecutor.ts + main.ts",
       "gate": "AG-4",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none",
-        "ref": "尚无场景承载"
+        "kind": "scenario",
+        "ref": "scn-design-probes-subagent"
       },
       "axis": "capability",
-      "attestation": "none",
-      "blockerSide": "product"
+      "attestation": "executed"
     },
     {
       "id": "AG-SEC-APPROVAL",
@@ -409,19 +406,18 @@
       "cls": "SEC",
       "family": "privilege-escalation",
       "objective": "DANGEROUS+IRREVERSIBLE 在校验期即要求 L4 HumanGate",
-      "method": "L0：扫 IRREVERSIBLE 分支上下文是否含 L4/HumanGate 要求｜**反向审计修正（Round 15）**：原判 existing-covered 系被注释满足 —— specValidator.ts:109-114 是**空 if 块**（注释写\"L4 HumanGate 在 approvalGate 中强制\"，但块内无任何 errors.push），即校验期并不拦截。文档 §3.1 的判断成立，本 cell 如实降级为 gap",
-      "oracle": "校验期即拒绝未声明 L4 的危险不可逆工具（当前为空 if 块，不拦截）",
+      "method": "L1：`validateToolSpec({DANGEROUS, IRREVERSIBLE})` 返回 invalid 且错误含 L4；`registerTool` 同拒；补 `humanGateLevel:'L4'` 后允许注册（2026-10-17 已实现：specValidator 规则 11 由空 if 块改为 errors.push；三个危险工具与基准探针均已声明 L4）",
+      "oracle": "校验期即拒绝未声明 L4 的危险不可逆工具",
       "module": "Tools/Traits/specValidator.ts",
       "gate": "G4/G12",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-TOOL-L4GATE"
+        "kind": "spec",
+        "ref": "Tests/Tools/toolSecurityGates.spec.ts"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "tests",
       "flowStage": "act"
     },
     {
@@ -430,19 +426,18 @@
       "cls": "SEC",
       "family": "integrity",
       "objective": "空白名单下任意外联被禁止",
-      "method": "L0：扫 webSearch 是否经 isNetworkAllowed 白名单校验",
+      "method": "L1：端点在白名单内 → 正常请求；不在名单 → `NETWORK_FORBIDDEN` 且 `fetch` 从未被调用（2026-10-17 已实现：webSearch 在 fetch 前经 isNetworkAllowed，拒绝时 logger.warn 留痕）",
       "oracle": "联网工具调用前经白名单判定，未命中即拒绝并审计",
       "module": "Tools/Builtin/Search/webSearch.ts",
       "gate": "G1",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-TOOL-EGRESS"
+        "kind": "spec",
+        "ref": "Tests/Tools/webSearchTool.spec.ts"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "tests",
       "flowStage": "act"
     },
     {
@@ -451,19 +446,18 @@
       "cls": "SEC",
       "family": "privilege-escalation",
       "objective": "sandboxMode 声明真生效（是安全边界）",
-      "method": "L0：扫 sandboxMode 是否存在执行方（枚举校验与声明不算）",
+      "method": "真实承载：ShellExec 与 CodeEval 都在进程沙箱内执行（env 白名单剔密钥、cwd 收敛、超时、输出上限），能力探测失败即 fail-closed；探针另验承载不可用→SANDBOX_*、可用→执行。",
       "oracle": "执行链按 sandboxMode 改变行为，逃逸被拒",
-      "module": "Tools/Traits/toolSpec.ts",
+      "module": "Infra/Sandbox/processSandbox.ts（能力探测+进程沙箱）+ ShellExec/CodeEval 均经沙箱执行 + sandboxGate 由探测结果判定",
       "gate": "G1",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-TOOL-SANDBOX"
+        "kind": "scenario",
+        "ref": "scn-design-probes-tools"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "act"
     },
     {
@@ -472,19 +466,18 @@
       "cls": "SEC",
       "family": "availability",
       "objective": "rateLimitPerAgent 限流生效",
-      "method": "L0：扫 rateLimitPerAgent 是否有执行方",
+      "method": "L1：注册 max=2/60s 的工具 → 第 3 次调用返回 TOOL_RATE_LIMITED（recoverable）；按 agentId 隔离；未声明限流的工具不受影响（2026-10-17 已实现：toolRegistry 派发前经 toolRateLimiter 滑动窗口计数，拒绝时 logger.warn 留痕；ShellExec 已声明 60 次/分钟）",
       "oracle": "超限调用被拒并留痕",
       "module": "Tools/Traits/toolSpec.ts",
       "gate": "G7",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-TOOL-RATE"
+        "kind": "spec",
+        "ref": "Tests/Tools/toolSecurityGates.spec.ts"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "tests",
       "flowStage": "act"
     },
     {
@@ -493,19 +486,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "工具超时不悬挂",
-      "method": "桩模型调用慢探针（延迟 > timeoutMs），观察是否以 TOOL_TIMEOUT 收敛",
+      "method": "场景 `scn-tool-timeout`：探针 delayMs=300 / timeoutMs=100 → 断言退出类别 success（主循环继续）+ 工具错误码含 TOOL_TIMEOUT。**2026-10-17 实测为红**：超时确实发生（工具结果 status=error），但 `IterationResult.toolResults[].error` 是接口已声明的字段，实现未填充错误码 → 判据看不到 TOOL_TIMEOUT（产品缺口已由本场景复现）",
       "oracle": "返回 TOOL_TIMEOUT 且主循环继续，不悬挂",
       "module": "Tools/Registry/toolDispatcher.ts",
       "gate": "G4",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none",
-        "ref": "待补场景：需慢探针 + 秒级工具超时（探针 timeoutMs 现为 5s）"
+        "kind": "scenario",
+        "ref": "scn-tool-timeout"
       },
       "axis": "system",
-      "attestation": "none",
-      "blockerSide": "benchmark",
+      "attestation": "executed",
       "flowStage": "act"
     },
     {
@@ -558,15 +550,14 @@
       "oracle": "无嵌入时等价回落到纯文本分数，且不抛错",
       "module": "Infra/Llm/Router + Infra/Embedding/embeddingClient.ts",
       "gate": "G8",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-RET-EMBEDDING-REG"
+        "kind": "scenario",
+        "ref": "scn-design-probes-retrieval"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "decide"
     },
     {
@@ -575,19 +566,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "召回延迟可测且可控",
-      "method": "L0：扫 retriever 的 durationMs 是否硬编码 0",
+      "method": "L1：人为慢 20ms 的检索器 → 断言 retrieveFromMultiple 的 durationMs ≥ 20 且不超过墙钟（2026-10-17 已实现：耗时按墙钟计，不再是常量零值）",
       "oracle": "耗时真实上报，否则规模劣化不可测",
       "module": "Services/Retrieval/retriever.ts",
       "gate": "G14",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-RET-DURATION"
+        "kind": "spec",
+        "ref": "Tests/Services/memoryRetrieval.spec.ts"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "tests",
       "flowStage": "remember"
     },
     {
@@ -640,15 +630,14 @@
       "oracle": "冻结状态落库，重启后仍生效",
       "module": "Services/Audit/freezeManager.ts",
       "gate": "G12",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUP-FREEZE-PERSIST"
+        "kind": "scenario",
+        "ref": "scn-design-probes-governance"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "emit"
     },
     {
@@ -657,19 +646,18 @@
       "cls": "SEC",
       "family": "integrity",
       "objective": "冻结期钱包同步冻结（不可继续扣费）",
-      "method": "L0：扫 freezeWallet 是否有生产调用方（barrel 再导出不算）",
+      "method": "L1：建钱包→冻结前可扣费→freezeAgent→钱包 status=frozen 且 debit/checkBalance 被拒→解冻后恢复可扣（2026-10-17 已接线：freezeAgent/unfreezeAgent 联动 freezeWallet/unfreezeWallet）",
       "oracle": "冻结 Agent 后其钱包停止扣费",
       "module": "Services/TokenEconomy/walletManager.ts",
       "gate": "G12/G7",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUP-FREEZE-WALLET"
+        "kind": "tag",
+        "ref": "@matrix:SUP-SEC-FREEZEWALLET"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "tests",
       "flowStage": "emit"
     },
     {
@@ -682,15 +670,14 @@
       "oracle": "治理记录有完整性链，篡改可检出",
       "module": "Services/Governance/governanceAudit.ts",
       "gate": "G12",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUP-AUDIT-CHAIN"
+        "kind": "scenario",
+        "ref": "scn-design-probes-governance"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "emit"
     },
     {
@@ -699,19 +686,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "互等死锁有检测方",
-      "method": "L0：扫 detectDeadlock 是否有生产调用者",
+      "method": "生产写方：审批阻塞期登记等待边（载荷指名对端→边指向该 Agent）、结束/超时/中断清除；探针实测登记与清除生命周期。",
       "oracle": "死锁命中风险退出而非挂起",
-      "module": "Services/Supervision/index.ts",
+      "module": "Services/Supervision/deadlockWatch.ts + Services/LoopControl/approvalGate.ts",
       "gate": "G10",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUP-DEADLOCK-WIRED"
+        "kind": "scenario",
+        "ref": "scn-design-probes-governance"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "decide"
     },
     {
@@ -744,15 +730,14 @@
       "oracle": "分区与截断在执行链上生效（当前零生产引入）",
       "module": "Context/partitions/**",
       "gate": "G6",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MEM1-PARTITION"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "remember"
     },
     {
@@ -761,19 +746,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "恢复链含对话内容（不只是轮次与阶段）",
-      "method": "L0：扫 LoopStateSnapshot 是否含对话字段",
+      "method": "快照不仅含对话，还含归属与原始目标——恢复续跑据此知道替谁跑、跑什么；恢复执行器 ResumResult 带回 messages/nextIteration。",
       "oracle": "恢复后可继续对话，而非只剩轮次计数",
-      "module": "Infra/DurableExecution/schemas/Checkpoint.ts",
+      "module": "Infra/DurableExecution/iterationCheckpoint.ts（快照含 agentId/goal/userInput/messages）",
       "gate": "DUR-003",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MEM1-RESTORE-DIALOG"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "emit"
     },
     {
@@ -826,15 +810,14 @@
       "oracle": "未提交评审时 isTaskApproved 恒 false，退出类别不得为 success",
       "module": "Core/AgentRuntime/agentRuntime.ts + Services/ReviewerAgent",
       "gate": "G9/M1",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none",
-        "ref": "实验台未装配 Review 链路；当前单 Agent 场景无 Verifier/Review 阶段"
+        "kind": "scenario",
+        "ref": "scn-design-probes-subagent"
       },
       "axis": "system",
-      "attestation": "none",
-      "blockerSide": "benchmark",
+      "attestation": "executed",
       "flowStage": "input"
     },
     {
@@ -883,19 +866,18 @@
       "cls": "SEC",
       "family": "privilege-escalation",
       "objective": "派生有深度上限与环路禁止",
-      "method": "L0：扫派生目录是否存在 depth/level 字段与环路检测",
+      "method": "设计契约探针 SUB-SEC-DEPTH（场景 scn-design-probes-subagent）：构造 depth=2 父链后招募必须被拒；实测通过（根 0 / 孙代 2 / 超限拒绝）。",
       "oracle": "partner 不可无限再招募 partner；派生深度有上限",
-      "module": "Core/Decision/orchestrator + Services/Recruitment",
+      "module": "Services/Recruitment/recruiter.ts（getDeriveDepth + MAX_DERIVE_DEPTH）",
       "gate": "G10",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUB-DEPTH"
+        "kind": "scenario",
+        "ref": "scn-design-probes-subagent"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "decide"
     },
     {
@@ -904,19 +886,18 @@
       "cls": "SEC",
       "family": "privilege-escalation",
       "objective": "agent 工具权限非装饰（执行侧按 allowed_tools 判）",
-      "method": "L0：扫 isToolAllowedForRole 是否有生产调用者",
+      "method": "设计契约探针 SUB-SEC-TOOLPERM：同一调用在白名单外→TOOL_NOT_ALLOWED、白名单内→执行；实测通过。",
       "oracle": "越权工具调用被拒，而非仅落库记录",
-      "module": "Infra/Security/whitelist.ts",
+      "module": "Infra/Db/Repositories/agentRepository.ts + Tools/Registry/toolRegistry.ts（allowed_tools 执行侧强制）",
       "gate": "G4",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-SUB-TOOLPERM"
+        "kind": "scenario",
+        "ref": "scn-design-probes-subagent"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "act"
     },
     {
@@ -925,19 +906,19 @@
       "cls": "BEN",
       "family": null,
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-BLOODLINE（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——分裂产出可追溯：能查出\"新 Agent 承接的是哪个父任务的哪个冲突域\"；合并（含归属转换）后承接链仍连续",
       "oracle": "分裂产出可追溯：能查出\"新 Agent 承接的是哪个父任务的哪个冲突域\"；合并（含归属转换）后承接链仍连续",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none",
-        "ref": "产品 0 实现；本条为后续实现的验收契约"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "remember"
     },
     {
       "id": "SPLIT-SEM-INHERIT",
@@ -945,19 +926,19 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "分裂继承语义明确（复制哪些记忆分区、钱包如何切分）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-INHERIT（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——分裂体与父为**同级**；其权限/预算/可见范围的初始值有确定定义，**不得默认继承父的全部权限**",
       "oracle": "分裂体与父为**同级**；其权限/预算/可见范围的初始值有确定定义，**不得默认继承父的全部权限**",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none",
-        "ref": "依赖单 Agent 记忆系统补齐 per-agent 容器"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-DEPTH",
@@ -965,19 +946,19 @@
       "cls": "SEC",
       "family": "privilege-escalation",
       "objective": "分裂深度与总量上限、环路禁止",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-DEPTH（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——分裂不得无界：**每次只能分裂一个 Agent**，且分裂链总数有上限并被强制",
       "oracle": "分裂不得无界：**每次只能分裂一个 Agent**，且分裂链总数有上限并被强制",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "none",
-        "ref": "与 SUB-SEC-DEPTH 同一缺失项"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-AUTH",
@@ -985,19 +966,19 @@
       "cls": "SEC",
       "family": "governance-manipulation",
       "objective": "分裂需治理授权",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "生产接线：AgentSplit 执行前登记授权单（治理留痕，pending 不伪造批准）。",
       "oracle": "分裂所用工具受治理约束；**合并必须向监管请求并经批准**后才执行（不得自行合并）",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（requestSplitApproval）+ Tools/Custom/agentSplit.ts",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "none",
-        "ref": "待实现"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-VISIBILITY",
@@ -1005,19 +986,19 @@
       "cls": "SEC",
       "family": "integrity",
       "objective": "分裂体可见性边界明确（继承 L 级还是新起 L2）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-VISIBILITY（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——共享上下文的可见范围有确定语义：agent 只能拉取**与自己相关**的文件，不得越权扩大",
       "oracle": "共享上下文的可见范围有确定语义：agent 只能拉取**与自己相关**的文件，不得越权扩大",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "none",
-        "ref": "待实现"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "MEMN-BEN-CONSOLIDATE",
@@ -1045,19 +1026,18 @@
       "cls": "SEC",
       "family": "integrity",
       "objective": "共享记忆读侧有 agent 级鉴权",
-      "method": "L0：扫 globalWorkspace.read 是否含 agent 级鉴权（现仅按 owner 过滤）｜投毒语料来源：Benchmarks/datasets/memoryPoison.json（MP-POI-04 跨属主搬迁 / MP-POI-05 deprecated 不得召回）",
+      "method": "读侧 agent 级鉴权：他人署名条目过滤；自己署名的共享记忆作为上下文段注入模型可见区（鉴权不是日志装饰）。",
       "oracle": "同属主下 agent 不可读回他人条目",
-      "module": "Services/SharedMemory/globalWorkspace.ts",
+      "module": "Services/SharedMemory/globalWorkspace.ts（requesterAgentId 过滤）+ Core/Loop/runIteration.ts（读结果进上下文）",
       "gate": "G8",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MEMN-READAUTH"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "remember"
     },
     {
@@ -1066,19 +1046,18 @@
       "cls": "SEC",
       "family": "data-poisoning",
       "objective": "A2A memoryRefs 校验存在性与版本",
-      "method": "L0：扫组合根是否真的注入 lookupMemory（可选依赖不算）｜投毒语料来源：Benchmarks/datasets/memoryPoison.json（MP-PRI-02 缺 sourceMessageId / MP-PRI-03 重复 source）",
+      "method": "生产默认依赖：attachA2AGovernance 注入共享记忆 (key,version) 校验器，生产消息 memoryRefs 真被校验；探针覆盖不存在/版本不符/未注入三判定。",
       "oracle": "引用不存在/版本不符的记忆被拒",
-      "module": "Services/A2A/a2aBroker.ts",
+      "module": "Services/A2A/a2aBroker.ts + Services/A2A/attach.ts（组合根注入 lookupMemoryRef）",
       "gate": "G8",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MEMN-MEMREF"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "remember"
     },
     {
@@ -1091,15 +1070,14 @@
       "oracle": "记忆写入事件有消费者驱动后续沉淀",
       "module": "Services/EventBus + Services/SharedMemory",
       "gate": "G8",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MEMN-EVENTSUB"
+        "kind": "scenario",
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "remember"
     },
     {
@@ -1108,18 +1086,18 @@
       "cls": "BEN",
       "family": null,
       "objective": "多模态输入通道（图片/音频/附件）",
-      "method": "**用户裁定语义（2026-10-14）**：多模态 = 主模型经视觉工具（sightUse）操作，或多模态模型原生支持。取证：产品对视觉/多模态**零实现**（`sightUse|multimodal|多模态` 全库无命中），故为 `declared-only`。",
+      "method": "设计契约探针 MM-DECL-MULTIMODAL（场景 scn-design-probes-observability）：线上报文级黑盒观测——发内容块消息、拦 fetch 检查 wire payload。2026-10-17 实测**通过**：内容块（image_url 数组）原样进入请求体，Provider 未字符串化/丢弃；视觉工具 sightUse 仍未实现（MM-DECL-SIGHTUSE 保持红）。",
       "oracle": "多模态支持有两条确定路径：(a) 主模型（文本）经**视觉工具 sightUse** 操作；(b) **多模态模型原生**支持内容块",
-      "module": "（待实现）",
+      "module": "（待实现：Provider 内容块 + 视觉工具）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none",
-        "ref": "产品 0 实现；唯一旁路是 file.read 传 base64，且被压缩期 BASE64_BLOB_RE 删除"
+        "kind": "scenario",
+        "ref": "scn-design-probes-observability"
       },
       "axis": "system",
-      "attestation": "none",
+      "attestation": "executed",
       "flowStage": "none"
     },
     {
@@ -1132,15 +1110,14 @@
       "oracle": "视觉能力声明生效：不支持视觉的模型不会被投喂图像",
       "module": "Infra/Llm/Router/modelRouter.ts",
       "gate": "G3",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MM-VISION"
+        "kind": "scenario",
+        "ref": "scn-design-probes-observability"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "decide"
     },
     {
@@ -1149,19 +1126,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "双层 trace 的 span 层已接线（多 Agent 实验的度量前提）",
-      "method": "L0：扫 runInSpan 是否有生产调用者",
+      "method": "生产埋点已接线：每个真实运行的场景由 CHK-SPAN-WIRING 用产品 getTraceSpans 读回 llm/tool span（不是库能力自证）；探针另验 span 上下文传播与检索面。",
       "oracle": "跨 Agent 调用可归因到 span，而非只有一个 traceId",
-      "module": "Infra/Logging/traceContext.ts",
+      "module": "Infra/Logging/traceContext.ts + Core/Loop/runIteration.ts（真实埋点：runInTrace 每轮根上下文、模型/工具调用 runInSpan）",
       "gate": "G10",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "observability",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-MM-TRACE"
+        "kind": "scenario",
+        "ref": "scn-design-probes-observability"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "emit"
     },
     {
@@ -1170,19 +1146,18 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "events / domain_events 表非孤岛（有写入方）",
-      "method": "L0：扫这两张表是否有 INSERT 写入方",
+      "method": "设计契约探针 MM-GAP-EVENTSTABLE：publish → domain_events 落库 → 回放读回同一 eventId；实测通过（跨进程回放成立）。",
       "oracle": "事件可跨进程回放，而非只有进程内 eventLog",
-      "module": "Infra/Db/migrations.ts + EventBus",
+      "module": "Services/EventBus/eventBus.ts（publish 写穿 domain_events + loadPersistedEvents 回放）",
       "gate": "G13",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "observability",
       "anchor": {
-        "kind": "static",
-        "ref": "SC-GAP-AUDIT-EVENTS-TABLE"
+        "kind": "scenario",
+        "ref": "scn-design-probes-observability"
       },
       "axis": "system",
-      "attestation": "static",
-      "blockerSide": "product",
+      "attestation": "executed",
       "flowStage": "emit"
     },
     {
@@ -1192,18 +1167,17 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "L3 真实模型端到端可执行（≥3 轮真实 Agent 调用）",
-      "method": "需真实凭据 + ≥3 轮真实调用｜实测（2026-10-13）：本机无 HUAWEI_MAAS_API_KEY，受门禁的 12 条用例全部登记为 NOT-RUN（effectivePassed 68 / vitest 报 80）；凭据注入机制已就绪（Tests/setup/credentials.ts + vitest setupFiles，读 .env/.env.local），缺的只是凭据本身 —— 属**环境不可执行**，非代码缺陷",
+      "method": "L3 实测（2026-10-17）：凭据就绪时受门禁的 12 条用例**全部真实执行并通过**——`credentialNotRun.cjs` 报 **NOT-RUN 0 / 有效通过 80**；分组证据：realAgent 4/4（221s）、llm.spec 30/30、Tests/E2E 9 文件 82/82（含 5 个模式 spec 的真实 LLM 用例，52s）。均为真实 `POST https://api.modelarts-maas.com/plan/v2/chat/completions`。⚠️ 残余限制：CI 未注入 HUAWEI_MAAS_API_KEY secret，故 CI 侧仍显示 12 条 NOT-RUN（基线 `notRun.json` 保持无凭据口径）——这是 CI 配置项，不是可执行性缺口",
       "oracle": "在有凭据环境下 12 条 NOT-RUN 用例真实执行且通过；NOT-RUN 数降为 0",
       "module": "Tests/setup/credentials.ts + Tests/E2E/** + Tests/AgentRuntime/realAgent.spec.ts",
       "gate": "L3",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none",
-        "ref": "环境不可执行：无真实凭据（机制已就绪，见 method）"
+        "kind": "spec",
+        "ref": "Tests/AgentRuntime/realAgent.spec.ts"
       },
-      "attestation": "none",
-      "blockerSide": "benchmark",
+      "attestation": "tests",
       "flowStage": "input"
     },
     {
@@ -1296,15 +1270,14 @@
       "oracle": "expectedVersion 不匹配 → 写侧返回 err，且该次内容不落库",
       "module": "Services/SharedMemory/globalWorkspace.ts:113-171 + writeGuard.ts:39-60",
       "gate": "G8",
-      "status": "gap",
+      "status": "existing-covered",
       "dim": "governance",
       "anchor": {
         "kind": "scenario",
-        "ref": "scn-memory-governance"
+        "ref": "scn-design-probes-memory"
       },
       "axis": "system",
       "attestation": "executed",
-      "blockerSide": "product",
       "flowStage": "remember"
     },
     {
@@ -1353,18 +1326,19 @@
       "cls": "BEN",
       "family": null,
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "生产接线端到端：main.ts 注入 splitMergeFor；AgentSplit 登记授权→端口创建同级 L1→异步启动其独立循环（失败留痕）→registerPeerSplit；组合根测试验证按身份解析与账本 rootId。",
       "oracle": "任务过于艰难且**召唤子代理也无法解决**时，agent 可自行发起分裂：用**工具**召唤**一个同级别的新 Agent**，并把按冲突域拆出的一份任务交给它",
-      "module": "（待实现）",
+      "module": "Tools/Custom/agentSplit.ts + Core/Orchestration/splitMergeComposition.ts（同级 L1 真实建 Agent+域账本+启动自身循环）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "act"
     },
     {
       "id": "SPLIT-SEM-SELFMERGE",
@@ -1372,18 +1346,19 @@
       "cls": "BEN",
       "family": null,
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "生产接线：AgentMerge 计算 mergeKindOf 随请求上报监管；域归属判定仍归 DomainLedger（工具不复制判定）。",
       "oracle": "监管系统**或 agent 自身**在共享上下文拉取相关文件时，发现某 Agent 与自己的工作内容**高度相关** → **向监管请求合并** → 批准后执行**完全合并**，或**将相关子代理转换归属**",
-      "module": "（待实现）",
+      "module": "Tools/Custom/agentMerge.ts + Core/Orchestration/splitMergeComposition.ts",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "act"
     },
     {
       "id": "SPLIT-SEM-SIMILARITY",
@@ -1391,18 +1366,19 @@
       "cls": "SEC",
       "family": "integrity",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-SIMILARITY（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——\"工作内容高度相关\"的判据**可复算**：基于共享上下文中文档/文件重叠的度量 + 阈值，不得用模糊描述替代",
       "oracle": "\"工作内容高度相关\"的判据**可复算**：基于共享上下文中文档/文件重叠的度量 + 阈值，不得用模糊描述替代",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-CLOSURE",
@@ -1410,18 +1386,19 @@
       "cls": "ENV",
       "family": "availability",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "**用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-CLOSURE（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——分裂⋈合并闭环稳定：每次只分裂一个 + 合并需监管批准 + 两种合并形态，使 Agent 总数与授权范围在反复作用后仍收敛",
       "oracle": "分裂⋈合并闭环稳定：每次只分裂一个 + 合并需监管批准 + 两种合并形态，使 Agent 总数与授权范围在反复作用后仍收敛",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "resilience",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "MM-DECL-SIGHTUSE",
@@ -1429,54 +1406,57 @@
       "cls": "BEN",
       "family": null,
       "objective": "多模态输入通道（图片/音频/附件）",
-      "method": "用户裁定的多模态路径 (a)：文本主模型 + 视觉工具。验收要点：sightUse 作为工具被 Agent 调用（层规：由 Core/Loop 驱动），图像结果经工具回传而非内联进 prompt。取证：产品零实现。",
+      "method": "设计契约探针 MM-DECL-SIGHTUSE（场景 scn-design-probes-observability）：**假设接口**断言注册表存在 SightUse（image/prompt 必填、SAFE）。2026-10-17 实测为红：工具未实现——缺口已复现。",
       "oracle": "文本主模型可通过**视觉工具 sightUse** 处理图像输入，且图像内容经工具层返回、不直接污染上下文",
-      "module": "（待实现）",
+      "module": "Tools/Builtin/Multimodal/sightUse.ts（BENCH 探针 MM-DECL-SIGHTUSE 实测通过：image/prompt 必填、SAFE）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-observability"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "act"
     },
     {
       "id": "SPLIT-SEM-CONFLICTDOMAIN",
       "surface": "Agent 分裂系统",
       "cls": "BEN",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "冲突域拆分是分裂的正确性前提：若拆出的两份工作仍共享可写资源，分裂只会制造写冲突。 **用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-CONFLICTDOMAIN（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——拆分依据是**冲突域**：拆出的各部分工作内容**高度隔离**（不共享可写资源），隔离性可验证",
       "oracle": "拆分依据是**冲突域**：拆出的各部分工作内容**高度隔离**（不共享可写资源），隔离性可验证",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-PEER",
       "surface": "Agent 分裂系统",
       "cls": "BEN",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "与\"召唤子代理\"的分界：子代理由上层指派且解决不了时，才轮到同级别分裂。 **用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-PEER（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——分裂召唤的是**同级别 Agent**（不是下级子代理）；被召唤者不被纳入父的任务树逐级指派",
       "oracle": "分裂召唤的是**同级别 Agent**（不是下级子代理）；被召唤者不被纳入父的任务树逐级指派",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-ONEPERSTEP",
@@ -1484,36 +1464,38 @@
       "cls": "SEC",
       "family": "availability",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "防爆量约束：允许一次分裂多个会让 Agent 数量在一步内指数增长。 **用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-ONEPERSTEP（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——**每次只能分裂一个 Agent**：一次分裂请求产生且仅产生 1 个新 Agent，超量请求被拒",
       "oracle": "**每次只能分裂一个 Agent**：一次分裂请求产生且仅产生 1 个新 Agent，超量请求被拒",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     },
     {
       "id": "SPLIT-SEM-MERGEKIND",
       "surface": "Agent 分裂系统",
       "cls": "BEN",
       "objective": "分裂体血缘可辨识（可查询父子关系）",
-      "method": "用户点明的两种合并形态；形态判定不明确时，\"合并\"会退化为随意的归属改写。 **用户口述语义（2026-10-14）**：分裂 = 任务过于艰难且**召唤子代理也无法解决**时，按**冲突域**拆分任务（工作内容高度隔离），用工具召唤**一个新的同级别 Agent**，把拆分后的一份任务交给它，**每次只能分裂一个**；合并 = 监管或 agent 自身在共享上下文拉取相关文件时发现工作内容**高度相关**，**向监管请求**，可为**完全合并**或**相关子代理归属转换**。取证：产品零实现（全库无 fork/split/clone/derive），故为 `declared-only`。",
+      "method": "设计契约探针 SPLIT-SEM-MERGEKIND（场景 scn-design-probes-split）：2026-10-17 已实现并通过实测——合并有两种确定形态：(a) **完全合并**（两 Agent 合一）(b) **相关子代理归属转换**（把相关子代理转归另一方）；两形态的判定条件有定义",
       "oracle": "合并有两种确定形态：(a) **完全合并**（两 Agent 合一）(b) **相关子代理归属转换**（把相关子代理转归另一方）；两形态的判定条件有定义",
-      "module": "（待实现）",
+      "module": "Core/AgentRuntime/splitSemantics.ts（经 agentFactory 再导出）",
       "gate": "—",
-      "status": "declared-only",
+      "status": "existing-covered",
       "dim": "correctness",
       "anchor": {
-        "kind": "none"
+        "kind": "scenario",
+        "ref": "scn-design-probes-split"
       },
       "axis": "system",
-      "attestation": "none",
-      "flowStage": "none"
+      "attestation": "executed",
+      "flowStage": "decide"
     }
   ],
   "prerequisites": [

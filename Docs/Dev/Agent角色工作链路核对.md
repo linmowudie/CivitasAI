@@ -59,13 +59,13 @@ POST /api/tasks → receiveTask(taskApi)
 ```
 
 - 路由侧：DIRECT/DELEGATION/ASSEMBLY_LINE/CONSORTIUM 四种编排骨架**已实现**（创建 agent + 分配 + 事件）；`LITIGATION`/`REGULATION` 返回 `err('尚未实现（S12）')`。
-- 编排器创建的 agent 全部止步于 `assigned`（与 `agent.recruit` 的 `dispatch:'pending'` 同源）。
+- 编排器创建的 agent 全部止步于 `assigned`（与 `AgentRecruit` 的 `dispatch:'pending'` 同源）。
 - 附加发现：**(a)** ASSEMBLY_LINE 节点用 `worker` 角色创建（专设 `assembly_node` 备而未用）；**(b)** CONSORTIUM 用 `partner` 角色承载执行 assignment——与 partner 提示词"不直接执行/评审把关"定位冲突，且 partner 无评审通道（§4.2）；**(c)** DIRECT 模式语义"Director 直接执行"与 PD 提示词"不直接执行"冲突（Phase 0-2 实为仅标记）。
 
 ### 2.3 评审链路 —— 🟥 未接线（FE-050）
 
 ```
-设计：Worker 完成 → agent.submit_review（工具）→ submitForReview（运行时）→ Reviewer 审核 → reviewSubmission → Director 侧 isTaskApproved 才能标记成功
+设计：Worker 完成 → AgentSubmitReview（工具）→ submitForReview（运行时）→ Reviewer 审核 → reviewSubmission → Director 侧 isTaskApproved 才能标记成功
 实际：工具=桩（NOT_IMPLEMENTED「待 S9」）；performReview 仅测试调用；
       无 reviewer 生产创建点；submitForReview/reviewSubmission 硬编码 worker↔reviewer；
       评审记录 pendingReviews 仅内存（无写穿，重启即失）
@@ -95,11 +95,11 @@ POST /api/tasks → receiveTask(taskApi)
 
 **`user`（owner）**：人类本体，不经 UserRole/工具层。链路：前端点击审批 → `approvalApi.decide` → 身份验真（方案 A 本地活动账号绑定 ✓；方案 B 服务端验真 **HTTP 链路死代码**，FE-041）→ 入池权重 1。
 
-**`prime_director`（L1 入口）**：创建（ipcBridge 单例 + orchestrator 四模式）→ 驱动（executeLoop 10 步，**运行时唯一活跃角色**）→ 工具（READ/EXEC/DANGEROUS 全通；`agent.recruit` 仅 PD/Partner 可用）→ 治理门（危险工具走审批，作为 L1 请求方入池规则=user+L0）→ 产出（消息落库 + 事件流）。判定：**链路完整**；缺口=信任级别标注误（L0→应 L1）。
+**`prime_director`（L1 入口）**：创建（ipcBridge 单例 + orchestrator 四模式）→ 驱动（executeLoop 10 步，**运行时唯一活跃角色**）→ 工具（READ/EXEC/DANGEROUS 全通；`AgentRecruit` 仅 PD/Partner 可用）→ 治理门（危险工具走审批，作为 L1 请求方入池规则=user+L0）→ 产出（消息落库 + 事件流）。判定：**链路完整**；缺口=信任级别标注误（L0→应 L1）。
 
 **`partner`（L1 入口）**：创建（orchestrator CONSORTIUM）→ ❌ 无驱动 → 工具（同 PD）→ 判定：**创建后悬置**；且现行编排让其承接执行 assignment 与提示词定位（协同推理/评审）冲突（FE-050 关联）。
 
-**`worker`（L2 执行）**：创建（orchestrator DELEGATION/ASSEMBLY_LINE；`agent.recruit`）→ ❌ 无驱动 → 工具（READ+EXEC：file.write 走 EffectJournal；shell.exec 走审批）→ 治理门（作为请求方=L2 池）→ ❌ 评审出口（submitForReview 无工具路径）。判定：**执行与验收双断**。
+**`worker`（L2 执行）**：创建（orchestrator DELEGATION/ASSEMBLY_LINE；`AgentRecruit`）→ ❌ 无驱动 → 工具（READ+EXEC：FileWrite 走 EffectJournal；ShellExec 走审批）→ 治理门（作为请求方=L2 池）→ ❌ 评审出口（submitForReview 无工具路径）。判定：**执行与验收双断**。
 
 **`reviewer`（L2 执行）**：❌ 无创建点 → ❌ 无驱动 → 工具（READ；EXEC 不含——不能写文件 ✓ 合理）→ 设计上对接 `performReview`（规则版默认接受，LLM Judge 未接）。判定：**角色全链悬空**（FE-050）；提示词"Verifier L1-L4 管线"未实现（Phase 0-2 态）。
 
@@ -109,7 +109,7 @@ POST /api/tasks → receiveTask(taskApi)
 
 **`auditor`（L0 治理）**：创建（审批池按需）→ 工具（READ only ✓）→ 服务（investigate/runPatrol 守卫齐；monitorAgent 自动冻结以 auditor 透传；checkAutoUnfreeze 系统路径绕过守卫为设计豁免）→ 判定：同上，**无运行期巡逻定时器**。
 
-**`arbitrator`（L0 治理）**：创建（启动池初始化 + 立案驱动扩容；池位绑定真实 Agent）→ 工具（READ+EXEC：**含 shell.exec 取证**——工具层未再分审计/执行边界，属设计取舍）→ 服务（reasonVerdict/issueSuspension/consolidateKnowledge 守卫齐；`executeFullArbitration` 无 actor 参数 FE-047）→ 判定：**池与守卫齐、触发链断**（FE-049 + 立案无入口）。
+**`arbitrator`（L0 治理）**：创建（启动池初始化 + 立案驱动扩容；池位绑定真实 Agent）→ 工具（READ+EXEC：**含 ShellExec 取证**——工具层未再分审计/执行边界，属设计取舍）→ 服务（reasonVerdict/issueSuspension/consolidateKnowledge 守卫齐；`executeFullArbitration` 无 actor 参数 FE-047）→ 判定：**池与守卫齐、触发链断**（FE-049 + 立案无入口）。
 
 ---
 

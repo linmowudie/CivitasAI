@@ -269,6 +269,13 @@ export function read(query: WorkspaceQuery): WorkspaceEntry[] {
   if (query.status) result = result.filter((e) => e.status === query.status);
   if (query.assertion)
     result = result.filter((e) => e.assertion === query.assertion);
+  // ★ agent 级读鉴权（MEMN-SEC-READAUTH，设计 §3.8）：
+  //   属主隔离只到"同一账号"这一层 —— 同账号下的任意 Agent 仍可读回他人条目。
+  //   读取方声明了自己的 agentId 时，只允许读回**自己署名**的条目（治理面/管理面
+  //   不传 requesterAgentId，保留批量视图）。
+  if (query.requesterAgentId) {
+    result = result.filter((e) => e.agentId === query.requesterAgentId);
+  }
   if (query.limit && query.limit > 0) result = result.slice(-query.limit);
 
   return result.map((e) => ({ ...e }));

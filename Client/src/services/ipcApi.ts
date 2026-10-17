@@ -95,11 +95,28 @@ export async function ipcRemoveProvider(
   return api.removeProvider(name);
 }
 
-/** 用 API_KEY 调用 /models 端点拉取模型列表 */
+/**
+ * 用 API_KEY 调用 /models 端点拉取模型列表。
+ *
+ * 端点不提供 `/models`（404/405，如华为云 MaaS Token Plan 的 `/plan/v2`）时**不算失败**：
+ * 返回 `ok:true` + `listNotProvided:true`，`data` 为空或为 `fallbackModels` 的候选，
+ * 由界面引导用户手填模型名（2026-10-17）。
+ */
 export async function ipcFetchProviderModels(config: {
   base_url: string;
   api_key: string;
-}): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+  /** 端点不提供 `/models` 时的候选模型（厂商内置已知模型） */
+  fallbackModels?: string[];
+}): Promise<{
+  ok: boolean;
+  data?: any[];
+  error?: string;
+  /** 端点确实不提供 /models（404/405），与"鉴权失败"是两回事 */
+  listNotProvided?: boolean;
+  listStatus?: number;
+  /** data 来自 fallbackModels 而非端点列表 */
+  modelsFromFallback?: boolean;
+}> {
   const api = getModelProvidersAPI();
   if (!api) return { ok: false, error: "Electron API 不可用" };
   return api.fetchModels(config);
@@ -306,9 +323,7 @@ export async function ipcGetLongTermMemory(query?: {
 }
 
 /** 批量导入长时记忆 */
-export async function ipdBulkLongTermMemory(
-  items: unknown[],
-): Promise<{
+export async function ipdBulkLongTermMemory(items: unknown[]): Promise<{
   ok: boolean;
   data?: { imported: number; updated: number; total: number };
   error?: string;
@@ -458,9 +473,7 @@ export async function ipcA2AMarkSynced(
 }
 
 /** 应用拉回消息（**本机优先**：已有则跳过） */
-export async function ipcA2AApplyPulled(
-  items: unknown[],
-): Promise<{
+export async function ipcA2AApplyPulled(items: unknown[]): Promise<{
   ok: boolean;
   data?: { applied: number; skipped: number };
   error?: string;
@@ -562,6 +575,8 @@ export interface ProbeResultDto {
   chatCandidates?: string[];
   /** 对话探测实际发起次数（>1 = 自动换过模型重试） */
   chatAttempts?: number;
+  /** `models` 来自内置/手填候选（端点不提供 /models），不是账号可见列表 */
+  modelsFromFallback?: boolean;
 }
 
 export interface OnboardingStateDto {
@@ -620,6 +635,8 @@ export async function ipcTestProvider(config: {
   api_key: string;
   model?: string;
   chatProbe?: boolean;
+  /** 端点不提供 `/models`（404/405）时用于对话探测的候选模型 */
+  fallbackModels?: string[];
 }): Promise<{ ok: boolean; data?: ProbeResultDto; error?: string }> {
   const api = getOnboardingAPI();
   if (!api) return { ok: false, error: "Electron API 不可用" };

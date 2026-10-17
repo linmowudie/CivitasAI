@@ -10,12 +10,12 @@
   "agentRole": "worker",
   "injectReanchorAfterIteration": 1,
   "loop": { "maxIterations": 5, "tokenBudget": 200000, "timeoutMs": 45000, "stream": false },
-  "tools": [{ "name": "bench.read", "behavior": "ok" }, { "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchRead", "behavior": "ok" }, { "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
-      { "kind": "tool_calls", "calls": [{ "name": "bench.read", "arguments": { "path": "src/notes.txt" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.read", "arguments": { "path": "src/config.json" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "consolidate" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchRead", "arguments": { "path": "src/notes.txt" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchRead", "arguments": { "path": "src/config.json" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "consolidate" } }] },
       { "kind": "text", "content": "构建步骤为安装依赖→跑测试→打包；配置为重试 3 次、超时 30 秒。任务完成。" }
     ],
     "defaultReply": "任务完成。"
@@ -23,7 +23,7 @@
   "expect": {
     "exitReason": "success",
     "maxIterations": 5,
-    "mustCallTools": ["bench.read"],
+    "mustCallTools": ["BenchRead"],
     "requestMustContain": ["【任务原始目标"],
     "goalMustBeIntact": true
   }

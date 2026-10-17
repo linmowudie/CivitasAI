@@ -23,11 +23,11 @@ Civitas-AI（智体城邦）全部设计文档、使用指南与审查记录。�
 | 11 | [循环控制系统设计](Agent/11-循环控制系统/循环控制系统设计.md) | Verifier / StopRules / Fingerprint / ApprovalGate |
 | 12 | [持久执行与恢复设计](Agent/12-持久执行与恢复/持久执行与恢复设计.md) | EffectJournal / Checkpoint / Recovery |
 | 13 | [项目构建顺序](Agent/13-构建与实施/项目构建顺序.md) | S0~S14 阶段与验证门禁 |
-| 14 | [参数总典](Agent/14-参数总典与接口契约/参数总典.md) | 全量参数与接口契约速查 |
+| 14 | [参数总典](Agent/14-参数总典与接口契约/参数总典.md) · [本地后端接口文档](Agent/14-参数总典与接口契约/本地后端接口文档.md) | 全量参数与接口契约速查；**接入层对外契约**（HTTP 控制面 80 路由 / EventBus 83 事件 / 7 种命令 / 去重） |
 | 15 | [实验矩阵设计](Agent/15-实验矩阵与评估/实验矩阵设计.md) | 12 面 × BEN/ENV/SEC 覆盖模型 |
 | 16 | [开发规范](Agent/16-开发规范/) | 五层接口契约（[core](Agent/16-开发规范/Interfaces/coreInterfaces.md) / [services](Agent/16-开发规范/Interfaces/servicesInterfaces.md) / [tools](Agent/16-开发规范/Interfaces/toolsInterfaces.md) / [infra](Agent/16-开发规范/Interfaces/infraInterfaces.md) / [interface](Agent/16-开发规范/Interfaces/interfaceInterfaces.md)）、[docs 迁移计划](Agent/16-开发规范/docsMigrationPlan.md) |
 
-## Client — 前端与 Electron 客户端（4 篇）
+## Client — 前端与 Electron 客户端（5 篇）
 
 | 编号 | 文档 | 内容 |
 |------|------|------|
@@ -35,12 +35,13 @@ Civitas-AI（智体城邦）全部设计文档、使用指南与审查记录。�
 | 02 | [前端改造基础文件](Client/02-前端改造基础/前端改造基础文件.md) · [改造方案与构建顺序](Client/02-前端改造基础/前端改造方案与构建顺序.md) · [三栏自适应工作界面设计规格](Client/02-前端改造基础/三栏自适应工作界面设计规格.md) · [前端验收缺陷清单](Client/02-前端改造基础/前端验收缺陷清单.md)（FE-xxx） | F0.x 前端任务与验收 |
 | 03 | [AI 组件族架构设计](Client/03-AI组件族架构/AI组件族架构设计.md) · [后端接口契约](Client/03-AI组件族架构/后端接口契约.md) · [测试策略设计](Client/03-AI组件族架构/测试策略设计.md) | 前端 AI 组件族分层 / 契约 / 测试 |
 | 04 | [客户端接入服务端](Client/04-客户端接入账号与同步/客户端接入设计.md) | Electron 接入：账号面板 / 令牌安全存储 / 偏好·长时记忆·统计同步 |
+| 05 | [客户端与桌面端接口文档](Client/05-接口契约/客户端与桌面端接口文档.md) | **对外接口全表**：`window.electronAPI` 51 通道 / 服务层契约 / 事件与命令 / 云端调用 / 安全边界 |
 
 ## Server — 账号服务端与运维（3 组）
 
 | 编号 | 文档 | 内容 |
 |------|------|------|
-| 01 | [服务端设计文档](Server/01-服务端/服务端设计文档.md) · [服务端缺陷清单](Server/01-服务端/服务端缺陷清单.md)（SV-xxx） | 账号登录 / 设置 / 个人统计 / 记忆存储 / 备份恢复（服务端权威，支持卸载重装重建） |
+| 01 | [服务端设计文档](Server/01-服务端/服务端设计文档.md) · [REST API 接口文档](Server/01-服务端/REST-API接口文档.md) · [服务端缺陷清单](Server/01-服务端/服务端缺陷清单.md)（SV-xxx） | 账号登录 / 设置 / 个人统计 / 记忆存储 / 备份恢复（服务端权威，支持卸载重装重建）；REST 契约（38 端点 / 统一包络 / 错误码 / 鉴权限流） |
 | 02 | [使用指南](Server/02-使用指南/) | [quickStart](Server/02-使用指南/quickStart.md) · [configuration](Server/02-使用指南/configuration.md) · [fullGuide](Server/02-使用指南/fullGuide.md) · [troubleshooting](Server/02-使用指南/troubleshooting.md) |
 | 03 | [部署运维](Server/03-部署运维/) | 部署（[local](Server/03-部署运维/Deployment/local.md) · [windows](Server/03-部署运维/Deployment/windows.md) · [docker](Server/03-部署运维/Deployment/docker.md)）、Runbook（[healthCheck](Server/03-部署运维/Runbooks/healthCheck.md) · [logAnalysis](Server/03-部署运维/Runbooks/logAnalysis.md) · [rollback](Server/03-部署运维/Runbooks/rollback.md) · [commonIssues](Server/03-部署运维/Runbooks/commonIssues.md)） |
 

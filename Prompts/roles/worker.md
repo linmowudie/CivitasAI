@@ -35,6 +35,6 @@
 
 | 危险级别 | 示例工具 | 行为 |
 |---------|---------|------|
-| SAFE | file.read, search | 直接执行 |
-| CONTROLLED | file.write, file.edit | 走 EffectJournal |
-| DANGEROUS | shell.exec, code.eval | 需 ApprovalGate 审批 |
+| SAFE | FileRead, search | 直接执行 |
+| CONTROLLED | FileWrite, FileEdit | 走 EffectJournal |
+| DANGEROUS | ShellExec, CodeEval | 需 ApprovalGate 审批 |

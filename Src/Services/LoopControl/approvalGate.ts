@@ -25,10 +25,17 @@ import { parseDecidedByRole } from "../Governance/governanceGuard.js";
 // 后端从不发出 → 超时拒绝要等审批栏 30s 轮询才可见。
 import { publish, createEvent } from "../EventBus/eventBus.js";
 import { EventType } from "../EventBus/eventTypes.js";
+// SUP-ENV-DEADLOCKWIRE（生产写方）：审批阻塞期间登记等待边，供死锁看门检测互等
+import {
+  registerAgentWait,
+  clearAgentWait,
+} from "../Supervision/deadlockWatch.js";
 
 // ── 创建审批请求 ────────────────────────────────────────────────────
 
 export interface CreateApprovalInput {
+  /** 所属会话（自动完全权限按会话开启，跟随当前任务） */
+  sessionId?: string;
   loopId: string;
   traceId: string;
   iteration: number;
@@ -52,6 +59,74 @@ export interface CreateApprovalInput {
  * - 超时默认拒绝（禁止默认通过）
  * - timeoutSec 保存生效时长快照（防配置热更新突变存量审批）
  */
+/**
+ * **人工同意即放行**（默认开启，2026-10-16 用户明确要求）。
+ *
+ * 背景：CRITICAL 级工具走"双人控制"（法定人数 2，须由**不同身份**分别裁决），
+ * 实际使用中人类只点一次"确认执行"⇒ 永远停在 `1/2`，等到超时**默认拒绝**（界面上表现为"干等"）。
+ *
+ * 语义：`humanApprovalSuffices = true` 时，**一次批准即满足法定人数**，立即放行。
+ * 治理自动化（无人工）的场景可 `configureApprovalPolicy({ humanApprovalSuffices: false })` 恢复双人控制。
+ */
+let humanApprovalSuffices = true;
+
+/**
+ * **自动完全权限**（默认关闭）。
+ *
+ * 打开后：不再产生阻塞式审批 —— 任何工具调用直接以"自动批准"落定，前端不再出现审批卡、不再等待。
+ * 供需要"完全不打断"的场景使用；关闭即恢复按危险级别审批。
+ */
+let autoApproveAll = false;
+
+/**
+ * **按会话**开启"自动完全权限"（跟随当前任务）。
+ *
+ * 与全局 `autoApproveAll` 的区别：只对指定会话生效，其它会话/新建任务仍按危险级别审批。
+ */
+const autoApproveSessions = new Set<string>();
+
+/** 开启/关闭某会话的自动完全权限；返回当前状态 */
+export function setSessionAutoApprove(
+  sessionId: string,
+  enabled: boolean,
+): boolean {
+  if (!sessionId) return false;
+  if (enabled) autoApproveSessions.add(sessionId);
+  else autoApproveSessions.delete(sessionId);
+  return autoApproveSessions.has(sessionId);
+}
+
+/** 查询某会话是否已开启自动完全权限 */
+export function isSessionAutoApprove(sessionId: string | undefined): boolean {
+  return !!sessionId && (autoApproveAll || autoApproveSessions.has(sessionId));
+}
+
+/** 清空会话级开关（测试/重置用） */
+export function resetSessionAutoApprove(): void {
+  autoApproveSessions.clear();
+}
+
+/** 运行期调整审批策略（仅治理/配置入口调用） */
+export function configureApprovalPolicy(policy: {
+  humanApprovalSuffices?: boolean;
+  autoApproveAll?: boolean;
+}): void {
+  if (typeof policy.humanApprovalSuffices === "boolean") {
+    humanApprovalSuffices = policy.humanApprovalSuffices;
+  }
+  if (typeof policy.autoApproveAll === "boolean") {
+    autoApproveAll = policy.autoApproveAll;
+  }
+}
+
+/** 当前策略（供 UI/日志如实展示） */
+export function getApprovalPolicy(): {
+  humanApprovalSuffices: boolean;
+  autoApproveAll: boolean;
+} {
+  return { humanApprovalSuffices, autoApproveAll };
+}
+
 export function createApproval(
   input: CreateApprovalInput,
   defaultTimeoutSec: number = 60,
@@ -68,6 +143,33 @@ export function createApproval(
 
   // CRITICAL 级至少需要 2 个不同角色
   if (input.riskLevel === "CRITICAL") {
+    // 自动完全权限：直接落定为已批准，调用方（工具安全门）不会阻塞等待，也不广播审批卡
+    if (
+      autoApproveAll ||
+      (input.sessionId !== undefined &&
+        autoApproveSessions.has(input.sessionId))
+    ) {
+      const autoId =
+        "auto-full-" +
+        Date.now() +
+        "-" +
+        Math.random().toString(16).slice(2, 8);
+      const approval = {
+        approvalId: autoId,
+        status: "APPROVED" as const,
+        autoApproved: true,
+        decidedBy: ["policy:auto-approve-all"],
+        decidedAt: Date.now(),
+        decisionReason: "自动完全权限：跳过审批",
+        requiredApprovals: 0,
+        deciders: [],
+        decisionPolicy: "unanimous" as const,
+        timeoutSec: input.timeoutSec,
+        createdAt: Date.now(),
+      };
+      registerApproval(approval as never);
+      return ok(approval as never);
+    }
     const roles = new Set(input.deciders.map((d) => d.role));
     if (roles.size < 2) {
       return err("CRITICAL 级审批至少需要 2 个不同角色的审批人");
@@ -177,6 +279,19 @@ export function waitForApprovalDecision(
 
   const timeoutMs = options.timeoutMs ?? approval.timeoutSec * 1000;
 
+  // SUP-ENV-DEADLOCKWIRE（生产写方）：审批是**真实阻塞等待**，登记等待边供死锁看门。
+  // - 若审批载荷指名了另一个 Agent（target/peer/executor），等待边指向该 Agent，
+  //   两个 Agent 互等对方的审批即构成环 → 看门检出并按风险退出；
+  // - 否则等待边指向审批单本身（人类/治理裁决等待）。
+  const payload = approval.payload as Record<string, unknown> | undefined;
+  const peer = [
+    payload?.["targetAgentId"],
+    payload?.["peerAgentId"],
+    payload?.["executorAgentId"],
+  ].find((v): v is string => typeof v === "string" && v.length > 0);
+  const waitingFor = peer ?? `approval:${approvalId}`;
+  registerAgentWait(approval.requestedBy, waitingFor, `approval:${approvalId}`);
+
   return new Promise<PendingApproval | null>((resolve) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -187,6 +302,8 @@ export function waitForApprovalDecision(
       if (timer) clearTimeout(timer);
       approvalWaiters.delete(approvalId);
       options.signal?.removeEventListener("abort", onAbort);
+      // 等待结束：撤销等待边（否则死锁看门会把已结束的等待当成悬挂）
+      clearAgentWait(approval.requestedBy, waitingFor);
       resolve(result);
     };
 
@@ -289,6 +406,16 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
     approval.requiredApprovals ??
     (requiredRoles.length >= 3 ? 2 : requiredRoles.length);
 
+  // 人工同意即放行（**仅人类**）：人工批准时法定人数收敛为 1；
+  // Agent 身份（`role:agent-xxxx`）**不享受**该豁免，仍需满足多人/多角色法定人数——
+  // 否则任何治理 Agent 投一票就等于"人工已同意"，会绕过双人控制。
+  const identityPart = input.decidedBy.includes(":")
+    ? input.decidedBy.slice(input.decidedBy.indexOf(":") + 1)
+    : input.decidedBy;
+  const isAgentIdentity = /^agent-/i.test(identityPart);
+  const effectiveRequired =
+    humanApprovalSuffices && input.approve && !isAgentIdentity ? 1 : required;
+
   // ★ 法定人数判定前置（2026-10-08，修复 REV-264）：
   //   旧行为是"先记账再判状态"，同一身份换角色重复提交时 matched 恒为 1，
   //   接口仍返回 200 + PENDING → 前端把它当"还差一个角色"继续补齐，
@@ -308,7 +435,7 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
     if (after === before) {
       return err(
         `裁决未计入：身份 ${identity} 已在本审批中行使过投票权。` +
-          `双人控制要求 ${required} 位不同身份分别满足角色（当前已满足 ${before} 位）` +
+          `双人控制要求 ${effectiveRequired} 位不同身份分别满足角色（当前已满足 ${before} 位）` +
           `——请由另一位操作者（不同账号或已注册 Agent）裁决，或改用策略白名单自动审批通道`,
       );
     }
@@ -333,16 +460,16 @@ export function decideApproval(input: DecideInput): Result<PendingApproval> {
         requiredRoles,
         approval.decidedBy,
       );
-      if (matched >= required) {
+      if (matched >= effectiveRequired) {
         approval.status = "APPROVED";
         approval.quorumBlocked = undefined;
       } else {
         // 未达法定人数：把缺口如实回传，调用方不再靠"状态没变"自行猜测
         approval.quorumBlocked = {
-          required,
+          required: effectiveRequired,
           matched,
-          remainingIdentities: required - matched,
-          reason: `已记录本身份的裁决，仍需 ${required - matched} 位不同身份的审批人`,
+          remainingIdentities: effectiveRequired - matched,
+          reason: `已记录本身份的裁决，仍需 ${effectiveRequired - matched} 位不同身份的审批人`,
         };
       }
     }
@@ -483,6 +610,48 @@ export function checkTimeoutApprovals(
 /**
  * 获取审批请求
  */
+/**
+ * **由治理 Agent 裁决审批**（2026-10-16）。
+ *
+ * 背景（用户反馈"出现审批事件却没有可裁决的 L0 实例，整个 L0 未生效"）：
+ * `decideApproval` 此前**只有人类 REST 端点一个调用者**，因此即便审批决策池里
+ * 有 `auditor` / `regulatory_authority` 角色，也**没有任何路径让 L0 Agent 投票**，
+ * 审批只能靠人类凑齐、L0 形同未启用。
+ *
+ * 本函数是 **L0 Agent 侧的裁决入口**（agent 身份形如 `role:agent-xxxx`）：
+ *  - 角色必须在**本审批的决策池**内（越池即拒，不静默）；
+ *  - 记账/去重/法定人数判定全部复用 `decideApproval`（同一套规则，不另立口径）；
+ *  - **不享受**"人工同意即放行"豁免（那是人类专属），因此单个 Agent 无法单独通过双人控制。
+ */
+export function adjudicateApprovalByAgent(params: {
+  approvalId: string;
+  agentId: string;
+  role: string;
+  approve: boolean;
+  reason?: string;
+}): Result<PendingApproval> {
+  if (!params.approvalId) return err("缺少 approvalId");
+  if (!params.agentId) return err("缺少 agentId");
+  if (!params.role) return err("缺少 role");
+
+  const target = approvalQueue.get(params.approvalId);
+  if (!target) return err(`审批 ${params.approvalId} 不存在`);
+
+  const allowedRoles = target.deciders.map((d) => String(d.role));
+  if (!allowedRoles.includes(params.role)) {
+    return err(
+      `角色 ${params.role} 不在本审批的决策池中（${allowedRoles.join(" / ")}）——Agent 不得越池裁决`,
+    );
+  }
+
+  return decideApproval({
+    approvalId: params.approvalId,
+    decidedBy: `${params.role}:${params.agentId}`,
+    approve: params.approve,
+    reason: params.reason ?? "L0 治理 Agent 裁决",
+  });
+}
+
 export function getApproval(approvalId: string): PendingApproval | undefined {
   const approval = approvalQueue.get(approvalId);
   if (!approval) return undefined;

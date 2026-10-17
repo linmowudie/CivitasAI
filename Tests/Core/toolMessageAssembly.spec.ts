@@ -127,7 +127,7 @@ describe("REV-341 ① ⑥ 步不再剥掉历史里的工具字段", () => {
           {
             id: "call_9",
             type: "function",
-            function: { name: "file.read", arguments: '{"p":"a.txt"}' },
+            function: { name: "FileRead", arguments: '{"p":"a.txt"}' },
           },
         ],
       },

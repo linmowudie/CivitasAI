@@ -15,6 +15,7 @@ import {
   setRunningConfig,
 } from "./Infra/Config/configLoader.js";
 import { initLogger, logger, shutdownLogger } from "./Infra/Logging/logger.js";
+import { ensureAgentsForRoles } from "./Services/Governance/governanceProvisioning.js";
 import { Time } from "./Infra/Time/timeService.js";
 import { initTrustLevels } from "./Infra/Security/trustLevels.js";
 import { initWhitelist } from "./Infra/Security/whitelist.js";
@@ -66,6 +67,8 @@ import {
   initIdempotencyStore,
   initRecoveryScanner,
   scanAndProposeRecovery,
+  getAutoResumePlans,
+  executeRecovery,
   purgeExpired,
 } from "./Infra/DurableExecution/index.js";
 import {
@@ -134,6 +137,7 @@ import {
   stopTaxAdjustment,
 } from "./Services/TokenEconomy/taxCollector.js";
 import { initEventBus } from "./Services/EventBus/index.js";
+import { installMemoryWriteSubscriber } from "./Services/SharedMemory/memoryWriteSubscriber.js";
 import {
   startAiEventPersistence,
   stopAiEventPersistence,
@@ -156,6 +160,7 @@ import {
   write as writeGlobalWorkspace,
 } from "./Services/SharedMemory/globalWorkspace.js";
 import { hydrateGovernanceLedger } from "./Services/Governance/governanceAudit.js";
+import { hydrateFreezeState } from "./Services/Audit/freezeManager.js";
 import {
   loadRolePrompts,
   loadSystemAssets,
@@ -173,6 +178,8 @@ import {
   performReview,
 } from "./Services/ReviewerAgent/reviewerAgent.js";
 import { configureToolServicePorts } from "./Tools/Registry/toolServicePorts.js";
+import { createDefaultSandboxGate } from "./Tools/Registry/sandboxGate.js";
+import { splitMergePortFor } from "./Core/Orchestration/splitMergeComposition.js";
 import {
   replaceTodos,
   listTodosForAgent,
@@ -184,6 +191,7 @@ import {
   getRecruitedAgents,
 } from "./Services/Recruitment/recruiter.js";
 import { submitForReview as submitReviewRuntime } from "./Core/AgentRuntime/agentRuntime.js";
+import { executeAssignedTask as executeAssignedTaskRuntime } from "./Core/AgentRuntime/agentExecutor.js";
 import { markSubtaskReviewed } from "./Core/Decision/orchestrator/subtaskDispatcher.js";
 import { initTaskDriver } from "./Core/Decision/orchestrator/taskDriver.js";
 import {
@@ -534,6 +542,21 @@ export async function startServer(): Promise<{
     logger.info("治理台账已回灌", { source: "main", count: govHydrate.value });
   }
 
+  // ⑦.4b-2 审计冻结状态回灌（2026-10-17，SUP-SEC-FREEZEPERSIST）
+  // 修复前冻结状态只存进程内 Map：重启后被冻结 Agent 自动恢复行动能力，等同绕过审计执法。
+  const freezeHydrate = hydrateFreezeState();
+  if (freezeHydrate.ok) {
+    logger.info("审计冻结状态已回灌", {
+      source: "main",
+      count: freezeHydrate.value,
+    });
+  } else {
+    logger.warn("审计冻结状态回灌失败（冻结记忆本次不可用）", {
+      source: "main",
+      error: freezeHydrate.error,
+    });
+  }
+
   const gwHydrate = hydrateGlobalWorkspace();
   if (gwHydrate.ok) {
     logger.info("共享工作区已回灌", { source: "main", count: gwHydrate.value });
@@ -560,6 +583,36 @@ export async function startServer(): Promise<{
       ? arbPoolConfig["auxiliaryCount"]
       : 2;
   initArbitratorPool({ coreCount, auxiliaryCount });
+  // ⑦.4d L0 审批裁决实例（2026-10-16）：
+  //   审批决策池包含 `auditor` / `regulatory_authority`（L0），但此前**从未实例化**
+  //   （`ensureAgentsForRoles` 只在创建审批时按需调用，且失败被静默丢弃）⇒
+  //   审批实际上只能靠"人类 + 第二个账号"凑齐，L0 治理侧形同未启用。
+  //   启动期先把这两类实例建好，保证"审批一出现就有实体可裁"。
+  try {
+    const l0Ensured = ensureAgentsForRoles(
+      ["auditor", "regulatory_authority"],
+      {
+        traceId: "startup-l0-approval-pool",
+        reason: "审批决策池 L0 实例（启动期，2026-10-16）",
+      },
+    );
+    logger.info("L0 审批裁决实例已就绪", {
+      source: "main",
+      requested: ["auditor", "regulatory_authority"],
+      // 注意：角色会被规范化（`regulatory_authority` ⇒ canonical `regulator`），
+      // 因此这里如实打印**实际落到的角色键**，而不是按请求名判断"缺失"。
+      roles: [...l0Ensured.keys()],
+      agents: [...l0Ensured.values()],
+    });
+  } catch (e) {
+    logger.warn(
+      "L0 审批裁决实例初始化异常（审批仍可创建，但可能缺少可裁实体）",
+      {
+        source: "main",
+        error: e instanceof Error ? e.message : String(e),
+      },
+    );
+  }
   logger.info("仲裁者池已初始化", {
     source: "main",
     requestedCore: coreCount,
@@ -628,7 +681,73 @@ export async function startServer(): Promise<{
     requireHumanOnArtifactDrift:
       (recoveryConfig["requireHumanOnArtifactDrift"] as boolean) ?? true,
   });
-  scanAndProposeRecovery();
+  // ⑦.0 崩溃恢复**自动续跑**（2026-10-17）：此前只 `scanAndProposeRecovery()` 拿到计划就丢掉，
+  // 于是"恢复"永远停在"提出计划"。现在 AUTO_RESUME 计划会被真正执行：
+  // executeRecovery 取断点 → 用真实 Agent 以断点对话为起点续跑（fail-soft，逐条留痕）。
+  const recoveryPlans = scanAndProposeRecovery();
+  if (recoveryPlans.ok) {
+    for (const plan of getAutoResumePlans(recoveryPlans.value)) {
+      if (!plan.agentId) {
+        logger.warn("自动恢复缺少归属 Agent，升级人工", {
+          source: "main/recovery",
+          loopId: plan.loopId,
+          reason: plan.reason,
+        });
+        continue;
+      }
+      const recovered = executeRecovery(plan);
+      if (!recovered.ok) {
+        logger.warn("自动恢复执行失败（升级人工）", {
+          source: "main/recovery",
+          loopId: plan.loopId,
+          error: recovered.error,
+        });
+        continue;
+      }
+      const resumedFrom = plan.resumedIteration;
+      void executeAssignedTaskRuntime({
+        agentId: plan.agentId,
+        ...(plan.goal
+          ? {
+              instruction: `继续未完成任务（从第 ${resumedFrom ?? "?"} 轮断点恢复）。原始目标：${plan.goal}`,
+            }
+          : {}),
+        ...(recovered.value.messages && recovered.value.messages.length > 0
+          ? { chatMessages: recovered.value.messages as never }
+          : {}),
+        ...(resumedFrom !== undefined
+          ? { resumedFromIteration: resumedFrom }
+          : {}),
+      })
+        .then((r) => {
+          if (r.ok) {
+            logger.info("自动恢复续跑已完成", {
+              source: "main/recovery",
+              loopId: plan.loopId,
+              agentId: plan.agentId,
+            });
+          } else {
+            logger.warn("自动恢复续跑失败", {
+              source: "main/recovery",
+              loopId: plan.loopId,
+              error: r.error,
+            });
+          }
+        })
+        .catch((e: unknown) => {
+          logger.warn("自动恢复续跑异常（已隔离）", {
+            source: "main/recovery",
+            loopId: plan.loopId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        });
+    }
+  } else {
+    logger.warn("崩溃恢复扫描失败（本次不自动续跑）", {
+      source: "main/recovery",
+      error: recoveryPlans.error,
+    });
+  }
 
   // ⑧ 沙箱系统（沙箱工作区同样属于"工作空间数据"）
   initWorkspaceIsolator({ dataRoot: getWorkspaceRoot() });
@@ -816,8 +935,11 @@ export async function startServer(): Promise<{
   // ⑫.6 工具服务端口注入（分层收口：Tools 层不可 import Services/Core——实现由组合根注入，
   //   门禁保持 import/no-restricted-paths 红线不放松）。覆盖：
   //   FE-064 工具结果缓存 / FE-066 Pre·PostToolExecute Hook 审计链路 /
-  //   todo.write（Planning/todoStore）/ vector.search（Retrieval）/ agent.recruit / agent.submit_review。
+  //   TodoWrite（Planning/todoStore）/ VectorSearch（Retrieval）/ AgentRecruit / AgentSubmitReview。
   configureToolServicePorts({
+    // 沙箱承载门（TOOL-SEC-SANDBOX）：声明 strict/standard 的工具经此确认承载可用，
+    // 不可用即 fail-closed（桌面运行时自带工作区隔离，默认声明可用）。
+    sandboxGate: createDefaultSandboxGate(),
     toolResultCache: {
       get: getCachedToolResult,
       put: cacheToolResult,
@@ -830,7 +952,7 @@ export async function startServer(): Promise<{
       listTodosForAgent,
     },
     memoryRetrieverFactory: createMemoryRetriever,
-    // 记忆写入的上层入口（裁定 (a)，2026-10-14）：把 Services 写实现接到端口上，供工具 memory.write 调用。
+    // 记忆写入的上层入口（裁定 (a)，2026-10-14）：把 Services 写实现接到端口上，供工具 MemoryWrite 调用。
     // 参数用 Parameters<typeof writeMemory> 收窄，避免在此处 import Services 的联合类型（减少耦合）。
     memoryWrite: (params) => {
       const r = writeMemory({
@@ -862,6 +984,10 @@ export async function startServer(): Promise<{
       performReview,
       markSubtaskReviewed,
     },
+    // ⑫.6b 分裂/自合并生产端口（AgentSplit/AgentMerge）：此前**从未注入**，
+    // 两工具在生产恒返回 NOT_ENABLED。现由组合根提供真实依赖：
+    // 同级 L1 工厂（真实建 Agent + 独立域账本）、共享上下文投递、监管受理（真实审批单）。
+    splitMergeFor: splitMergePortFor,
   });
   logger.info("工具服务端口已注入", { source: "main" });
 
@@ -1374,6 +1500,8 @@ export async function startServer(): Promise<{
 
   // ⑰ 事件总线
   initEventBus({ maxQueueSize: 10000 });
+  // ⑰.1 记忆写入订阅链（MEMN-GAP-EVENTSUB）：MEMORY_WRITTEN → 沉淀/观测消费
+  installMemoryWriteSubscriber();
   initDedupStore({ windowMs: 60_000 });
   initCircuitBreaker({ threshold: 100, windowMs: 60_000, cooldownMs: 120_000 });
 

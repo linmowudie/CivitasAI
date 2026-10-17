@@ -25,7 +25,7 @@
   },
   "tools": [
     {
-      "name": "bench.echo",
+      "name": "BenchEcho",
       "behavior": "ok"
     }
   ],

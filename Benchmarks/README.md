@@ -46,7 +46,7 @@
 | 轴 | 问的问题 | 面 | 锚点形态 |
 |---|---|---|---|
 | **能力轴**（18 cell） | 一个 Agent 跑一个任务，**行为**对不对？ | 6 | `kind:"scenario"` |
-| **系统轴**（47 cell） | 文档 §3 九系统逐节的**判定点**成不成立？ | 9 | `kind:"static"`（L0）／`scenario`／`none` |
+| **系统轴**（56 cell） | 文档 §3 九系统逐节的**判定点**成不成立？ | 9 | `kind:"static"`（L0）／`scenario`／`none` |
 
 能力面：目标收敛 · 工具使用 · 约束保持 · 故障恢复 · 治理行为 · 成本纪律
 系统面：工具系统 · 检索系统 · 监管系统 · 单 Agent 记忆系统 · 单 Agent 系统 · 子 Agent 系统 · Agent 分裂系统 · 多 Agent 记忆系统 · 完整多模态与可观测
@@ -77,7 +77,7 @@
 | `scoringMatrix.json` | **第 2 层**：维度 / 权重 / 等级阈值 / 适用性铁律 |
 | `scenarios/*.json` | 场景：任务 + 桩模型脚本 + 注入的故障 + 判据（`expect`）；`matrixCells` 声明承载哪些 cell |
 | `runner/stubProvider.ts` | 脚本化 `LlmProvider`：注册进路由后**真实主循环照跑**；无 API Key、可复现 |
-| `runner/probeTools.ts` | 探针工具（`bench.echo/read/fail`）：把路径守卫、沙箱权限等**环境因素排除出被判对象** |
+| `runner/probeTools.ts` | 探针工具（`BenchEcho` / `BenchRead` / `BenchFail` / `BenchMemWrite`）：把路径守卫、沙箱权限等**环境因素排除出被判对象** |
 | `runner/retrieval.ts` | 检索质量套件（seeding + Recall@K / MRR） |
 | `runner/harness.ts` | 组合根子集（三库+迁移+事件总线+路由+工具表+缓存端口+Token 经济+Loop 规则+时间服务）→ 采集轨迹 |
 | `runner/run.ts` | 两层 CLI：准入判定 → 诊断 → 评分 → JSON/Markdown 报告 |
@@ -183,9 +183,9 @@ declared-only/none        = 10
    检查转绿却仍标 `gap` → 违规（防"债已还但矩阵未转正"）
 5. **孤儿声明**：场景声明的 `matrixCells` 必须在矩阵里存在（防"cell 没落地、场景却以为承载了"）
 
-## 准入判据（20 条固定 + 1 类动态）
+## 准入判据（21 条固定 + 1 类动态）
 
-下表的 `CHK-*` 是固定判据（20 条，逐场景按 `expect` 启用）；另有按 `memoryExpect` **逐条生成**的 `CHK-MEM-<id>`。
+下表的 `CHK-*` 是固定判据（21 条，逐场景按 `expect` 启用）；另有按 `memoryExpect` **逐条生成**的 `CHK-MEM-<id>`。
 
 | 判据 | 触发 | 判定什么 |
 |---|---|---|
@@ -196,6 +196,7 @@ declared-only/none        = 10
 | `CHK-TOOL-RESULTS` / `CHK-TOOL-PAIRING` | `minToolResults` / 恒开 | 结果条数、**调用与结果成对**（孤儿结果会让供应商判非法请求） |
 | `CHK-STEP-ORDER` | 恒开 | 十步主循环序列未被破坏 |
 | `CHK-NO-FORBIDDEN-DIAGNOSIS` | `forbidDiagnoses` | 不只看期望**命中**，也看**没有出现已知问题形态** |
+| `CHK-REQUIRED-DIAGNOSIS` | `requiredDiagnoses` | **正面**要求"该形态真的被诊断出来"（否则"没被禁止"会被当成"已检出"——用反向断言冒充正向证据） |
 | `CHK-REQUEST-CONTAINS` | `requestMustContain` | 约束保持：压缩后请求里是否出现重锚段 |
 | `CHK-GOAL-INTACT` | `goalMustBeIntact` | ADR-0005：不可变区未被改动 |
 | `CHK-LEDGER-CLEAN` | `ledgerClean` | P0-3：Token 四源账本对账无差异 |
@@ -244,7 +245,7 @@ declared-only/none        = 10
 |---|---|
 | **L0 静态对账** | ✅ `Scripts/staticRecon.cjs`：32 条（11 lock + 21 gap），接入守门并逐 cell 交叉校验 |
 | L1 契约单测 / L2 组件集成 | 由 [`Tests/`](../Tests/) 承载（172 文件 / 2057 用例），不属本目录 |
-| **L3 真实模型端到端** | ❌ **环境不可执行**：本机无 `HUAWEI_MAAS_API_KEY`，受门禁的 12 条用例全部登记 NOT-RUN。凭据注入机制已就绪（`Tests/setup/credentials.ts` + vitest `setupFiles`，读 `.env`/`.env.local`），缺的只是凭据 —— 矩阵 cell `AGENT-ENV-L3REAL` 已如实登记 |
+| **L3 真实模型端到端** | ⚠️ **可执行，但 CI 侧仍 NOT-RUN**：凭据就绪时**真跑通**——2026-10-17 实测 `Tests/AgentRuntime/realAgent.spec.ts` **4/4 通过**（221s，真实 `POST /plan/v2/chat/completions`）+ `Tests/Infra/llm.spec.ts` 30/30。CI 不注入 `HUAWEI_MAAS_API_KEY`（无 secret），故 `npm test` 时 12 条受门禁用例仍登记 NOT-RUN —— 这是**环境/CI 配置**问题，不再是"不可执行"。矩阵 cell `AGENT-ENV-L3REAL` 的 oracle 是"12 条全部真实执行且 NOT-RUN 归零"，故仍如实保持 `gap`（5 个 E2E 模式 spec 尚未在凭据下执行） |
 | **L4 对抗注入** | ⚠️ 部分：`adversarialSeeds.json` + `memoryPoison.json` 已交付；已驱动间接注入（中英双载荷）、记忆写侧红线与治理键分级；其余语料条目尚未全部驱动成场景 |
 | **L5 混沌与恢复** | ⚠️ 部分：工具失败/模型失败/DB 不可用/时钟回拨已覆盖；**崩溃重放**卡在产品侧（`iterationCheckpoint` 只有写路径、无 load/resume API → cell `AG-BEN-RESUME` 为 gap） |
 

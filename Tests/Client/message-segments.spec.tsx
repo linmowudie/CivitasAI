@@ -53,10 +53,10 @@ describe('MessageBubble 片段顺序渲染', () => {
   it('多轮片段按发生顺序排列：思考→工具→正文→思考→工具→正文', () => {
     const segments: MessageSegment[] = [
       { kind: 'reasoning', text: '第一轮思考内容' },
-      { kind: 'tools', iteration: 1, toolCalls: [tc('t1', 'dir.list')] },
+      { kind: 'tools', iteration: 1, toolCalls: [tc('t1', 'DirList')] },
       { kind: 'text', text: '第一轮正文' },
       { kind: 'reasoning', text: '第二轮思考内容' },
-      { kind: 'tools', iteration: 2, toolCalls: [tc('t2', 'file.read')] },
+      { kind: 'tools', iteration: 2, toolCalls: [tc('t2', 'FileRead')] },
       { kind: 'text', text: '第二轮正文' },
     ];
     const { container } = render(<MessageBubble msg={mkMsg({ segments })} />);
@@ -73,7 +73,7 @@ describe('MessageBubble 片段顺序渲染', () => {
 
   it('工具调用组标注所属轮次', () => {
     const segments: MessageSegment[] = [
-      { kind: 'tools', iteration: 3, toolCalls: [tc('t3', 'shell.exec')] },
+      { kind: 'tools', iteration: 3, toolCalls: [tc('t3', 'ShellExec')] },
     ];
     render(<MessageBubble msg={mkMsg({ segments })} />);
     expect(screen.getByText('第 3 轮')).toBeInTheDocument();
@@ -86,8 +86,8 @@ describe('MessageBubble 片段顺序渲染', () => {
     ];
     render(<MessageBubble msg={mkMsg({ status: 'streaming', segments })} />);
 
-    // 前一段思考已完成 → 显示"思考过程"；最后一段是正文 → markdown 处于流式
-    expect(screen.getByText('思考过程')).toBeInTheDocument();
+    // 前一段思考已完成 → 折叠标题（折叠态文案为「思考过程（点击展开）」，用宽松匹配）
+    expect(screen.getByText(/思考过程/)).toBeInTheDocument();
     expect(screen.queryByText('思考中…')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('markdown')[0]).toHaveAttribute('data-streaming', 'true');
   });
@@ -97,11 +97,11 @@ describe('MessageBubble 片段顺序渲染', () => {
       <MessageBubble
         msg={mkMsg({
           reasoning: '历史思考',
-          toolCalls: [tc('t9', 'file.grep')],
+          toolCalls: [tc('t9', 'FileGrep')],
           content: '历史正文',
         })}
       />,
     );
-    expectOrder(container.innerHTML, ['思考过程', 'file.grep', '历史正文']);
+    expectOrder(container.innerHTML, ['思考过程', 'FileGrep', '历史正文']);
   });
 });

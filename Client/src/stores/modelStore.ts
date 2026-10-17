@@ -59,12 +59,28 @@ export interface RoutingConfig {
 
 // ── 预置供应商 ─────────────────────────────────────────────────────
 
-export const PRESET_PROVIDERS = [
+/**
+ * 已知模型名（可选）。
+ *
+ * 用途：部分端点的 base_url **不提供** `GET /models`，拉不到列表就无法继续
+ * 「测试连接 / 导入模型」。实测（2026-10-17）华为云 MaaS Token Plan 的
+ * `https://api.modelarts-maas.com/plan/v2` 正是如此（404 `APIG.0101`），
+ * 而同端点 `POST /chat/completions` 正常。此处登记的是**候选**，不是账号可见列表，
+ * 界面会标注来源并要求逐个"校验可用性"后再勾选导入。
+ */
+export const PRESET_PROVIDERS: Array<{
+  id: string;
+  name: string;
+  base_url: string;
+  models?: string[];
+}> = [
   { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1" },
   {
     id: "huawei-maas",
     name: "华为云 MaaS",
     base_url: "https://api.modelarts-maas.com/plan/v2",
+    // 与 Configs/modelRouter.json 的三个 Token Plan 模型对齐（实测均可用）
+    models: ["GLM-5.1", "DeepSeek-V4-Flash", "Kimi-K2.6"],
   },
   {
     id: "dashscope",
@@ -90,6 +106,19 @@ export const PRESET_PROVIDERS = [
     base_url: "https://api.lingyiwanwu.com/v1",
   },
 ];
+
+/**
+ * 取某个供应商的**内置候选模型名**（无登记则空数组）。
+ *
+ * 端点不提供 `/models` 时用它兜底：既能让"测试连接"有模型可探测，
+ * 也能让用户在界面上直接看到可勾选的候选（仍须逐个校验可用性）。
+ */
+export function presetKnownModels(
+  providerId: string | undefined | null,
+): string[] {
+  if (!providerId) return [];
+  return PRESET_PROVIDERS.find((p) => p.id === providerId)?.models ?? [];
+}
 
 // ── Store ──────────────────────────────────────────────────────────
 
@@ -119,7 +148,17 @@ interface ModelState {
   fetchProviderModels: (
     base_url: string,
     api_key: string,
-  ) => Promise<{ ok: boolean; data?: ModelSpec[]; error?: string }>;
+    fallbackModels?: string[],
+  ) => Promise<{
+    ok: boolean;
+    data?: ModelSpec[];
+    error?: string;
+    /** 端点确实不提供 /models（404/405） */
+    listNotProvided?: boolean;
+    listStatus?: number;
+    /** data 来自 fallbackModels 而非端点列表 */
+    modelsFromFallback?: boolean;
+  }>;
 
   // 路由配置
   updateRouting: (
@@ -224,8 +263,12 @@ export const useModelStore = create<ModelState>((set, get) => ({
     return result;
   },
 
-  fetchProviderModels: async (base_url, api_key) => {
-    const result = await ipcFetchProviderModels({ base_url, api_key });
+  fetchProviderModels: async (base_url, api_key, fallbackModels) => {
+    const result = await ipcFetchProviderModels({
+      base_url,
+      api_key,
+      fallbackModels,
+    });
     return result;
   },
 

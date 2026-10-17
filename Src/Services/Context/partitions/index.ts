@@ -15,4 +15,13 @@ export {
   isPartitionOverBudget,
   estimateTokens,
   clearHighFreqPartition,
-} from './partitions.js';
+  // 分区装配与执行链预算（MEM1-GAP-PARTITION）
+  type PartitionAssemblyResult,
+  type PartitionableMessage,
+  type PartitionEnforcement,
+  partitionEntries,
+  assembleContext,
+  partitionOfMessage,
+  messageTokenEstimate,
+  enforcePartitionBudget,
+} from "./partitions.js";

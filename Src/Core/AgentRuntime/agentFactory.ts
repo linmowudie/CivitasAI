@@ -155,3 +155,33 @@ export function resetAgentFactory(): void {
   agentCounter = 0;
   counterAlignedWithStore = false;
 }
+
+// ── 分裂/合并语义层（设计 §3.7：13 条 SPLIT-SEM 验收点）─────────────
+// 语义实现集中在 `splitSemantics.ts`；本模块再导出，使 "Agent 拓扑变更
+// （创建 / 分裂 / 合并）" 对外只有一个公共入口。
+export {
+  SPLIT_DEPTH_LIMIT,
+  type SplitLineageEntry,
+  type SplitInheritancePolicy,
+  type SplitPart,
+  type SplitApproval,
+  type VisibilityScope,
+  type ClosureReport,
+  type MergeKind,
+  querySplitLineage,
+  splitInheritancePolicy,
+  splitDepthLimit,
+  splitDepthOf,
+  requestSplitApproval,
+  splitVisibilityScope,
+  agentSelfSplit,
+  agentRequestMerge,
+  listMergeRequests,
+  measureWorkSimilarity,
+  validateSplitClosure,
+  detectConflictDomain,
+  isPeerSplit,
+  splitOnePerStep,
+  mergeKindOf,
+  resetSplitSemantics,
+} from "./splitSemantics.js";

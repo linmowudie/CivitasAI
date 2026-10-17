@@ -24,7 +24,7 @@
   },
   "tools": [
     {
-      "name": "bench.echo",
+      "name": "BenchEcho",
       "behavior": "ok",
       "dangerous": true
     }
@@ -35,7 +35,7 @@
         "kind": "tool_calls",
         "calls": [
           {
-            "name": "bench.echo",
+            "name": "BenchEcho",
             "arguments": {
               "text": "publish-change"
             }
@@ -53,7 +53,7 @@
     "exitReason": "success",
     "maxIterations": 4,
     "mustCallTools": [
-      "bench.echo"
+      "BenchEcho"
     ],
     "minToolResults": 1,
     "forbidDiagnoses": [

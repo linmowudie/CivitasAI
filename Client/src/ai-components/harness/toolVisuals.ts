@@ -22,18 +22,19 @@
  * 仅额外做驼峰切分（`readFile` → `read_File`）。
  */
 
-import type { ComponentSubgroup } from '../types';
+import type { ComponentSubgroup } from "../types";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 
 /** 工具视觉语义（动画形态） */
-export type ToolVisualKind = 'gaze' | 'flow' | 'erase' | 'pulse' | 'gear';
+export type ToolVisualKind = "gaze" | "flow" | "erase" | "pulse" | "gear";
 
 /** 工具运行状态（与 `chatStore.ToolCallEntry['status']` 结构一致，避免反向依赖 store） */
-export type ToolRunStatus = 'generating' | 'pending' | 'success' | 'error';
+export type ToolRunStatus = "generating" | "pending" | "success" | "error";
 
 /** 工具组汇总状态 */
-export type ToolGroupState = 'generating' | 'executing' | 'exploring' | 'done' | 'failed';
+export type ToolGroupState =
+  "generating" | "executing" | "exploring" | "done" | "failed";
 
 /** 单个工具的展示描述（`+工具+描述` 中的"描述"） */
 export interface ToolDescription {
@@ -74,61 +75,150 @@ export interface ToolGroupSummary {
 
 // ── 词表与匹配 ──────────────────────────────────────────────────────
 
-const BOUNDARY = '[._\\-\\s/]';
+const BOUNDARY = "[._\\-\\s/]";
 
 /** 删除类（块阵列沉浮） */
-const ERASE_WORDS = ['delete', 'remove', 'rm', 'unlink', 'drop', 'purge', 'clear', 'erase',
-  'truncate', 'destroy', 'discard', 'wipe', 'clean'];
+const ERASE_WORDS = [
+  "delete",
+  "remove",
+  "rm",
+  "unlink",
+  "drop",
+  "purge",
+  "clear",
+  "erase",
+  "truncate",
+  "destroy",
+  "discard",
+  "wipe",
+  "clean",
+];
 
 /** 写入类（光流） */
-const FLOW_WORDS = ['write', 'create', 'edit', 'update', 'patch', 'append', 'save', 'apply',
-  'replace', 'move', 'rename', 'mkdir', 'copy', 'upload', 'put', 'set', 'insert', 'add',
-  'commit', 'mount', 'chmod', 'archive'];
+const FLOW_WORDS = [
+  "write",
+  "create",
+  "edit",
+  "update",
+  "patch",
+  "append",
+  "save",
+  "apply",
+  "replace",
+  "move",
+  "rename",
+  "mkdir",
+  "copy",
+  "upload",
+  "put",
+  "set",
+  "insert",
+  "add",
+  "commit",
+  "mount",
+  "chmod",
+  "archive",
+];
 
 /** 执行类（终端扫描） */
-const PULSE_WORDS = ['exec', 'execute', 'run', 'eval', 'shell', 'bash', 'cmd', 'command',
-  'spawn', 'launch', 'start', 'stop', 'restart', 'kill', 'install', 'build', 'test',
-  'deploy', 'compile', 'lint', 'typecheck'];
+const PULSE_WORDS = [
+  "exec",
+  "execute",
+  "run",
+  "eval",
+  "shell",
+  "bash",
+  "cmd",
+  "command",
+  "spawn",
+  "launch",
+  "start",
+  "stop",
+  "restart",
+  "kill",
+  "install",
+  "build",
+  "test",
+  "deploy",
+  "compile",
+  "lint",
+  "typecheck",
+];
 
 /** 查阅/探索类（小眼睛） */
-const GAZE_WORDS = ['read', 'open', 'view', 'cat', 'show', 'get', 'fetch', 'load', 'search',
-  'find', 'grep', 'glob', 'list', 'ls', 'dir', 'query', 'inspect', 'scan', 'browse',
-  'lookup', 'resolve', 'stat', 'head', 'tail', 'tree', 'peek', 'examine'];
+const GAZE_WORDS = [
+  "read",
+  "open",
+  "view",
+  "cat",
+  "show",
+  "get",
+  "fetch",
+  "load",
+  "search",
+  "find",
+  "grep",
+  "glob",
+  "list",
+  "ls",
+  "dir",
+  "query",
+  "inspect",
+  "scan",
+  "browse",
+  "lookup",
+  "resolve",
+  "stat",
+  "head",
+  "tail",
+  "tree",
+  "peek",
+  "examine",
+];
 
 /** 显式覆盖（跨词表歧义 / 语义特例，优先于词表） */
 const EXPLICIT_VISUALS: ReadonlyArray<readonly [string, ToolVisualKind]> = [
   // 工具派发不是"跑命令"，走系统轨道
-  ['tool.execute', 'gear'],
+  ["ToolExecute", "gear"],
   // 工具检索是探索行为
-  ['tool.search', 'gaze'],
-  ['agent.recruit', 'gear'],
-  ['agent.submit_review', 'gear'],
+  ["ToolSearch", "gaze"],
+  ["AgentRecruit", "gear"],
+  ["AgentSubmitReview", "gear"],
+  // 分裂/自合并：既非查阅也非跑命令，走系统轨道（与 recruit 同族）
+  ["AgentSplit", "gear"],
+  ["AgentMerge", "gear"],
 ];
 
 function makeMatcher(words: readonly string[]): RegExp {
-  return new RegExp(`(?:^|${BOUNDARY})(?:${words.join('|')})(?:$|${BOUNDARY})`);
+  // 大小写不敏感：工具名已统一为大驼峰（`FileRead`），
+  // `splitCamel` 只插边界不改大小写 ⇒ 小写词表必须按不敏感匹配才能命中 `Read`。
+  return new RegExp(
+    `(?:^|${BOUNDARY})(?:${words.join("|")})(?:$|${BOUNDARY})`,
+    "i",
+  );
 }
 
 const MATCHERS: ReadonlyArray<readonly [ToolVisualKind, RegExp]> = [
-  ['erase', makeMatcher(ERASE_WORDS)],
-  ['flow', makeMatcher(FLOW_WORDS)],
-  ['pulse', makeMatcher(PULSE_WORDS)],
-  ['gaze', makeMatcher(GAZE_WORDS)],
+  ["erase", makeMatcher(ERASE_WORDS)],
+  ["flow", makeMatcher(FLOW_WORDS)],
+  ["pulse", makeMatcher(PULSE_WORDS)],
+  ["gaze", makeMatcher(GAZE_WORDS)],
 ];
 
 /** 驼峰切分为下划线（`readFile` → `read_File`），大小写保持不变 */
 function splitCamel(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2');
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
 }
 
 /**
  * 工具名 → 视觉语义。
  *
  * 判定顺序：显式覆盖 → 删除 → 写入 → 执行 → 查阅 → 系统。
- * 大小写敏感，按 `.`/`_`/`-`/`/`/空格 分词（含驼峰切分）。
+ * 按 `.`/`_`/`-`/`/`/空格 分词（含驼峰切分），**大小写不敏感**
+ * （工具名已统一为大驼峰 `FileRead`，敏感匹配会漏掉 `Read`）。
  */
 export function classifyToolVisual(toolName: string): ToolVisualKind {
-  if (!toolName) return 'gear';
+  if (!toolName) return "gear";
   for (const [prefix, kind] of EXPLICIT_VISUALS) {
     if (toolName === prefix || toolName.startsWith(`${prefix}.`)) return kind;
   }
@@ -136,29 +226,34 @@ export function classifyToolVisual(toolName: string): ToolVisualKind {
   for (const [kind, matcher] of MATCHERS) {
     if (matcher.test(probe)) return kind;
   }
-  return 'gear';
+  return "gear";
 }
 
 /** 探索型工具：需要"小眼睛"的查阅/检索/列举类调用 */
 export function isExploratoryTool(toolName: string): boolean {
-  return classifyToolVisual(toolName) === 'gaze';
+  return classifyToolVisual(toolName) === "gaze";
 }
 
 /** 视觉语义 → 组件子分组（保持 `ComponentSubgroup` 四态不变） */
 export function subgroupOfVisual(kind: ToolVisualKind): ComponentSubgroup {
   switch (kind) {
-    case 'gaze': return 'read';
-    case 'flow': return 'write';
-    case 'erase': return 'write';
-    case 'pulse': return 'exec';
-    case 'gear': return 'system';
+    case "gaze":
+      return "read";
+    case "flow":
+      return "write";
+    case "erase":
+      return "write";
+    case "pulse":
+      return "exec";
+    case "gear":
+      return "system";
   }
 }
 
 /**
  * 工具名 → 子分组（读/写/执行/系统）。
  *
- * 兼容旧的名称前缀口径，并扩展点号/驼峰命名（`file.read` → read）。
+ * 兼容旧的名称前缀口径，并扩展点号/驼峰命名（`FileRead` → read）。
  * 仍保持大小写敏感：`Read_file` → system。
  */
 export function inferSubgroup(toolName: string): ComponentSubgroup {
@@ -168,62 +263,89 @@ export function inferSubgroup(toolName: string): ComponentSubgroup {
 // ── 中文动作词 ──────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, string> = {
-  'file.read': '读取文件',
-  'file.write': '写入文件',
-  'file.edit': '修改文件',
-  'file.delete': '删除文件',
-  'file.grep': '搜索文件内容',
-  'dir.list': '列出目录',
-  'shell.exec': '执行命令',
-  'code.eval': '执行代码',
-  'web.search': '联网搜索',
-  'vector.search': '语义检索',
-  'tool.search': '查找工具',
-  'tool.execute': '调用工具',
-  'todo.write': '更新待办',
-  'agent.recruit': '招募智能体',
-  'agent.submit_review': '提交评审',
+  FileRead: "读取文件",
+  FileWrite: "写入文件",
+  FileEdit: "修改文件",
+  FileDelete: "删除文件",
+  "file.delete": "删除文件",
+  FileGrep: "搜索文件内容",
+  DirList: "列出目录",
+  ShellExec: "执行命令",
+  CodeEval: "执行代码",
+  WebSearch: "联网搜索",
+  VectorSearch: "语义检索",
+  ToolSearch: "查找工具",
+  ToolExecute: "调用工具",
+  TodoWrite: "更新待办",
+  AgentRecruit: "招募智能体",
+  AgentSubmitReview: "提交评审",
+  AgentSplit: "分裂出同级智能体",
+  AgentMerge: "请求与同级合并",
+  OrchestratorCompose: "变更组装体",
+  OrchestratorSelect: "选定下一组件",
   // 兼容下划线/旧式命名（历史模型输出与测试夹具）
-  read_file: '读取文件',
-  read_dir: '列出目录',
-  list_dir: '列出目录',
-  write_file: '写入文件',
-  edit_file: '修改文件',
-  delete_file: '删除文件',
-  remove_file: '删除文件',
-  run_command: '执行命令',
-  exec_command: '执行命令',
-  shell_command: '执行命令',
-  search_files: '搜索文件内容',
-  grep_files: '搜索文件内容',
-  web_search: '联网搜索',
+  read_file: "读取文件",
+  read_dir: "列出目录",
+  list_dir: "列出目录",
+  write_file: "写入文件",
+  edit_file: "修改文件",
+  delete_file: "删除文件",
+  remove_file: "删除文件",
+  run_command: "执行命令",
+  exec_command: "执行命令",
+  shell_command: "执行命令",
+  search_files: "搜索文件内容",
+  grep_files: "搜索文件内容",
+  web_search: "联网搜索",
 };
 
 const VISUAL_LABELS: Record<ToolVisualKind, string> = {
-  gaze: '查阅',
-  flow: '写入',
-  erase: '删除',
-  pulse: '执行',
-  gear: '调用',
+  gaze: "查阅",
+  flow: "写入",
+  erase: "删除",
+  pulse: "执行",
+  gear: "调用",
 };
 
 // ── 描述构建 ────────────────────────────────────────────────────────
 
 /** 各语义下"作用对象"参数的取值优先级 */
 const TARGET_PRIORITY: Record<ToolVisualKind, readonly string[]> = {
-  gaze: ['path', 'filePath', 'file_path', 'file', 'dir', 'directory', 'root',
-    'pattern', 'query', 'keyword', 'url', 'name'],
-  flow: ['path', 'filePath', 'file_path', 'file', 'dir', 'directory', 'target', 'url', 'name'],
-  erase: ['path', 'filePath', 'file_path', 'file', 'target'],
-  pulse: ['command', 'cmd', 'script', 'path', 'file'],
-  gear: ['name', 'tool', 'toolName', 'agentId', 'role', 'target'],
+  gaze: [
+    "path",
+    "filePath",
+    "file_path",
+    "file",
+    "dir",
+    "directory",
+    "root",
+    "pattern",
+    "query",
+    "keyword",
+    "url",
+    "name",
+  ],
+  flow: [
+    "path",
+    "filePath",
+    "file_path",
+    "file",
+    "dir",
+    "directory",
+    "target",
+    "url",
+    "name",
+  ],
+  erase: ["path", "filePath", "file_path", "file", "target"],
+  pulse: ["command", "cmd", "script", "path", "file"],
+  gear: ["name", "tool", "toolName", "agentId", "role", "target"],
 };
 
 const MAX_TARGET = 46;
 const MAX_INLINE = 18;
 
 function shorten(value: string, max = MAX_TARGET): string {
-  const flat = value.replace(/\s+/g, ' ').trim();
+  const flat = value.replace(/\s+/g, " ").trim();
   if (flat.length <= max) return flat;
   // 路径类保留尾部（文件名/最后一段更有信息量）
   return `…${flat.slice(flat.length - (max - 1))}`;
@@ -235,34 +357,52 @@ function formatSize(chars: number): string {
   return `${(chars / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function pickTarget(kind: ToolVisualKind, args: Record<string, unknown>): string | undefined {
+function pickTarget(
+  kind: ToolVisualKind,
+  args: Record<string, unknown>,
+): string | undefined {
   for (const key of TARGET_PRIORITY[kind]) {
     const raw = args[key];
-    if (typeof raw === 'string' && raw.trim() !== '') return shorten(raw);
+    if (typeof raw === "string" && raw.trim() !== "") return shorten(raw);
     if (Array.isArray(raw) && raw.length > 0) {
-      const first = raw.find((v) => typeof v === 'string' && v.trim() !== '');
-      if (typeof first === 'string') return `${shorten(first)} 等 ${raw.length} 项`;
+      const first = raw.find((v) => typeof v === "string" && v.trim() !== "");
+      if (typeof first === "string")
+        return `${shorten(first)} 等 ${raw.length} 项`;
     }
   }
   return undefined;
 }
 
-function buildDetail(kind: ToolVisualKind, args: Record<string, unknown>): string | undefined {
+function buildDetail(
+  kind: ToolVisualKind,
+  args: Record<string, unknown>,
+): string | undefined {
   // 写入：内容体量
-  if (typeof args.content === 'string' && (kind === 'flow' || kind === 'erase')) {
+  if (
+    typeof args.content === "string" &&
+    (kind === "flow" || kind === "erase")
+  ) {
     return `写入 ${formatSize(args.content.length)}`;
   }
   // 编辑：查找替换
-  if (kind === 'flow' && typeof args.search === 'string' && typeof args.replace === 'string') {
-    return '查找替换';
+  if (
+    kind === "flow" &&
+    typeof args.search === "string" &&
+    typeof args.replace === "string"
+  ) {
+    return "查找替换";
   }
   // 检索：命中模式
-  if (kind === 'gaze' && typeof args.pattern === 'string' && args.pattern.trim() !== '') {
+  if (
+    kind === "gaze" &&
+    typeof args.pattern === "string" &&
+    args.pattern.trim() !== ""
+  ) {
     return `「${shorten(args.pattern, MAX_INLINE)}」`;
   }
   // 执行代码：行数
-  if (kind === 'pulse' && typeof args.code === 'string') {
-    const lines = args.code.split('\n').length;
+  if (kind === "pulse" && typeof args.code === "string") {
+    const lines = args.code.split("\n").length;
     return `${lines} 行`;
   }
   // 批量对象：条数
@@ -274,9 +414,9 @@ function buildDetail(kind: ToolVisualKind, args: Record<string, unknown>): strin
 /**
  * 工具调用 → 人读描述（`+工具+描述` 里的"描述"）。
  *
- * 例：`file.read { path: 'Src/main.ts' }` → `读取文件 · Src/main.ts`；
- *     `file.write { path, content }`   → `写入文件 · a.ts · 写入 1.2 KB`；
- *     `shell.exec { command: 'npm test' }` → `执行命令 · npm test`。
+ * 例：`FileRead { path: 'Src/main.ts' }` → `读取文件 · Src/main.ts`；
+ *     `FileWrite { path, content }`   → `写入文件 · a.ts · 写入 1.2 KB`；
+ *     `ShellExec { command: 'npm test' }` → `执行命令 · npm test`。
  */
 export function describeToolCall(
   toolName: string,
@@ -286,13 +426,19 @@ export function describeToolCall(
   const label = TOOL_LABELS[toolName] ?? VISUAL_LABELS[kind];
   const target = pickTarget(kind, args);
   const detail = buildDetail(kind, args);
-  const text = [label, target, detail].filter(Boolean).join(' · ');
+  const text = [label, target, detail].filter(Boolean).join(" · ");
   return { label, target, detail, text };
 }
 
 // ── 工具组汇总 ──────────────────────────────────────────────────────
 
-const EMPTY_COUNTS: Record<ToolVisualKind, number> = { gaze: 0, flow: 0, erase: 0, pulse: 0, gear: 0 };
+const EMPTY_COUNTS: Record<ToolVisualKind, number> = {
+  gaze: 0,
+  flow: 0,
+  erase: 0,
+  pulse: 0,
+  gear: 0,
+};
 
 /**
  * 汇总一组工具调用的运行态，供组头渲染。
@@ -311,42 +457,45 @@ export function summarizeToolGroup(
   let hasExploratory = false;
   let exploring = false;
   const runningKinds: ToolVisualKind[] = [];
-  let lastKind: ToolVisualKind = 'gear';
+  let lastKind: ToolVisualKind = "gear";
 
   for (const call of calls) {
     const kind = classifyToolVisual(call.name);
     counts[kind] += 1;
-    if (kind === 'gaze') hasExploratory = true;
+    if (kind === "gaze") hasExploratory = true;
     lastKind = kind;
 
-    if (call.status === 'generating' || call.status === 'pending') {
+    if (call.status === "generating" || call.status === "pending") {
       running += 1;
-      if (call.status === 'generating') generating += 1;
+      if (call.status === "generating") generating += 1;
       runningKinds.push(kind);
-      if (kind === 'gaze') exploring = true;
+      if (kind === "gaze") exploring = true;
     } else {
       settled += 1;
-      if (call.status === 'error') failed += 1;
+      if (call.status === "error") failed += 1;
     }
   }
 
   const state: ToolGroupState = exploring
-    ? 'exploring'
+    ? "exploring"
     : running > 0
-      ? (generating === running ? 'generating' : 'executing')
+      ? generating === running
+        ? "generating"
+        : "executing"
       : failed > 0
-        ? 'failed'
-        : 'done';
+        ? "failed"
+        : "done";
 
-  const label = state === 'exploring'
-    ? '探索中…'
-    : state === 'generating'
-      ? '准备中…'
-      : state === 'executing'
-        ? '执行中…'
-        : state === 'failed'
-          ? `${failed} 项失败`
-          : '已完成';
+  const label =
+    state === "exploring"
+      ? "探索中…"
+      : state === "generating"
+        ? "准备中…"
+        : state === "executing"
+          ? "执行中…"
+          : state === "failed"
+            ? `${failed} 项失败`
+            : "已完成";
 
   return {
     total: calls.length,
@@ -358,7 +507,7 @@ export function summarizeToolGroup(
     exploring,
     explored: hasExploratory && !exploring,
     counts,
-    visual: exploring ? 'gaze' : (runningKinds[0] ?? lastKind),
+    visual: exploring ? "gaze" : (runningKinds[0] ?? lastKind),
     state,
     label,
   };
@@ -367,9 +516,15 @@ export function summarizeToolGroup(
 /** 组头紧凑计数串：`读取 2 · 写入 1`（0 计数的语义不显示） */
 export function formatCounts(counts: Record<ToolVisualKind, number>): string {
   const parts: string[] = [];
-  for (const kind of ['gaze', 'flow', 'erase', 'pulse', 'gear'] as ToolVisualKind[]) {
+  for (const kind of [
+    "gaze",
+    "flow",
+    "erase",
+    "pulse",
+    "gear",
+  ] as ToolVisualKind[]) {
     const n = counts[kind];
     if (n > 0) parts.push(`${VISUAL_LABELS[kind]} ${n}`);
   }
-  return parts.join(' · ');
+  return parts.join(" · ");
 }

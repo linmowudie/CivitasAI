@@ -10,12 +10,12 @@
   "agentRole": "worker",
   "closeDbAfterIteration": 1,
   "loop": { "maxIterations": 5, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
-  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-1" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-2" } }] },
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "step-3" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "step-1" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "step-2" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "step-3" } }] },
       { "kind": "text", "content": "中间结论已持久化。任务完成。" }
     ],
     "defaultReply": "任务完成。"

@@ -2,36 +2,55 @@
  * T1 收口验证：断言 runIteration.ts 不再直接调用 executeTool，
  * 且所有工具调用统一经 dispatchToolCall。
  */
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-describe('T1: 工具调用统一收口到派发器', () => {
-  const runIterationPath = resolve(__dirname, '../../Src/Core/Loop/runIteration.ts');
-  const source = readFileSync(runIterationPath, 'utf-8');
+describe("T1: 工具调用统一收口到派发器", () => {
+  const runIterationPath = resolve(
+    __dirname,
+    "../../Src/Core/Loop/runIteration.ts",
+  );
+  const source = readFileSync(runIterationPath, "utf-8");
 
-  it('源码中不再直接出现 await executeTool(', () => {
+  it("源码中不再直接出现 await executeTool(", () => {
     // 匹配 `await executeTool(` 但排除注释行
-    const lines = source.split('\n');
+    const lines = source.split("\n");
     const violations = lines.filter((line, idx) => {
       const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return false;
+      if (
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("/*")
+      )
+        return false;
       return /await\s+executeTool\s*\(/.test(line);
     });
     expect(violations).toEqual([]);
   });
 
-  it('源码中出现 dispatchToolCall( 且其调用带 iteration 字段', () => {
-    expect(source).toContain('dispatchToolCall(');
+  it("源码中出现 dispatchToolCall( 且其调用带 iteration 字段", () => {
+    expect(source).toContain("dispatchToolCall(");
     // 确认调用时传入了 iteration
     expect(source).toMatch(/dispatchToolCall\s*\(\s*\{[^}]*iteration\s*:/s);
   });
 
-  it('import 语句包含 dispatchToolCall 而非 executeTool', () => {
-    expect(source).toContain("from '../../Tools/Registry/toolDispatcher.js'");
+  it("import 语句包含 dispatchToolCall 而非 executeTool", () => {
+    // 引号风格无关（2026-10-15）：并行工作线把源码统一为双引号，原断言只认单引号 → 误报。
+    // 改为解析 import 块并校验**导入名**，比比对整行字符串更贴近意图（且更强）。
+    const importBlock = source.match(
+      /import\s*\{([^}]*)\}\s*from\s*['"][^'"]*Tools\/Registry\/toolDispatcher(?:\.js)?['"]/s,
+    );
+    expect(importBlock).not.toBeNull();
+    expect(importBlock![1]).toContain("dispatchToolCall");
+    expect(importBlock![1]).not.toContain("executeTool");
     // 不应从 toolRegistry 导入 executeTool
-    const importLines = source.split('\n').filter(l => l.includes('executeTool'));
-    const badImports = importLines.filter(l => /import.*executeTool.*from.*toolRegistry/.test(l));
+    const importLines = source
+      .split("\n")
+      .filter((l) => l.includes("executeTool"));
+    const badImports = importLines.filter((l) =>
+      /import.*executeTool.*from.*toolRegistry/.test(l),
+    );
     expect(badImports).toEqual([]);
   });
 });

@@ -18,7 +18,7 @@
 ## 1. 执行前必读（硬约束）
 
 1. **不要**把全部工具塞回 `tools` 头部（那会破坏前缀缓存，是本任务的反面目标）。
-2. **不要**让 `DANGEROUS` 工具经 `tool.execute` 执行（会绕过审批红线）。
+2. **不要**让 `DANGEROUS` 工具经 `ToolExecute` 执行（会绕过审批红线）。
 3. **不要**改动既有设计文档的**结构/章节编号**，只允许**追加小节**（见 T5）。
 4. **必须**保持既有测试全绿；新增行为必须**新增测试**，不允许删改既有断言来"通过"。
 5. 提交前**必须**跑完 §5 的全部门禁命令，并把输出贴到交付报告里。
@@ -48,8 +48,8 @@
 |---|---|
 | `Src/Tools/Registry/toolHeader.ts` | `buildToolHeader(role)` 头部冻结（热工具 + 元工具，按名排序）；`listDiscoverableSpecs(role)`；`searchToolSpecs(query, role, limit)`；常量 `DEFAULT_HOT_TOOLS`、`META_TOOLS` |
 | `Src/Tools/Registry/toolDispatcher.ts` | `dispatchToolCall({ toolName, arguments, context, iteration })` → `{ result, text, durationMs, errorClass }`；`normalizeToolContent(content)` |
-| `Src/Tools/Builtin/System/toolExecutor.ts` | 元工具 `tool.execute`（CONTROLLED；仅允许 SAFE/CONTROLLED；禁止递归） |
-| `Src/Tools/Builtin/System/toolSearcher.ts` | 元工具 `tool.search`（SAFE；返回工具 schema 摘要供追加到上下文） |
+| `Src/Tools/Builtin/System/toolExecutor.ts` | 元工具 `ToolExecute`（CONTROLLED；仅允许 SAFE/CONTROLLED；禁止递归） |
+| `Src/Tools/Builtin/System/toolSearcher.ts` | 元工具 `ToolSearch`（SAFE；返回工具 schema 摘要供追加到上下文） |
 | `Src/Core/Loop/runIteration.ts` | 头部改用 `buildToolHeader(ctx.agentRole)`；系统提示三区分离 + 工具数组排序（`buildStableSystemPrompt`） |
 | `Tests/Tools/toolHeaderDispatch.spec.ts` | 8 项测试（头部冻结/探索/派发/安全边界/归一/错误分类） |
 | `Tests/Core/promptPrefixStability.spec.ts` | 4 项测试（前缀稳定 ≥90%，实测 99.9%） |
@@ -60,7 +60,7 @@
 
 ### T1 —— 工具调用**全面收口**到统一派发器
 
-**问题**：`Src/Core/Loop/runIteration.ts` 内层仍直接调用 `executeTool(...)`，只有 `tool.execute` 走了派发器 → 审计与耗时口径不一致。
+**问题**：`Src/Core/Loop/runIteration.ts` 内层仍直接调用 `executeTool(...)`，只有 `ToolExecute` 走了派发器 → 审计与耗时口径不一致。
 
 **改动**：`Src/Core/Loop/runIteration.ts`
 
@@ -156,16 +156,16 @@
   "tools": {
     "comment": "工具头部（tools 参数）冻结集：只放高频热工具 + 元工具。同一会话内必须保持恒定，否则会破坏提供商前缀缓存。",
     "hot": [
-      "file.read", "file.write", "file.edit",
-      "dir.list", "file.grep", "shell.exec",
-      "todo.write", "web.search",
-      "tool.search", "tool.execute"
+      "FileRead", "FileWrite", "FileEdit",
+      "DirList", "FileGrep", "ShellExec",
+      "TodoWrite", "WebSearch",
+      "ToolSearch", "ToolExecute"
     ],
     "maxHeaderTools": 12
   }
 }
 ```
-> **注意**：`tool.search` / `tool.execute` 是元工具，必须始终在头部；即使配置漏写，`buildToolHeader` 也会自动补上（已实现）。
+> **注意**：`ToolSearch` / `ToolExecute` 是元工具，必须始终在头部；即使配置漏写，`buildToolHeader` 也会自动补上（已实现）。
 > `maxHeaderTools` 用于兜底：若 `hot` 写超了，按名称排序取前 N 个并在日志里 `warn`。
 
 **改动 2（加载与注入）**：`Src/main.ts`
@@ -256,9 +256,9 @@ export function messageFingerprint(role: string, content: string): string;
 1. `Docs/Agent/10-配置体系与安全/配置体系与安全设计.md`
    - 在 **§6 v2 补丁** 之后追加一节：`### 6.x 工具头部冻结与统一派发（2026-10-03）`
    - 必须写清三条红线：
-     1. 头部只放热工具 + 元工具（`tool.search` / `tool.execute`），**会话内字节恒定**；
-     2. 新工具经 `tool.search` 探索、schema 作为**工具结果追加到上下文**，**不进头部**（保护前缀缓存）；
-     3. **`DANGEROUS` 工具不得经 `tool.execute` 执行**（否则安全门看不到它、无法审批）——必须直接调用。
+     1. 头部只放热工具 + 元工具（`ToolSearch` / `ToolExecute`），**会话内字节恒定**；
+     2. 新工具经 `ToolSearch` 探索、schema 作为**工具结果追加到上下文**，**不进头部**（保护前缀缓存）；
+     3. **`DANGEROUS` 工具不得经 `ToolExecute` 执行**（否则安全门看不到它、无法审批）——必须直接调用。
    - 同时把 `Configs/tools.json → tools.hot / maxHeaderTools` 加入该文档的配置项汇总（§2）。
 
 2. `Docs/Agent/07-共享记忆与上下文系统/共享记忆与上下文系统设计.md`

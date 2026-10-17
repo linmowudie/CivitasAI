@@ -119,6 +119,18 @@ export function resolveModel(
 }
 
 /**
+ * 该模型是否声明了视觉能力（MM-GAP-VISION）。
+ *
+ * 设计 §3.9：`supports_vision` 不得是**死字段**——路由必须能读到它，据此判定
+ * 「原生多模态通路是否可用」。未知模型/未注册 → `false`（fail-closed：能力未声明即视为不支持，
+ * 不能默认放开把图片塞给纯文本模型）。
+ */
+export function supportsVision(qualifiedName: QualifiedModelName): boolean {
+  const entry = modelRegistry.get(qualifiedName);
+  return entry?.spec.supports_vision === true;
+}
+
+/**
  * 获取所有已注册的 Provider
  */
 export function getProviders(): LlmProvider[] {

@@ -119,6 +119,14 @@ export interface ToolCallOutput {
   status: string;
   content: string;
   recoverable: boolean;
+  /**
+   * 工具失败时的结构化错误（设计 §3.1：错误码是接口的一部分，不得只留人话正文）。
+   *
+   * 背景（TOOL-ENV-TIMEOUT 实验复现）：执行链只把 `status/content/recoverable` 透传出去，
+   * 真实的 `TOOL_TIMEOUT` 等错误码在中间件边界被丢弃 —— 循环的 `IterationResult.toolResults`
+   * 因此永远观测不到错误码，观测层与判定层都只能靠正文猜。
+   */
+  error?: { code: string; message: string };
 }
 
 /** 钩子函数类型 */

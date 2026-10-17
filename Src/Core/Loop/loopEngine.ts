@@ -17,6 +17,10 @@ import {
   createIterationState,
   type IterationState,
 } from "./iterationController.js";
+import {
+  createCompressionSession,
+  type CompressionSession,
+} from "./contextCompression.js";
 
 export type LoopPhase = "idle" | "running" | "paused" | "completed" | "failed";
 
@@ -53,6 +57,12 @@ export interface LoopState extends ControlLoopStateView {
   fingerprintHistory: string[];
   /** 跨轮累积风险信号 */
   riskSignals: string[];
+  /**
+   * ★ S2b（2026-10-15）压缩会话：**每次循环运行一份**。
+   * 低增益计数与压缩计量是"运行态"，不能住在模块全局 ——
+   * 否则嵌套/并发的两层循环会互相推进计数器、计量也无法归因。
+   */
+  compressionSession: CompressionSession;
 }
 
 export type LoopStep =
@@ -103,6 +113,7 @@ export function createLoopState(options: LoopEngineOptions): LoopState {
     needsGoalReanchor: false,
     fingerprintHistory: [],
     riskSignals: [],
+    compressionSession: createCompressionSession(),
   };
 }
 

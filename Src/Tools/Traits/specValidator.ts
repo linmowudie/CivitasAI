@@ -12,12 +12,13 @@
  * 缺一字段 → 拒注（CI 也拦截）。
  */
 
-import type { ToolSpec, JsonSchema } from './toolSpec.js';
+import type { ToolSpec, JsonSchema } from "./toolSpec.js";
 import {
   GOVERNANCE_TOOL_NAME_PATTERN,
+  TOOL_NAME_CANONICAL_PATTERN,
   GOVERNANCE_TOOL_ROLES,
   ORCHESTRATOR_ROLES,
-} from '../roles.js';
+} from "../roles.js";
 
 // ===== 类型定义 =====
 
@@ -38,84 +39,107 @@ export function validateToolSpec(spec: ToolSpec): ValidationResult {
   const errors: string[] = [];
 
   // 1. 基础必填字段
-  if (!spec.name || typeof spec.name !== 'string') {
-    errors.push('缺少必填字段: name');
+  if (!spec.name || typeof spec.name !== "string") {
+    errors.push("缺少必填字段: name");
   }
-  if (!spec.version || typeof spec.version !== 'string') {
-    errors.push('缺少必填字段: version');
+  if (!spec.version || typeof spec.version !== "string") {
+    errors.push("缺少必填字段: version");
   }
-  if (!spec.description || typeof spec.description !== 'string') {
-    errors.push('缺少必填字段: description');
+  if (!spec.description || typeof spec.description !== "string") {
+    errors.push("缺少必填字段: description");
   }
 
   // 2. inputSchema 验证
   if (!spec.inputSchema) {
-    errors.push('缺少必填字段: inputSchema');
+    errors.push("缺少必填字段: inputSchema");
   } else {
     validateInputSchema(spec.inputSchema, spec.name, errors);
   }
 
   // 3. outputSchema 验证
   if (!spec.outputSchema) {
-    errors.push('缺少必填字段: outputSchema');
+    errors.push("缺少必填字段: outputSchema");
   } else {
     validateOutputSchema(spec.outputSchema, spec.name, errors);
   }
 
   // 4. dangerLevel
-  const validDangerLevels = ['SAFE', 'CONTROLLED', 'DANGEROUS', 'FORBIDDEN'];
+  const validDangerLevels = ["SAFE", "CONTROLLED", "DANGEROUS", "FORBIDDEN"];
   if (!validDangerLevels.includes(spec.dangerLevel)) {
-    errors.push(`无效的 dangerLevel: ${spec.dangerLevel}，合法值: ${validDangerLevels.join('/')}`);
+    errors.push(
+      `无效的 dangerLevel: ${spec.dangerLevel}，合法值: ${validDangerLevels.join("/")}`,
+    );
   }
 
   // 5. idempotency
-  const validIdempotency = ['YES', 'NO', 'CONDITIONAL'];
+  const validIdempotency = ["YES", "NO", "CONDITIONAL"];
   if (!validIdempotency.includes(spec.idempotency)) {
     errors.push(`无效的 idempotency: ${spec.idempotency}`);
   }
   // idempotency != 'NO' 时 idempotencyKeyFields 必填
-  if (spec.idempotency !== 'NO' && (!spec.idempotencyKeyFields || spec.idempotencyKeyFields.length === 0)) {
-    errors.push(`idempotency='${spec.idempotency}' 时必须提供 idempotencyKeyFields`);
+  if (
+    spec.idempotency !== "NO" &&
+    (!spec.idempotencyKeyFields || spec.idempotencyKeyFields.length === 0)
+  ) {
+    errors.push(
+      `idempotency='${spec.idempotency}' 时必须提供 idempotencyKeyFields`,
+    );
   }
 
   // 6. reversibility
-  const validReversibility = ['REVERSIBLE', 'PARTIAL', 'IRREVERSIBLE'];
+  const validReversibility = ["REVERSIBLE", "PARTIAL", "IRREVERSIBLE"];
   if (!validReversibility.includes(spec.reversibility)) {
     errors.push(`无效的 reversibility: ${spec.reversibility}`);
   }
 
   // 7. sideEffectScope
-  const validScopes = ['none', 'workspace', 'filesystem', 'network', 'process', 'external'];
+  const validScopes = [
+    "none",
+    "workspace",
+    "filesystem",
+    "network",
+    "process",
+    "external",
+  ];
   if (!validScopes.includes(spec.sideEffectScope)) {
     errors.push(`无效的 sideEffectScope: ${spec.sideEffectScope}`);
   }
 
   // 8. requiredRoles
   if (!Array.isArray(spec.requiredRoles) || spec.requiredRoles.length === 0) {
-    errors.push('requiredRoles 不能为空数组');
+    errors.push("requiredRoles 不能为空数组");
   }
 
   // 9. sandboxMode
-  const validSandbox = ['strict', 'standard', 'none'];
+  const validSandbox = ["strict", "standard", "none"];
   if (!validSandbox.includes(spec.sandboxMode)) {
     errors.push(`无效的 sandboxMode: ${spec.sandboxMode}`);
   }
 
   // 10. timeoutMs
-  if (typeof spec.timeoutMs !== 'number' || spec.timeoutMs <= 0) {
-    errors.push('timeoutMs 必须是正数');
+  if (typeof spec.timeoutMs !== "number" || spec.timeoutMs <= 0) {
+    errors.push("timeoutMs 必须是正数");
   }
 
-  // 11. 自动门禁：DANGEROUS + IRREVERSIBLE → 需要 L4 HumanGate
-  // （本验证器只标记，HumanGate 检查在 Registry 层配合 verifier 完成）
-  if (spec.dangerLevel === 'DANGEROUS' && spec.reversibility === 'IRREVERSIBLE') {
-    // 标记但不阻断——L4 HumanGate 在 S6 的 approvalGate 中强制
-    // 此处仅记录警告
+  // 11. 自动门禁：DANGEROUS + IRREVERSIBLE → 必须声明 L4 HumanGate
+  //
+  // 2026-10-17 从"空 if 块（仅注释）"改为**校验期真实拦截**：危险且不可逆的工具
+  // 若未声明 humanGateLevel='L4'，注册期即拒（避免"能注册、上线才靠 approvalGate 兜底"）。
+  // 修复依据：矩阵 cell TOOL-SEC-L4GATE 的 oracle——"校验期即拒绝未声明 L4 的危险不可逆工具"。
+  if (
+    spec.dangerLevel === "DANGEROUS" &&
+    spec.reversibility === "IRREVERSIBLE"
+  ) {
+    if (spec.humanGateLevel !== "L4") {
+      errors.push(
+        `危险且不可逆工具 ${spec.name} 未声明 L4 HumanGate（humanGateLevel: 'L4'）—— 校验期拒绝注册`,
+      );
+    }
   }
 
   // 12. FORBIDDEN 工具不应注册
-  if (spec.dangerLevel === 'FORBIDDEN') {
-    errors.push('FORBIDDEN 级别工具不允许注册');
+  if (spec.dangerLevel === "FORBIDDEN") {
+    errors.push("FORBIDDEN 级别工具不允许注册");
   }
 
   // 13. 治理类工具不得对 L1/L2 开放（FE-048：GOVERNANCE_TOOL_ROLES 注册期校验）
@@ -126,21 +150,33 @@ export function validateToolSpec(spec: ToolSpec): ValidationResult {
     );
     if (leaked.length > 0) {
       errors.push(
-        `治理类工具 ${spec.name} 对非 L0 角色开放: ${leaked.join(', ')}（治理工具 requiredRoles 仅限 GOVERNANCE_TOOL_ROLES）`,
+        `治理类工具 ${spec.name} 对非 L0 角色开放: ${leaked.join(", ")}（治理工具 requiredRoles 仅限 GOVERNANCE_TOOL_ROLES）`,
       );
     }
   }
 
-  // 14. 编排/评审类（agent.*）工具的 requiredRoles 必须 ⊆ ORCHESTRATOR_ROLES（FE-048）
-  if (spec.name.startsWith('agent.')) {
+  // 14. 编排/评审类（Agent*）工具的 requiredRoles 必须 ⊆ ORCHESTRATOR_ROLES（FE-048）
+  // 工具名已统一为大驼峰（原 `agent.*` ⇒ `Agent*`），故按 PascalCase 前缀判断
+  if (/^Agent[A-Z]/.test(spec.name)) {
     const invalid = spec.requiredRoles.filter(
       (role) => !(ORCHESTRATOR_ROLES as readonly string[]).includes(role),
     );
     if (invalid.length > 0) {
       errors.push(
-        `编排类工具 ${spec.name} 含非编排角色: ${invalid.join(', ')}（agent.* 工具 requiredRoles 仅限 ORCHESTRATOR_ROLES）`,
+        `编排类工具 ${spec.name} 含非编排角色: ${invalid.join(", ")}（Agent* 工具 requiredRoles 仅限 ORCHESTRATOR_ROLES）`,
       );
     }
+  }
+
+  // 15. 工具名必须是**大驼峰**（`^[A-Z][A-Za-z0-9]*$`）
+  // 真实故障（2026-10-16）：工具名原为点号形式（`file.read`），DeepSeek 等 OpenAI 兼容端点
+  // 要求 `tools[].function.name` 匹配 `^[a-zA-Z0-9_-]+$`，点号直接 400。
+  // 此处注册期拦截，避免"能注册、上线才炸"。
+  if (!TOOL_NAME_CANONICAL_PATTERN.test(spec.name)) {
+    errors.push(
+      `工具名 ${spec.name} 不符命名规范：必须为大驼峰且不含分隔符（如 FileRead），` +
+        `否则 provider 会以 function.name 不匹配 ^[a-zA-Z0-9_-]+$ 拒绝请求`,
+    );
   }
 
   return {
@@ -158,7 +194,7 @@ export function validateInput(
 ): ValidationResult {
   const errors: string[] = [];
 
-  if (schema.type === 'object' && schema.properties) {
+  if (schema.type === "object" && schema.properties) {
     // 检查必填字段
     for (const required of schema.required ?? []) {
       if (!(required in input)) {
@@ -180,7 +216,9 @@ export function validateInput(
       if (key in input && input[key] !== undefined) {
         const value = input[key];
         if (!matchesType(value, propSchema.type)) {
-          errors.push(`参数 ${key} 类型错误: 期望 ${propSchema.type}，实际 ${typeof value}`);
+          errors.push(
+            `参数 ${key} 类型错误: 期望 ${propSchema.type}，实际 ${typeof value}`,
+          );
         }
       }
     }
@@ -191,19 +229,29 @@ export function validateInput(
 
 // ===== 内部函数 =====
 
-function validateInputSchema(schema: JsonSchema, toolName: string, errors: string[]): void {
+function validateInputSchema(
+  schema: JsonSchema,
+  toolName: string,
+  errors: string[],
+): void {
   if (schema.additionalProperties === true) {
-    errors.push(`工具 ${toolName} 的 inputSchema 禁止 additionalProperties:true`);
+    errors.push(
+      `工具 ${toolName} 的 inputSchema 禁止 additionalProperties:true`,
+    );
   }
 }
 
-function validateOutputSchema(schema: JsonSchema, toolName: string, errors: string[]): void {
+function validateOutputSchema(
+  schema: JsonSchema,
+  toolName: string,
+  errors: string[],
+): void {
   // outputSchema 必须包含 status 和 recoverable
   if (schema.properties) {
-    if (!('status' in schema.properties)) {
+    if (!("status" in schema.properties)) {
       errors.push(`工具 ${toolName} 的 outputSchema 缺少 status 字段`);
     }
-    if (!('recoverable' in schema.properties)) {
+    if (!("recoverable" in schema.properties)) {
       errors.push(`工具 ${toolName} 的 outputSchema 缺少 recoverable 字段`);
     }
   } else {
@@ -213,12 +261,21 @@ function validateOutputSchema(schema: JsonSchema, toolName: string, errors: stri
 
 function matchesType(value: unknown, expectedType: string): boolean {
   switch (expectedType) {
-    case 'string': return typeof value === 'string';
-    case 'number': return typeof value === 'number';
-    case 'integer': return typeof value === 'number' && Number.isInteger(value);
-    case 'boolean': return typeof value === 'boolean';
-    case 'array': return Array.isArray(value);
-    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);
-    default: return true; // 未知类型不检查
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number";
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return (
+        typeof value === "object" && value !== null && !Array.isArray(value)
+      );
+    default:
+      return true; // 未知类型不检查
   }
 }

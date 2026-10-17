@@ -6,7 +6,7 @@
  * 缺一字段则 Registry 拒注（CI 也拦截）。
  */
 
-import type { DangerLevel } from '../../Infra/Security/trustLevels.js';
+import type { DangerLevel } from "../../Infra/Security/trustLevels.js";
 
 // ===== 类型定义 =====
 
@@ -22,20 +22,21 @@ export interface JsonSchema {
 }
 
 /** 幂等性声明（Docs/Agent/10 §6.1 / Docs/Agent/12 §7） */
-export type Idempotency = 'YES' | 'NO' | 'CONDITIONAL';
+export type Idempotency = "YES" | "NO" | "CONDITIONAL";
 
 /** 可逆性声明（Docs/Agent/10 §6.1） */
-export type Reversibility = 'REVERSIBLE' | 'PARTIAL' | 'IRREVERSIBLE';
+export type Reversibility = "REVERSIBLE" | "PARTIAL" | "IRREVERSIBLE";
 
 /** 副作用范围 */
-export type SideEffectScope = 'none' | 'workspace' | 'filesystem' | 'network' | 'process' | 'external';
+export type SideEffectScope =
+  "none" | "workspace" | "filesystem" | "network" | "process" | "external";
 
 /** 沙箱模式 */
-export type SandboxMode = 'strict' | 'standard' | 'none';
+export type SandboxMode = "strict" | "standard" | "none";
 
 /** 用户角色（v2.2：统一引用 Infra 层 UserRole） */
-export type { UserRole } from '../../Infra/types.js';
-import type { UserRole } from '../../Infra/types.js';
+export type { UserRole } from "../../Infra/types.js";
+import type { UserRole } from "../../Infra/types.js";
 
 /** 限流配置 */
 export interface RateLimit {
@@ -50,7 +51,7 @@ export interface RateLimit {
  * 缺失任何必填字段 → Registry 拒注。
  */
 export interface ToolSpec {
-  /** 工具名称（全局唯一），如 'file.read' */
+  /** 工具名称（全局唯一），如 'FileRead' */
   readonly name: string;
   /** 语义化版本 */
   readonly version: string;
@@ -71,6 +72,15 @@ export interface ToolSpec {
   readonly idempotencyKeyFields?: string[];
   /** 可逆性声明 */
   readonly reversibility: Reversibility;
+  /**
+   * 人工审批门级别声明。
+   *
+   * **危险且不可逆**（`DANGEROUS` + `IRREVERSIBLE`）的工具必须声明 `'L4'`，否则
+   * `validateToolSpec` 在校验期即拒绝注册（specValidator 规则 11）。
+   * 语义：该工具的每一次执行都必须经 L4 HumanGate（`approvalGate` 阻塞式审批），
+   * 不允许"先放行、出事再补审"。
+   */
+  readonly humanGateLevel?: "L4";
   /** 副作用范围 */
   readonly sideEffectScope: SideEffectScope;
 
@@ -102,7 +112,7 @@ export interface ToolExecutionContext {
   /**
    * 会话 ID（任务归属）。
    *
-   * 用途：需要**按会话落库**的工具（如 `todo.write` 计划清单）据此确定归属；
+   * 用途：需要**按会话落库**的工具（如 `TodoWrite` 计划清单）据此确定归属；
    * 由 Loop 在执行工具时注入（会话未绑定时为 undefined）。
    */
   readonly sessionId?: string;
@@ -114,6 +124,13 @@ export interface ToolExecutionContext {
    * 缺省时退化为全局 pathGuard 约束。
    */
   readonly workDir?: string;
+  /**
+   * 该 Agent 的**工具白名单**（SUB-SEC-TOOLPERM，设计 §3.6）。
+   *
+   * 设计口径：`allowed_tools` 不得只"落库记录"——执行侧必须据此裁剪。
+   * 提供时（非 undefined）执行器只允许清单内工具，越权调用直接拒绝。
+   */
+  readonly allowedTools?: readonly string[];
   /** AbortSignal */
   readonly signal?: AbortSignal;
 }
@@ -122,9 +139,9 @@ export interface ToolExecutionContext {
  * 工具统一返回格式（Docs/Agent/10 §6.2）
  */
 export interface ToolResult {
-  readonly role: 'tool';
+  readonly role: "tool";
   readonly tool_call_id: string;
-  readonly status: 'success' | 'error';
+  readonly status: "success" | "error";
   readonly recoverable: boolean;
   readonly content?: unknown;
   readonly effects?: string[];
@@ -155,9 +172,9 @@ export function toolSuccess(
   extras?: { effects?: string[]; artifacts?: ArtifactEntry[] },
 ): ToolResult {
   return {
-    role: 'tool',
+    role: "tool",
     tool_call_id: toolCallId,
-    status: 'success',
+    status: "success",
     recoverable: false,
     content,
     effects: extras?.effects,
@@ -174,9 +191,9 @@ export function toolError(
   details?: Record<string, unknown>,
 ): ToolResult {
   return {
-    role: 'tool',
+    role: "tool",
     tool_call_id: toolCallId,
-    status: 'error',
+    status: "error",
     recoverable,
     error: { code, message, details },
   };

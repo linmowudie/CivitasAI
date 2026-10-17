@@ -6,34 +6,39 @@
  * Phase 0-2：规则裁决（不调 LLM）；Phase 3 接真实 LLM 仲裁。
  */
 
-import { EventType } from '../EventBus/eventTypes.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { recordConflict, evaluateScaling } from './dynamicScaling.js';
-import { requireGovernanceRole } from '../Governance/governanceGuard.js';
-import { writeMemory } from '../SharedMemory/longTermMemory.js';
+import { EventType } from "../EventBus/eventTypes.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import { recordConflict, evaluateScaling } from "./dynamicScaling.js";
+import { requireGovernanceRole } from "../Governance/governanceGuard.js";
+import { writeMemory } from "../SharedMemory/longTermMemory.js";
 
 // FE-062 收敛：胶囊/恢复的唯一实现（tribunal 委托，消除双实现漂移）
 import {
   assembleCapsule as assembleCapsuleFromSource,
   resetCapsuleAssembler,
-} from './capsuleAssembler.js';
+} from "./capsuleAssembler.js";
 import {
   createPlan as createRestorationPlanCore,
   executePlan as executeRestorationPlan,
   getPlan as getRestorationPlanCore,
   resetRestorationManager,
-} from './restorationManager.js';
+} from "./restorationManager.js";
 
 /** 仲裁庭自身即治理机构：其裁决/执法动作以 arbitrator 角色记录 */
-const TRIBUNAL_ROLE = 'arbitrator';
-import { createEvent, publish } from '../EventBus/eventBus.js';
-import type { Result } from '../../Infra/types.js';
-import { ok, err } from '../../Infra/types.js';
+const TRIBUNAL_ROLE = "arbitrator";
+import { createEvent, publish } from "../EventBus/eventBus.js";
+import type { Result } from "../../Infra/types.js";
+import { ok, err } from "../../Infra/types.js";
 
 import type {
-  ArbitrationCase, ContextCapsule, FinalVerdict, ArbitratorVerdict,
-  ConflictType, VerdictType, RestorationPlan,
-} from './types.js';
+  ArbitrationCase,
+  ContextCapsule,
+  FinalVerdict,
+  ArbitratorVerdict,
+  ConflictType,
+  VerdictType,
+  RestorationPlan,
+} from "./types.js";
 
 // ── 内部状态 ────────────────────────────────────────────────────────
 
@@ -59,7 +64,12 @@ export function fileCase(params: {
 }): Result<ArbitrationCase> {
   // 检查是否已有同 conflictId 的案件
   for (const c of cases.values()) {
-    if (c.conflictId === params.conflictId && c.status !== 'completed') {
+    // 'timeout' 为兜底终态：同样视为已结，允许重新立案（否则卡住的案件会永久阻塞同冲突）
+    if (
+      c.conflictId === params.conflictId &&
+      c.status !== "completed" &&
+      c.status !== "timeout"
+    ) {
       return err(`冲突 ${params.conflictId} 已有进行中案件 ${c.caseId}`);
     }
   }
@@ -73,16 +83,16 @@ export function fileCase(params: {
   try {
     recordConflict();
     const scaled = evaluateScaling();
-    if (scaled.ok && scaled.value.action === 'scale_up') {
-      logger.info('冲突频率触发仲裁者池扩容', {
-        source: 'Arbitration/tribunal/fileCase',
+    if (scaled.ok && scaled.value.action === "scale_up") {
+      logger.info("冲突频率触发仲裁者池扩容", {
+        source: "Arbitration/tribunal/fileCase",
         conflictId: params.conflictId,
         targetCount: scaled.value.targetCount,
       });
     }
   } catch (e) {
-    logger.warn('仲裁者池扩缩评估失败（立案继续）', {
-      source: 'Arbitration/tribunal/fileCase',
+    logger.warn("仲裁者池扩缩评估失败（立案继续）", {
+      source: "Arbitration/tribunal/fileCase",
       error: e instanceof Error ? e.message : String(e),
     });
   }
@@ -91,7 +101,7 @@ export function fileCase(params: {
     caseId,
     conflictId: params.conflictId,
     traceId: params.traceId,
-    status: 'filed',
+    status: "filed",
     conflictType: params.conflictType,
     plaintiffAgentId: params.plaintiffAgentId,
     defendantAgentId: params.defendantAgentId,
@@ -102,12 +112,14 @@ export function fileCase(params: {
   cases.set(caseId, arbitrationCase);
 
   // 发布立案事件
-  publish(createEvent({
-    eventType: EventType.ARBITRATION_FILED,
-    source: 'Arbitration/tribunal/fileCase',
-    traceId: params.traceId,
-    payload: { caseId, conflictId: params.conflictId },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.ARBITRATION_FILED,
+      source: "Arbitration/tribunal/fileCase",
+      traceId: params.traceId,
+      payload: { caseId, conflictId: params.conflictId },
+    }),
+  );
 
   return ok(arbitrationCase);
 }
@@ -118,11 +130,14 @@ export function fileCase(params: {
  * 组装上下文胶囊（FE-062 收敛：委托 capsuleAssembler 唯一实现；内容直传路径）。
  * 本函数仅保留案件语义（写入 case.capsule + 状态流转）。
  */
-export function assembleCapsule(caseId: string, params: {
-  newMemoryContent: string;
-  oldMemoryContent: string;
-  taskDescription: string;
-}): Result<ContextCapsule> {
+export function assembleCapsule(
+  caseId: string,
+  params: {
+    newMemoryContent: string;
+    oldMemoryContent: string;
+    taskDescription: string;
+  },
+): Result<ContextCapsule> {
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
 
@@ -137,7 +152,7 @@ export function assembleCapsule(caseId: string, params: {
   if (!assembled.ok) return err(assembled.error);
 
   c.capsule = assembled.value;
-  c.status = 'assembling';
+  c.status = "assembling";
   return ok(assembled.value);
 }
 
@@ -147,14 +162,17 @@ export function assembleCapsule(caseId: string, params: {
  * 执行裁决推理（Phase 0-2：规则裁决；后续接 3-LLM 多数决）。
  * 优先级协议：LWW > 任务权威性 > 证据链完整性 > LLM 兜底。
  */
-export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVerdict> {
-  const guard = requireGovernanceRole(actorRole, '仲裁裁决');
+export function reasonVerdict(
+  caseId: string,
+  actorRole: string,
+): Result<FinalVerdict> {
+  const guard = requireGovernanceRole(actorRole, "仲裁裁决");
   if (!guard.ok) return err(guard.error);
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
   if (!c.capsule) return err(`案件 ${caseId} 胶囊未组装`);
 
-  c.status = 'reasoning';
+  c.status = "reasoning";
 
   // Phase 0-2：规则裁决（LWW 时间戳优先）
   const individualVerdicts: ArbitratorVerdict[] = [];
@@ -164,10 +182,10 @@ export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVe
   for (let i = 1; i <= 3; i++) {
     individualVerdicts.push({
       arbitratorId: `arbitrator-${i}`,
-      verdict: 'new_wins', // 规则：新记忆胜
+      verdict: "new_wins", // 规则：新记忆胜
       winnerId: c.plaintiffAgentId,
       loserId: c.defendantAgentId,
-      reasoning: 'Phase 0-2 规则裁决：LWW 时间戳优先',
+      reasoning: "Phase 0-2 规则裁决：LWW 时间戳优先",
       confidence: 0.8,
       deliveredAt: now,
     });
@@ -179,7 +197,9 @@ export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVe
     verdictCounts[v.verdict] = (verdictCounts[v.verdict] ?? 0) + 1;
   }
 
-  const maxVerdict = Object.entries(verdictCounts).sort((a, b) => b[1] - a[1])[0] ?? ['unknown', 0] as [string, number];
+  const maxVerdict =
+    Object.entries(verdictCounts).sort((a, b) => b[1] - a[1])[0] ??
+    (["unknown", 0] as [string, number]);
   const isUnanimous = maxVerdict[1] === 3;
   const isDeadlocked = Object.keys(verdictCounts).length === 3; // 三种不同裁决
 
@@ -189,7 +209,7 @@ export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVe
     verdict: maxVerdict[0] as VerdictType,
     winnerId: c.plaintiffAgentId,
     loserId: c.defendantAgentId,
-    majorityReasoning: 'Phase 0-2 规则裁决：多数一致',
+    majorityReasoning: "Phase 0-2 规则裁决：多数一致",
     individualVerdicts,
     isUnanimous,
     isDeadlocked,
@@ -197,16 +217,18 @@ export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVe
   };
 
   c.finalVerdict = finalVerdict;
-  c.status = isDeadlocked ? 'deadlocked' : 'verdict_ready';
+  c.status = isDeadlocked ? "deadlocked" : "verdict_ready";
   c.verdictAt = now;
 
   // 发布裁决事件
-  publish(createEvent({
-    eventType: EventType.ARBITRATION_VERDICT,
-    source: 'Arbitration/tribunal/reasonVerdict',
-    traceId: c.traceId,
-    payload: { caseId, verdict: finalVerdict.verdict, isDeadlocked },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.ARBITRATION_VERDICT,
+      source: "Arbitration/tribunal/reasonVerdict",
+      traceId: c.traceId,
+      payload: { caseId, verdict: finalVerdict.verdict, isDeadlocked },
+    }),
+  );
 
   return ok(finalVerdict);
 }
@@ -217,8 +239,11 @@ export function reasonVerdict(caseId: string, actorRole: string): Result<FinalVe
  * 发布律师函挂起涉事 Agent。
  * 5 分钟内同 (loopId, conflictId) 只挂一次。
  */
-export function issueSuspension(caseId: string, actorRole: string): Result<void> {
-  const guard = requireGovernanceRole(actorRole, '仲裁停职（执法）');
+export function issueSuspension(
+  caseId: string,
+  actorRole: string,
+): Result<void> {
+  const guard = requireGovernanceRole(actorRole, "仲裁停职（执法）");
   if (!guard.ok) return err(guard.error);
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
@@ -232,22 +257,24 @@ export function issueSuspension(caseId: string, actorRole: string): Result<void>
   }
 
   // 发布挂起事件
-  publish(createEvent({
-    eventType: EventType.SUSPEND_AND_NOTIFY,
-    source: 'Arbitration/tribunal/issueSuspension',
-    traceId: c.traceId,
-    priority: 'critical',
-    payload: {
-      caseId,
-      conflictId: c.conflictId,
-      targetAgentIds: [c.plaintiffAgentId, c.defendantAgentId],
-      suspensionReason: `仲裁案件 ${caseId} 进行中`,
-    },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.SUSPEND_AND_NOTIFY,
+      source: "Arbitration/tribunal/issueSuspension",
+      traceId: c.traceId,
+      priority: "critical",
+      payload: {
+        caseId,
+        conflictId: c.conflictId,
+        targetAgentIds: [c.plaintiffAgentId, c.defendantAgentId],
+        suspensionReason: `仲裁案件 ${caseId} 进行中`,
+      },
+    }),
+  );
 
   c.suspendIssued = true;
   c.lastSuspendAt = now;
-  c.status = 'suspended';
+  c.status = "suspended";
   suspendHistory.set(c.conflictId, now);
 
   return ok(undefined);
@@ -258,10 +285,13 @@ export function issueSuspension(caseId: string, actorRole: string): Result<void>
 /**
  * 创建恢复计划（FE-062 收敛：委托 restorationManager 唯一实现）。
  */
-export function createRestorationPlan(caseId: string, params: {
-  restorerAgentId: string;
-  strategy: 'self_healing' | 'global_takeover';
-}): Result<RestorationPlan> {
+export function createRestorationPlan(
+  caseId: string,
+  params: {
+    restorerAgentId: string;
+    strategy: "self_healing" | "global_takeover";
+  },
+): Result<RestorationPlan> {
   const c = cases.get(caseId);
   if (!c) return err(`案件 ${caseId} 不存在`);
 
@@ -273,7 +303,7 @@ export function createRestorationPlan(caseId: string, params: {
   });
   if (!created.ok) return err(created.error);
 
-  c.status = 'restoring';
+  c.status = "restoring";
   return ok(created.value);
 }
 
@@ -290,7 +320,7 @@ export function completeRestoration(planId: string): Result<void> {
 
   const c = cases.get(plan.caseId);
   if (c) {
-    c.status = 'completed';
+    c.status = "completed";
     c.restoredAt = Date.now();
     c.completedAt = Date.now();
   }
@@ -307,10 +337,16 @@ export function completeRestoration(planId: string): Result<void> {
  * 本函数此前仅发布事件、不写记忆（“接线尚未落地”）；现落实：裁决写入长期记忆
  * （category='decision'，携带 caseId/traceId 溯源）——仲裁者的“史官”职责全链闭环。
  */
-export function consolidateKnowledge(caseId: string, actorRole: string): Result<void> {
+export function consolidateKnowledge(
+  caseId: string,
+  actorRole: string,
+): Result<void> {
   // ★ 知识沉淀 = 仲裁者的"史官"职责（灵感源《一些思考2》§4.5：裁决完成后由仲裁者清理全局上下文、
   //   提炼静态知识并写入长期记忆）→ 属**治理动作**，仅 L0（arbitrator）/ user 可执行。
-  const knowledgeGuard = requireGovernanceRole(actorRole, '知识沉淀（史官职责）');
+  const knowledgeGuard = requireGovernanceRole(
+    actorRole,
+    "知识沉淀（史官职责）",
+  );
   if (!knowledgeGuard.ok) return err(knowledgeGuard.error);
 
   const c = cases.get(caseId);
@@ -322,23 +358,25 @@ export function consolidateKnowledge(caseId: string, actorRole: string): Result<
   // FE-059：落实写长期记忆（此前仅发布事件，无任何写入——“接线尚未落地”）。
   //   裁决 = 决策型知识（observed：实际发生的裁决事实，携带 caseId 溯源）。
   const memoryContent = [
-    `裁决：${v.verdict}（${v.isUnanimous ? '一致' : '多数决'}）`,
-    v.majorityReasoning ? `理由：${v.majorityReasoning}` : '',
-    `胜方：${v.winnerId ?? '无'}；败方：${v.loserId ?? '无'}`,
-  ].filter(Boolean).join('\n');
+    `裁决：${v.verdict}（${v.isUnanimous ? "一致" : "多数决"}）`,
+    v.majorityReasoning ? `理由：${v.majorityReasoning}` : "",
+    `胜方：${v.winnerId ?? "无"}；败方：${v.loserId ?? "无"}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const memoryResult = writeMemory({
     title: `仲裁裁决 ${caseId}：${v.verdict}`,
     content: memoryContent,
-    category: 'decision',
+    category: "decision",
     sourceTraceIds: c.traceId ? [c.traceId] : [],
     sourceArbitrationIds: [caseId],
   });
 
   if (!memoryResult.ok) {
     // 沉淀失败不阻断治理闭环的事件契约，但如实返回错误（调用方可见）
-    logger.warn('裁决知识沉淀失败', {
-      source: 'Arbitration/tribunal/consolidateKnowledge',
+    logger.warn("裁决知识沉淀失败", {
+      source: "Arbitration/tribunal/consolidateKnowledge",
       caseId,
       error: memoryResult.error,
     });
@@ -346,17 +384,19 @@ export function consolidateKnowledge(caseId: string, actorRole: string): Result<
   }
 
   // 发布知识沉淀事件
-  publish(createEvent({
-    eventType: EventType.KNOWLEDGE_CONSOLIDATION,
-    source: 'Arbitration/tribunal/consolidateKnowledge',
-    traceId: c.traceId,
-    payload: {
-      caseId,
-      conflictId: c.conflictId,
-      verdict: c.finalVerdict.verdict,
-      memoryId: memoryResult.value.memoryId,
-    },
-  }));
+  publish(
+    createEvent({
+      eventType: EventType.KNOWLEDGE_CONSOLIDATION,
+      source: "Arbitration/tribunal/consolidateKnowledge",
+      traceId: c.traceId,
+      payload: {
+        caseId,
+        conflictId: c.conflictId,
+        verdict: c.finalVerdict.verdict,
+        memoryId: memoryResult.value.memoryId,
+      },
+    }),
+  );
 
   return ok(undefined);
 }
@@ -413,7 +453,7 @@ export function executeFullArbitration(params: {
   // Step 5: 现场恢复
   const restoreResult = createRestorationPlan(caseId, {
     restorerAgentId: params.restorerAgentId,
-    strategy: 'self_healing',
+    strategy: "self_healing",
   });
   if (restoreResult.ok) {
     completeRestoration(restoreResult.value.planId);
@@ -432,7 +472,9 @@ export function getCase(caseId: string): ArbitrationCase | undefined {
   return c ? { ...c } : undefined;
 }
 
-export function getCaseByConflictId(conflictId: string): ArbitrationCase | undefined {
+export function getCaseByConflictId(
+  conflictId: string,
+): ArbitrationCase | undefined {
   for (const c of cases.values()) {
     if (c.conflictId === conflictId) return { ...c };
   }
@@ -440,7 +482,7 @@ export function getCaseByConflictId(conflictId: string): ArbitrationCase | undef
 }
 
 export function getAllCases(): ArbitrationCase[] {
-  return [...cases.values()].map(c => ({ ...c }));
+  return [...cases.values()].map((c) => ({ ...c }));
 }
 
 // ── 重置（测试用）──────────────────────────────────────────────────
@@ -452,4 +494,68 @@ export function resetTribunal(): void {
   // FE-062：同域收敛——胶囊/恢复状态一并重置（供测试隔离）
   resetCapsuleAssembler();
   resetRestorationManager();
+}
+
+/**
+ * `settleStaleCases` —— **裁决超时兜底**（不干等）。
+ *
+ * 背景：六步闭环若在中途失败（胶囊组装失败、裁决角色被拒、异常抛出等），
+ * 案件会**停在 filed/assembling/reasoning**，且 `fileCase` 会拒绝同 conflictId 的新案
+ * ⇒ 表现为"裁决一直不裁定"，调用方无限期干等。
+ *
+ * 兜底口径（保守）：超时未裁 ⇒ 判 `old_wins`（**维持现状**，不推进新内容），
+ * 状态置为既有终态 `timeout`，并留下可追溯的原因；随后同冲突可重新立案。
+ *
+ * @param deadlineMs 自立案起算的容忍时长
+ * @param now 注入时钟（测试用）
+ */
+export function settleStaleCases(params: {
+  deadlineMs: number;
+  now?: number;
+}): Result<{ settled: string[]; skipped: number; deadlineMs: number }> {
+  if (!(params.deadlineMs > 0)) return err("deadlineMs 必须为正数");
+  const now = params.now ?? Date.now();
+  const settled: string[] = [];
+  let skipped = 0;
+
+  for (const c of cases.values()) {
+    // 终态与已出裁决的案件不兜底
+    if (
+      c.status === "completed" ||
+      c.status === "timeout" ||
+      c.status === "verdict_ready" ||
+      c.status === "deadlocked"
+    ) {
+      skipped++;
+      continue;
+    }
+    if (now - c.filedAt < params.deadlineMs) {
+      skipped++;
+      continue;
+    }
+
+    const reasoning =
+      "超时兜底裁定：案件在 " +
+      params.deadlineMs +
+      "ms 内未获裁定 ⇒ 按保守默认维持现状（old_wins）";
+
+    c.finalVerdict = {
+      caseId: c.caseId,
+      conflictId: c.conflictId,
+      verdict: "old_wins",
+      winnerId: c.defendantAgentId, // 旧内容方胜 = 维持现状
+      loserId: c.plaintiffAgentId,
+      majorityReasoning: reasoning,
+      individualVerdicts: [],
+      isUnanimous: false,
+      isDeadlocked: false,
+      issuedAt: now,
+    };
+    c.status = "timeout";
+    c.verdictAt = now;
+    c.completedAt = now;
+    settled.push(c.caseId);
+  }
+
+  return ok({ settled, skipped, deadlineMs: params.deadlineMs });
 }

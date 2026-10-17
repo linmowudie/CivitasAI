@@ -10,7 +10,8 @@
  * F2.5：Esc 取消编辑、prefers-reduced-motion。
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Bot, Zap } from 'lucide-react';
+import { useChatStore } from "@/stores/chatStore";
+import { ChevronDown, ChevronUp, Bot, Zap, ShieldAlert } from 'lucide-react';
 import type { WorkingMode } from '@/stores/chatStore';
 import { WORKING_MODE_OPTIONS } from './workingModeLabels';
 
@@ -43,6 +44,9 @@ export default function Composer({
   availableModels = [], selectedModel = '', selectedWorkingMode = 'DIRECT',
   onSelectModel, onSelectWorkingMode, hideSelectors = false,
 }: ComposerProps) {
+  const sessionId = useChatStore((s) => s.activeSessionId);
+  const autoFull = useChatStore((s) => (s.activeSessionId ? !!s.autoFullPermissionBySession[s.activeSessionId] : false));
+  const setAutoFullPermission = useChatStore((s) => s.setAutoFullPermission);
   const [input, setInput] = useState('');
   const [expanded, setExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -151,6 +155,29 @@ export default function Composer({
                 <Zap size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                 <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               </div>
+            )}
+
+            {/* 自动完全权限（按会话，跟随当前任务）：开启后本任务不再产生审批卡与等待。
+                **不随 hideSelectors 隐藏**——审批开关必须始终可见可点。 */}
+            {sessionId && (
+              <button
+                type="button"
+                onClick={() => setAutoFullPermission(sessionId, !autoFull)}
+                title={
+                  autoFull
+                    ? '自动完全权限：已开启（本任务跳过全部审批）'
+                    : '自动完全权限：点击后本任务跳过全部审批'
+                }
+                className={
+                  'ml-1 h-7 px-2 rounded-md border text-xs flex items-center gap-1 ' +
+                  (autoFull
+                    ? 'bg-danger-500/15 border-danger-500/60 text-danger-300'
+                    : 'bg-surface-700 border-surface-600 text-text-muted hover:text-text-secondary')
+                }
+              >
+                <ShieldAlert size={10} />
+                <span>{autoFull ? '自动完全权限 · 审批已跳过' : '自动完全权限'}</span>
+              </button>
             )}
 
             {isStreaming && (

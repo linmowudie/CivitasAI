@@ -10,11 +10,14 @@
  *  - 缺失向量的候选由后台补齐（fire-and-forget，不影响本次结果）。
  */
 
-import type { Result } from '../../Infra/types.js';
-import { ok } from '../../Infra/types.js';
+import type { Result } from "../../Infra/types.js";
+import { ok } from "../../Infra/types.js";
 
-import { searchMemories } from '../SharedMemory/longTermMemory.js';
-import { semanticRescore, embedPendingEntries } from '../SharedMemory/memoryEmbeddings.js';
+import { searchMemories } from "../SharedMemory/longTermMemory.js";
+import {
+  semanticRescore,
+  embedPendingEntries,
+} from "../SharedMemory/memoryEmbeddings.js";
 
 /** 检索结果 */
 export interface RetrievalResult {
@@ -61,12 +64,16 @@ export interface Retriever {
  */
 export function createMemoryRetriever(): Retriever {
   return {
-    name: 'long-term-memory',
+    name: "long-term-memory",
     retrieve: async (options) => {
       const start = Date.now();
 
-      if (!options.query || options.query.trim() === '') {
-        return ok({ fragments: [], durationMs: Date.now() - start, source: 'long-term-memory' });
+      if (!options.query || options.query.trim() === "") {
+        return ok({
+          fragments: [],
+          durationMs: Date.now() - start,
+          source: "long-term-memory",
+        });
       }
 
       // 过度召回（为重排留空间）→ 语义重排 → 截取 topK
@@ -79,17 +86,19 @@ export function createMemoryRetriever(): Retriever {
       const finalHits = rescored.slice(0, options.topK);
 
       // 后台补齐缺失向量（fire-and-forget：本次用文本分，下次检索生效）
-      embedPendingEntries(finalHits.map(h => ({
-        memoryId: h.entry.memoryId,
-        title: h.entry.title,
-        content: h.entry.content,
-      })));
+      embedPendingEntries(
+        finalHits.map((h) => ({
+          memoryId: h.entry.memoryId,
+          title: h.entry.title,
+          content: h.entry.content,
+        })),
+      );
 
-      const fragments: RetrievalFragment[] = finalHits.map(h => ({
+      const fragments: RetrievalFragment[] = finalHits.map((h) => ({
         id: h.entry.memoryId,
-        content: [h.entry.title, h.entry.content].filter(Boolean).join('\n'),
+        content: [h.entry.title, h.entry.content].filter(Boolean).join("\n"),
         score: h.score,
-        source: 'long-term-memory',
+        source: "long-term-memory",
         metadata: {
           category: h.entry.category,
           status: h.entry.status,
@@ -98,13 +107,13 @@ export function createMemoryRetriever(): Retriever {
       }));
 
       const filtered = options.sources?.length
-        ? fragments.filter(f => options.sources!.includes(f.source))
+        ? fragments.filter((f) => options.sources!.includes(f.source))
         : fragments;
 
       return ok({
         fragments: filtered,
         durationMs: Date.now() - start,
-        source: 'long-term-memory',
+        source: "long-term-memory",
       });
     },
   };
@@ -115,7 +124,10 @@ export function createMemoryRetriever(): Retriever {
 let fragmentCounter = 0;
 
 /** 测试辅助：向（外部持有的）片段数组追加一条 */
-export function addMemoryFragment(store: RetrievalFragment[], fragment: Omit<RetrievalFragment, 'id'>): string {
+export function addMemoryFragment(
+  store: RetrievalFragment[],
+  fragment: Omit<RetrievalFragment, "id">,
+): string {
   const id = `frag-${++fragmentCounter}`;
   store.push({ ...fragment, id });
   return id;
@@ -126,13 +138,16 @@ export async function retrieveFromMultiple(
   retrievers: Retriever[],
   options: RetrievalOptions,
 ): Promise<Result<RetrievalResult>> {
+  // 真实耗时从进入函数起算：多源并发 + 排序 + 截断都计入。
+  // 旧实现把耗时写成常量零值 ⇒ 召回延迟不可测（矩阵 cell RET-ENV-LATENCY 的缺口）。
+  const startedAt = Date.now();
   const results = await Promise.allSettled(
-    retrievers.map(r => r.retrieve(options)),
+    retrievers.map((r) => r.retrieve(options)),
   );
 
   const allFragments: RetrievalFragment[] = [];
   for (const result of results) {
-    if (result.status === 'fulfilled' && result.value.ok) {
+    if (result.status === "fulfilled" && result.value.ok) {
       allFragments.push(...result.value.value.fragments);
     }
   }
@@ -142,7 +157,7 @@ export async function retrieveFromMultiple(
 
   return ok({
     fragments: allFragments.slice(0, options.topK),
-    durationMs: 0,
-    source: 'multi',
+    durationMs: Date.now() - startedAt,
+    source: "multi",
   });
 }

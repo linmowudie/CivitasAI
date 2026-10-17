@@ -12,7 +12,7 @@
  * `needed=false`，**不拦截应用**（保持既有行为）。
  */
 
-import { create } from 'zustand';
+import { create } from "zustand";
 
 import {
   hasOnboardingApi,
@@ -31,7 +31,26 @@ import {
   type ModelVerificationDto,
   type OnboardingSnapshotDto,
   type ProbeResultDto,
-} from '@/services/ipcApi';
+} from "@/services/ipcApi";
+import { presetKnownModels } from "@/stores/modelStore";
+
+/**
+ * 手填模型的占位规格（与主进程 `providerProbe.defaultModelSpec` 同口径）。
+ *
+ * 端点不提供 `/models` 时（华为云 MaaS Token Plan 的 `/plan/v2`），用户只能手填模型名；
+ * 这些值只是**导入前的占位**，真实 context/max_output 由用户确认或后续编辑。
+ */
+function manualModelSpec(id: string): DiscoveredModelDto {
+  return {
+    id,
+    context_window: 128000,
+    max_output: 8192,
+    supports_vision: false,
+    supports_tools: true,
+    cost_per_1k_input: 0,
+    cost_per_1k_output: 0,
+  };
+}
 
 /**
  * 可用性校验的"运行令牌"：每次开始校验自增，循环在批次边界比对；
@@ -42,19 +61,27 @@ let verifyRunToken = 0;
 // ── 步骤定义 ────────────────────────────────────────────────────────
 
 export const ONBOARDING_STEPS = [
-  { id: 'welcome', title: '欢迎', subtitle: '认识 Civitas AI，看看数据存在哪' },
-  { id: 'personalize', title: '个性化', subtitle: '日志级别、工作空间位置' },
-  { id: 'provider', title: '选择供应商', subtitle: '从哪里调用大模型' },
-  { id: 'credentials', title: '密钥与连通性', subtitle: '填写 API Key 并实测连接' },
-  { id: 'routing', title: '默认模型', subtitle: '规划/执行/校验分别用哪个模型' },
-  { id: 'guide', title: '使用引导', subtitle: '工作模式、工作目录与安全门' },
-  { id: 'done', title: '完成', subtitle: '汇总并开始使用' },
+  { id: "welcome", title: "欢迎", subtitle: "认识 Civitas AI，看看数据存在哪" },
+  { id: "personalize", title: "个性化", subtitle: "日志级别、工作空间位置" },
+  { id: "provider", title: "选择供应商", subtitle: "从哪里调用大模型" },
+  {
+    id: "credentials",
+    title: "密钥与连通性",
+    subtitle: "填写 API Key 并实测连接",
+  },
+  {
+    id: "routing",
+    title: "默认模型",
+    subtitle: "规划/执行/校验分别用哪个模型",
+  },
+  { id: "guide", title: "使用引导", subtitle: "工作模式、工作目录与安全门" },
+  { id: "done", title: "完成", subtitle: "汇总并开始使用" },
 ] as const;
 
-export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number]['id'];
+export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number]["id"];
 
 export interface PersonalizationDraft {
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  logLevel: "debug" | "info" | "warn" | "error";
   workspaceRoot: string;
 }
 
@@ -106,7 +133,7 @@ interface OnboardingStoreState {
   routing: RoutingDraft;
   registering: boolean;
   /// 注册结果 / 最近一次操作提示
-  notice: { kind: 'ok' | 'warn' | 'error'; text: string } | null;
+  notice: { kind: "ok" | "warn" | "error"; text: string } | null;
   finishing: boolean;
 
   check: () => Promise<void>;
@@ -117,6 +144,13 @@ interface OnboardingStoreState {
   setDraft: (patch: Partial<ProviderDraft>) => void;
   /** 手动指定"测试连接"使用的模型（空 = 自动挑对话可用模型） */
   setProbeModel: (model: string) => void;
+  /**
+   * 手动添加模型名（端点不提供 `/models` 时唯一的出路）。
+   *
+   * 合并进 `probe.models` 后，列表渲染、勾选、逐模型校验、注册导入全部沿用既有路径；
+   * `probe.listNotProvided` / `modelsFromFallback` 仍如实反映"这不是端点返回的列表"。
+   */
+  addManualModels: (names: string[]) => void;
   /** 逐模型校验可用性（小批次并发，可中途取消） */
   verifyAvailability: () => Promise<void>;
   /** 取消可用性校验 */
@@ -125,7 +159,11 @@ interface OnboardingStoreState {
   selectOnlyAvailable: () => void;
   /** 清空勾选 */
   clearSelection: () => void;
-  selectPreset: (preset: { id: string; name: string; base_url: string }) => void;
+  selectPreset: (preset: {
+    id: string;
+    name: string;
+    base_url: string;
+  }) => void;
   probeConnection: () => Promise<boolean>;
   toggleModel: (model: DiscoveredModelDto) => void;
   registerProvider: () => Promise<boolean>;
@@ -135,14 +173,14 @@ interface OnboardingStoreState {
   skip: () => Promise<void>;
   reset: () => Promise<void>;
   openPath: (target: string) => Promise<void>;
-  setNotice: (notice: OnboardingStoreState['notice']) => void;
+  setNotice: (notice: OnboardingStoreState["notice"]) => void;
 }
 
 const EMPTY_ROUTING: RoutingDraft = {
-  defaultModel: '',
-  directorModel: '',
-  workerModel: '',
-  verifierModel: '',
+  defaultModel: "",
+  directorModel: "",
+  workerModel: "",
+  verifierModel: "",
   arbitrationModels: [],
 };
 
@@ -175,12 +213,12 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
   error: null,
 
   step: 0,
-  personalization: { logLevel: 'info', workspaceRoot: '' },
-  draft: { providerId: '', displayName: '', baseUrl: '', apiKey: '' },
+  personalization: { logLevel: "info", workspaceRoot: "" },
+  draft: { providerId: "", displayName: "", baseUrl: "", apiKey: "" },
   probe: null,
   probing: false,
   selectedModels: [],
-  probeModel: '',
+  probeModel: "",
   availability: {},
   verifying: false,
   verifyProgress: { checked: 0, total: 0 },
@@ -200,7 +238,12 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     const res = await ipcGetOnboarding();
     if (!res.ok || !res.data) {
       // 探测失败：不拦截应用（宁可少一次引导，也不要打不开）
-      set({ loading: false, checked: true, needed: false, error: res.error ?? null });
+      set({
+        loading: false,
+        checked: true,
+        needed: false,
+        error: res.error ?? null,
+      });
       return;
     }
     const snapshot = res.data;
@@ -215,13 +258,49 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     });
   },
 
-  setStep: (n) => set({ step: Math.max(0, Math.min(ONBOARDING_STEPS.length - 1, n)) }),
-  next: () => set((s) => ({ step: Math.min(ONBOARDING_STEPS.length - 1, s.step + 1) })),
+  setStep: (n) =>
+    set({ step: Math.max(0, Math.min(ONBOARDING_STEPS.length - 1, n)) }),
+  next: () =>
+    set((s) => ({ step: Math.min(ONBOARDING_STEPS.length - 1, s.step + 1) })),
   prev: () => set((s) => ({ step: Math.max(0, s.step - 1) })),
 
-  setPersonalization: (patch) => set((s) => ({ personalization: { ...s.personalization, ...patch } })),
+  setPersonalization: (patch) =>
+    set((s) => ({ personalization: { ...s.personalization, ...patch } })),
   setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
   setProbeModel: (model) => set({ probeModel: model }),
+
+  addManualModels: (names) => {
+    const clean = (names ?? [])
+      .map((n) => (typeof n === "string" ? n.trim() : ""))
+      .filter(Boolean);
+    if (clean.length === 0) return;
+    const { probe, draft } = get();
+    const existing = probe?.models ?? [];
+    const seen = new Set(existing.map((m) => m.id));
+    const added = clean.filter((n) => !seen.has(n)).map(manualModelSpec);
+    if (added.length === 0) return;
+
+    set({
+      probe: probe
+        ? { ...probe, models: [...existing, ...added] }
+        : {
+            ok: false,
+            baseUrl: draft.baseUrl.trim(),
+            listOk: false,
+            chatOk: false,
+            models: added,
+            listNotProvided: true,
+            modelsFromFallback: true,
+          },
+      // 清掉可用性校验结果：新加入的名字还没被校验过，不能沿用旧结论
+      availability: Object.fromEntries(
+        Object.entries(get().availability).filter(
+          ([id]) => !added.some((m) => m.id === id),
+        ),
+      ),
+      notice: null,
+    });
+  },
 
   /**
    * 逐模型校验可用性（模型导入重设计核心）。
@@ -233,7 +312,12 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     const { draft, probe, availability } = get();
     const all = probe?.models.map((m) => m.id) ?? [];
     if (!draft.baseUrl.trim() || !draft.apiKey.trim() || all.length === 0) {
-      set({ notice: { kind: 'warn', text: '请先"测试连接"拿到模型列表，再校验可用性' } });
+      set({
+        notice: {
+          kind: "warn",
+          text: '请先"测试连接"拿到模型列表，再校验可用性',
+        },
+      });
       return;
     }
 
@@ -262,56 +346,71 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
       if (isStale()) return;
 
       if (!res.ok || !res.data) {
-        set({ verifying: false, notice: { kind: 'error', text: res.error ?? '可用性校验失败' } });
+        set({
+          verifying: false,
+          notice: { kind: "error", text: res.error ?? "可用性校验失败" },
+        });
         return;
       }
       const next = { ...get().availability };
       for (const item of res.data.results) next[item.id] = item;
       checked += res.data.results.length;
-      set({ availability: next, verifyProgress: { checked, total: all.length } });
+      set({
+        availability: next,
+        verifyProgress: { checked, total: all.length },
+      });
     }
 
     const finalMap = get().availability;
-    const available = all.filter((id) => finalMap[id]?.status === 'available');
-    const unknown = all.filter((id) => finalMap[id]?.status === 'unknown');
-    const unavailable = all.filter((id) => finalMap[id]?.status === 'unavailable');
+    const available = all.filter((id) => finalMap[id]?.status === "available");
+    const unknown = all.filter((id) => finalMap[id]?.status === "unknown");
+    const unavailable = all.filter(
+      (id) => finalMap[id]?.status === "unavailable",
+    );
 
     set({
       verifying: false,
       verifiedAt: Date.now(),
       notice: {
-        kind: available.length > 0 ? 'ok' : 'warn',
-        text: `可用性校验完成：可用 ${available.length} / 不可用 ${unavailable.length} / 未知 ${unknown.length}`
-          + (unknown.length > 0 ? '（未知多为限流或超时，可点"仅选可用"后重试）' : '')
-          + '；请勾选要导入的模型。',
+        kind: available.length > 0 ? "ok" : "warn",
+        text:
+          `可用性校验完成：可用 ${available.length} / 不可用 ${unavailable.length} / 未知 ${unknown.length}` +
+          (unknown.length > 0
+            ? '（未知多为限流或超时，可点"仅选可用"后重试）'
+            : "") +
+          "；请勾选要导入的模型。",
       },
     });
   },
 
   cancelVerify: () => {
-    verifyRunToken += 1;   // 让进行中的循环在下一次批次边界退出
+    verifyRunToken += 1; // 让进行中的循环在下一次批次边界退出
     set({ verifying: false });
   },
 
-  selectOnlyAvailable: () => set((s) => ({
-    selectedModels: (s.probe?.models ?? []).filter((m) => s.availability[m.id]?.status === 'available'),
-  })),
+  selectOnlyAvailable: () =>
+    set((s) => ({
+      selectedModels: (s.probe?.models ?? []).filter(
+        (m) => s.availability[m.id]?.status === "available",
+      ),
+    })),
 
   clearSelection: () => set({ selectedModels: [] }),
 
-  selectPreset: (preset) => set({
-    draft: {
-      providerId: preset.id,
-      displayName: preset.name,
-      baseUrl: preset.base_url,
-      apiKey: get().draft.apiKey,
-    },
-    probe: null,
-    selectedModels: [],
-    probeModel: '',
-    availability: {},
-    verifiedAt: null,
-  }),
+  selectPreset: (preset) =>
+    set({
+      draft: {
+        providerId: preset.id,
+        displayName: preset.name,
+        baseUrl: preset.base_url,
+        apiKey: get().draft.apiKey,
+      },
+      probe: null,
+      selectedModels: [],
+      probeModel: "",
+      availability: {},
+      verifiedAt: null,
+    }),
   setNotice: (notice) => set({ notice }),
 
   /** 连通性校验（/models + 最小对话），成功即回填模型清单 */
@@ -320,19 +419,30 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     if (!draft.baseUrl.trim() || !draft.apiKey.trim()) {
       set({
         probe: null,
-        notice: { kind: 'warn', text: '请先填写 Base URL 与 API Key' },
+        notice: { kind: "warn", text: "请先填写 Base URL 与 API Key" },
       });
       return false;
     }
     set({ probing: true, notice: null });
+    /*
+     * 端点不提供 `/models` 时（华为云 MaaS Token Plan 的 `/plan/v2` 实测 404 APIG.0101），
+     * 后端拿不到任何候选模型，第 2 步对话探测就发不出去 —— 界面只会显示
+     * 「未能列出模型，且未指定用于对话探测的模型」，而 Key 与端点其实可能是好的。
+     * 这里把该供应商的内置候选模型名带下去，探测才能继续（结果里会标注来源）。
+     */
+    const known = presetKnownModels(get().draft.providerId);
     const res = await ipcTestProvider({
       base_url: draft.baseUrl.trim(),
       api_key: draft.apiKey.trim(),
       // 指定了就用指定的；留空则后端自动挑"对话可用"的模型（排除 embedding/tts/asr…）并逐个重试
       ...(get().probeModel ? { model: get().probeModel } : {}),
+      ...(known.length > 0 ? { fallbackModels: known } : {}),
     });
     if (!res.ok || !res.data) {
-      set({ probing: false, notice: { kind: 'error', text: res.error ?? '探测失败' } });
+      set({
+        probing: false,
+        notice: { kind: "error", text: res.error ?? "探测失败" },
+      });
       return false;
     }
     const probe = res.data;
@@ -346,30 +456,40 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
       verifiedAt: null,
       notice: probe.ok
         ? {
-            kind: 'ok',
-            text: `连接成功：发现 ${probe.models.length} 个模型`
-              + (probe.chatModelUsed ? `（连通性用 ${probe.chatModelUsed}）` : '')
-              + '。下一步请点"校验可用性"逐个确认，再勾选要导入的模型。',
+            kind: "ok",
+            text: probe.modelsFromFallback
+              ? `连接成功（${probe.chatModelUsed ?? probe.suggestedModel ?? "候选模型"} 实测可用）。` +
+                `该端点不提供模型列表，下面 ${probe.models.length} 个是内置候选模型名 —— ` +
+                "请点「校验可用性」逐个确认，再勾选真正要导入的。"
+              : `连接成功：发现 ${probe.models.length} 个模型` +
+                (probe.chatModelUsed
+                  ? `（连通性用 ${probe.chatModelUsed}）`
+                  : "") +
+                '。下一步请点"校验可用性"逐个确认，再勾选要导入的模型。',
           }
-        : { kind: 'error', text: `${probe.error ?? '连接失败'}${probe.hint ? `（${probe.hint}）` : ''}` },
+        : {
+            kind: "error",
+            text: `${probe.error ?? "连接失败"}${probe.hint ? `（${probe.hint}）` : ""}`,
+          },
     });
     return probe.ok;
   },
 
-  toggleModel: (model) => set((s) => {
-    const exists = s.selectedModels.some((m) => m.id === model.id);
-    return {
-      selectedModels: exists
-        ? s.selectedModels.filter((m) => m.id !== model.id)
-        : [...s.selectedModels, model],
-    };
-  }),
+  toggleModel: (model) =>
+    set((s) => {
+      const exists = s.selectedModels.some((m) => m.id === model.id);
+      return {
+        selectedModels: exists
+          ? s.selectedModels.filter((m) => m.id !== model.id)
+          : [...s.selectedModels, model],
+      };
+    }),
 
   /** 注册供应商（加密落盘 + 内存注册），随后回填路由候选 */
   registerProvider: async () => {
     const { draft, selectedModels, snapshot } = get();
     if (!draft.baseUrl.trim() || !draft.apiKey.trim()) {
-      set({ notice: { kind: 'warn', text: '请先填写 Base URL 与 API Key' } });
+      set({ notice: { kind: "warn", text: "请先填写 Base URL 与 API Key" } });
       return false;
     }
     // 模型清单 = **用户勾选的**（模型导入重设计：绝不自动全量导入，也不再回退到"探测建议"）
@@ -386,7 +506,7 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     if (models.length === 0) {
       set({
         notice: {
-          kind: 'warn',
+          kind: "warn",
           text: '请先在下方列表里**勾选要导入的模型**（可先"校验可用性"再点"仅选可用"）。',
         },
       });
@@ -395,14 +515,17 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
 
     set({ registering: true, notice: null });
     const res = await ipcAddProvider({
-      provider: draft.providerId || draft.displayName || 'custom',
+      provider: draft.providerId || draft.displayName || "custom",
       base_url: draft.baseUrl.trim(),
       api_key: draft.apiKey.trim(),
-      display_name: draft.displayName || draft.providerId || '自定义供应商',
+      display_name: draft.displayName || draft.providerId || "自定义供应商",
       models,
     });
     if (!res.ok) {
-      set({ registering: false, notice: { kind: 'error', text: res.error ?? '供应商注册失败' } });
+      set({
+        registering: false,
+        notice: { kind: "error", text: res.error ?? "供应商注册失败" },
+      });
       return false;
     }
 
@@ -414,29 +537,35 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
       registered = [];
     }
     const nextRouting = deriveRouting(
-      Array.isArray(registered) && registered.length > 0 ? registered : (snapshot?.models ?? []),
+      Array.isArray(registered) && registered.length > 0
+        ? registered
+        : (snapshot?.models ?? []),
     );
     set({
       registering: false,
       routing: nextRouting,
-      notice: { kind: 'ok', text: `已注册供应商并加密保存 API Key（模型 ${models.length} 个）` },
+      notice: {
+        kind: "ok",
+        text: `已注册供应商并加密保存 API Key（模型 ${models.length} 个）`,
+      },
     });
     return true;
   },
 
   setRouting: (patch) => set((s) => ({ routing: { ...s.routing, ...patch } })),
 
-  toggleArbitrationModel: (qualified) => set((s) => {
-    const exists = s.routing.arbitrationModels.includes(qualified);
-    return {
-      routing: {
-        ...s.routing,
-        arbitrationModels: exists
-          ? s.routing.arbitrationModels.filter((m) => m !== qualified)
-          : [...s.routing.arbitrationModels, qualified],
-      },
-    };
-  }),
+  toggleArbitrationModel: (qualified) =>
+    set((s) => {
+      const exists = s.routing.arbitrationModels.includes(qualified);
+      return {
+        routing: {
+          ...s.routing,
+          arbitrationModels: exists
+            ? s.routing.arbitrationModels.filter((m) => m !== qualified)
+            : [...s.routing.arbitrationModels, qualified],
+        },
+      };
+    }),
 
   /** 完成引导：写用户配置（路由 + 个性化）并落状态标记 */
   complete: async () => {
@@ -444,19 +573,23 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     set({ finishing: true, notice: null });
 
     const configPatch: Record<string, unknown> = {
-      'system.logLevel': personalization.logLevel,
-      'routing.defaultModel': routing.defaultModel,
-      'routing.directorModel': routing.directorModel,
-      'routing.workerModel': routing.workerModel,
-      'routing.verifierModel': routing.verifierModel,
-      'routing.arbitrationModels': routing.arbitrationModels,
-      'routing.fallbackOrder': Array.from(new Set([
-        routing.defaultModel.split('/')[0] ?? '',
-        ...(snapshot?.providers ?? []).map((p) => p.name),
-      ].filter(Boolean))),
+      "system.logLevel": personalization.logLevel,
+      "routing.defaultModel": routing.defaultModel,
+      "routing.directorModel": routing.directorModel,
+      "routing.workerModel": routing.workerModel,
+      "routing.verifierModel": routing.verifierModel,
+      "routing.arbitrationModels": routing.arbitrationModels,
+      "routing.fallbackOrder": Array.from(
+        new Set(
+          [
+            routing.defaultModel.split("/")[0] ?? "",
+            ...(snapshot?.providers ?? []).map((p) => p.name),
+          ].filter(Boolean),
+        ),
+      ),
     };
     if (personalization.workspaceRoot.trim()) {
-      configPatch['workspace.root'] = personalization.workspaceRoot.trim();
+      configPatch["workspace.root"] = personalization.workspaceRoot.trim();
     }
 
     // 供应商名：注册后从快照里取最新的（registerProvider 已落盘）
@@ -465,8 +598,8 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
       personalization: {
         logLevel: personalization.logLevel,
         workspaceRoot: personalization.workspaceRoot.trim() || undefined,
-        theme: 'dark',
-        language: 'zh-CN',
+        theme: "dark",
+        language: "zh-CN",
       },
       provider: providerName
         ? {
@@ -480,24 +613,41 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
     });
 
     if (!res.ok) {
-      set({ finishing: false, notice: { kind: 'error', text: res.error ?? '引导完成失败' } });
+      set({
+        finishing: false,
+        notice: { kind: "error", text: res.error ?? "引导完成失败" },
+      });
       return false;
     }
     const rejected = res.data?.config.rejected ?? [];
     set({
       finishing: false,
       needed: false,
-      notice: rejected.length > 0
-        ? { kind: 'warn', text: `已保存；以下键被白名单拒绝：${rejected.join('、')}` }
-        : { kind: 'ok', text: '引导完成，配置已保存（无需重启即刻生效）' },
+      notice:
+        rejected.length > 0
+          ? {
+              kind: "warn",
+              text: `已保存；以下键被白名单拒绝：${rejected.join("、")}`,
+            }
+          : { kind: "ok", text: "引导完成，配置已保存（无需重启即刻生效）" },
     });
     return true;
   },
 
   skip: async () => {
-    await ipcPatchOnboarding({ skipped: true, completed: false, version: get().snapshot?.version ?? '1' });
+    await ipcPatchOnboarding({
+      skipped: true,
+      completed: false,
+      version: get().snapshot?.version ?? "1",
+    });
     await ipcSkipOnboarding();
-    set({ needed: false, notice: { kind: 'warn', text: '已跳过引导：未配置模型时无法对话，可随时从设置重新运行引导' } });
+    set({
+      needed: false,
+      notice: {
+        kind: "warn",
+        text: "已跳过引导：未配置模型时无法对话，可随时从设置重新运行引导",
+      },
+    });
   },
 
   reset: async () => {
@@ -507,20 +657,26 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
 
   openPath: async (target) => {
     const res = await ipcOpenPath(target);
-    if (!res.ok) set({ notice: { kind: 'error', text: res.error ?? '打开目录失败' } });
+    if (!res.ok)
+      set({ notice: { kind: "error", text: res.error ?? "打开目录失败" } });
   },
 }));
 
 /** 当前步骤能否继续（供 UI 禁用"下一步"） */
-export function canProceed(stepId: OnboardingStepId, s: OnboardingStoreState): boolean {
+export function canProceed(
+  stepId: OnboardingStepId,
+  s: OnboardingStoreState,
+): boolean {
   switch (stepId) {
-    case 'credentials':
+    case "credentials":
       // 模型导入重设计（2026-10-07）：必须由用户**明确勾选**至少一个模型才能继续，
       // 不再允许"连通性通过即自动带入模型"（列表可见 ≠ 可用）。
-      return s.draft.baseUrl.trim().length > 0
-        && s.draft.apiKey.trim().length > 0
-        && s.selectedModels.length > 0;
-    case 'routing':
+      return (
+        s.draft.baseUrl.trim().length > 0 &&
+        s.draft.apiKey.trim().length > 0 &&
+        s.selectedModels.length > 0
+      );
+    case "routing":
       if (!s.routing.defaultModel) return false;
       // 仲裁模型 ≥3 是 loopConfig 校验的硬约束（缺失会让后端启动失败）
       return s.routing.arbitrationModels.length >= 3;

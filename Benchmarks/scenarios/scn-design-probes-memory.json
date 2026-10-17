@@ -1,0 +1,67 @@
+{
+  "id": "scn-design-probes-memory",
+  "title": "设计契约探针·记忆：投毒隔离 / 分区接线 / 恢复含对话 / 读侧鉴权 / 记忆引用 / 事件订阅 / 版本冲突",
+  "tags": [
+    "design-contract",
+    "real-call"
+  ],
+  "matrixCells": [
+    "AG-SEC-POISON",
+    "MEM1-GAP-PARTITION",
+    "MEM1-GAP-RESTORE",
+    "MEMN-SEC-READAUTH",
+    "MEMN-SEC-MEMREF",
+    "MEMN-GAP-EVENTSUB",
+    "MEMN-SEC-VERSION"
+  ],
+  "task": {
+    "description": "按设计文档声明的接口与 oracle 做真实调用验证（不读 Src 实现；接口缺失/不符即红）",
+    "goal": "让每个设计点在实验里都有可运行的证据"
+  },
+  "agentRole": "worker",
+  "assertProbes": [
+    "AG-SEC-POISON",
+    "MEM1-GAP-PARTITION",
+    "MEM1-GAP-RESTORE",
+    "MEMN-SEC-READAUTH",
+    "MEMN-SEC-MEMREF",
+    "MEMN-GAP-EVENTSUB",
+    "MEMN-SEC-VERSION"
+  ],
+  "loop": {
+    "maxIterations": 1,
+    "tokenBudget": 100000,
+    "timeoutMs": 30000,
+    "stream": false
+  },
+  "tools": [
+    {
+      "name": "BenchEcho",
+      "behavior": "ok"
+    }
+  ],
+  "model": {
+    "script": [
+      {
+        "kind": "text",
+        "content": "设计契约探针场景：无需工具调用。"
+      }
+    ],
+    "defaultReply": "设计契约探针场景：无需工具调用。"
+  },
+  "expect": {
+    "exitReasonOneOf": [
+      "success",
+      "max_iterations"
+    ],
+    "assertProbesMustPass": [
+      "AG-SEC-POISON",
+      "MEM1-GAP-PARTITION",
+      "MEM1-GAP-RESTORE",
+      "MEMN-SEC-READAUTH",
+      "MEMN-SEC-MEMREF",
+      "MEMN-GAP-EVENTSUB",
+      "MEMN-SEC-VERSION"
+    ]
+  }
+}

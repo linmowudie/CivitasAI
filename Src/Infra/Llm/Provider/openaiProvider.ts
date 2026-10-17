@@ -12,6 +12,7 @@ import type { Result } from "../../types.js";
 import { ok, err } from "../../types.js";
 
 import { LlmProvider, ProviderError } from "./providerBase.js";
+import { toWireToolName, toCanonicalToolName } from "./toolNameWireCompat.js";
 import type {
   ProviderConfig,
   CallOptions,
@@ -55,9 +56,38 @@ function toWireMessages(messages: ChatMessage[]): WireMessage[] {
     content: m.content,
     ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
     ...(m.tool_calls && m.tool_calls.length > 0
-      ? { tool_calls: m.tool_calls }
+      ? {
+          // 历史归一化：改名（`FileRead` ⇒ `FileRead`）之前落库的历史仍是点号名，
+          // 直接回放会让 DeepSeek 等端点以 `function.name` 不匹配 `^[a-zA-Z0-9_-]+$` 报 400。
+          tool_calls: m.tool_calls.map((tc) => ({
+            ...tc,
+            function: {
+              ...tc.function,
+              name: toWireToolName(tc.function.name),
+            },
+          })),
+        }
       : {}),
   }));
+}
+
+/**
+ * 出站工具 schema 归一化（保底）
+ *
+ * 正常情况下工具名已是 wire-safe 的大驼峰；此处再兜底一次，
+ * 保证**任何**情况下都不会把点号等非法字符送上线（DeepSeek 等端点要求 `^[a-zA-Z0-9_-]+$`）。
+ */
+function toWireTools(tools: unknown[] | undefined): unknown[] | undefined {
+  if (!tools || tools.length === 0) return tools;
+  return tools.map((t) => {
+    if (!t || typeof t !== "object") return t;
+    const rec = t as { function?: { name?: unknown } };
+    const fnName = rec.function?.name;
+    if (typeof fnName !== "string") return t;
+    const wire = toWireToolName(fnName);
+    if (wire === fnName) return t;
+    return { ...rec, function: { ...rec.function, name: wire } };
+  });
 }
 
 /** OpenAI API 响应体 */
@@ -123,7 +153,7 @@ export class OpenAIProvider extends LlmProvider {
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: false,
-        tools: options.tools,
+        tools: toWireTools(options.tools),
       };
 
       const response = await fetch(url, {
@@ -157,7 +187,14 @@ export class OpenAIProvider extends LlmProvider {
           total_tokens: 0,
         },
         model: data.model,
-        tool_calls: choice.message?.tool_calls,
+        // 入站归一化：模型可能沿用历史里的旧点号名，统一成当前大驼峰，供派发使用
+        tool_calls: choice.message?.tool_calls?.map((tc) => ({
+          ...tc,
+          function: {
+            ...tc.function,
+            name: toCanonicalToolName(tc.function.name),
+          },
+        })),
       });
     } catch (e) {
       if (e instanceof ProviderError) {
@@ -197,7 +234,7 @@ export class OpenAIProvider extends LlmProvider {
         temperature: options.temperature,
         max_tokens: options.max_tokens,
         stream: true,
-        tools: options.tools,
+        tools: toWireTools(options.tools),
       };
 
       const response = await fetch(url, {
@@ -356,12 +393,12 @@ export class OpenAIProvider extends LlmProvider {
         }
       }
 
-      // 构造 tool_calls
+      // 构造 tool_calls（入站归一化：旧点号名 ⇒ 当前大驼峰）
       const toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
         id: tc.id,
         type: tc.type,
         function: {
-          name: tc.name,
+          name: toCanonicalToolName(tc.name),
           arguments: tc.arguments,
         },
       }));

@@ -34,7 +34,7 @@ function pendingApproval() {
     kind: 'irreversible_action',
     riskLevel: 'CRITICAL',
     requestedBy: 'agent-1',
-    payload: { toolName: 'agent.recruit', arguments: { role: 'partner' } },
+    payload: { toolName: 'AgentRecruit', arguments: { role: 'partner' } },
     status: 'PENDING',
     timeoutSec: 60,
     requestedAt: Date.now(),
@@ -79,7 +79,7 @@ describe('审批视图（主容器内嵌）', () => {
     await waitFor(() => expect(screen.getByText('ap-1')).toBeInTheDocument());
     // 危险等级与请求信息可见
     expect(screen.getByText('CRITICAL')).toBeInTheDocument();
-    expect(screen.getByText(/agent\.recruit/)).toBeInTheDocument();
+    expect(screen.getByText(/AgentRecruit/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /批准/ }));
 

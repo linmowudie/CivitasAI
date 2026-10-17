@@ -4,7 +4,7 @@
  *
  * 背景：`subtasks` 表（迁移 v4）此前无任何写入方 —— 编排器把 assignment 交给
  * Worker/Partner 后只存在于内存（progressTracker），进程重启即丢失；
- * `agent.recruit` 的 `dispatch: 'pending'` 残留边界（FE-006）与本链路同源。
+ * `AgentRecruit` 的 `dispatch: 'pending'` 残留边界（FE-006）与本链路同源。
  *
  * 统一 ID 空间（三条链路对齐的基础）：
  *  - `subtask_id` = `assignmentId`（编排器拆解产出的任务书 ID）

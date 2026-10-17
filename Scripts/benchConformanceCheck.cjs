@@ -139,12 +139,32 @@ check('§5 资产：真实凭据注入机制已接入 vitest', () => {
   return { passed: ok, detail: ok ? 'setupFiles + .env/.env.local 注入' : '凭据注入未完整接入' };
 });
 
-check('§5 资产：双层 trace 仍为缺口且已如实登记（不许假装完成）', () => {
+check('§5 资产：双层 trace / 事件回放 的声明与证据一致（缺口必须如实登记，闭合必须有实测证据）', () => {
   const m = readJson('Benchmarks/experimentMatrix.json');
-  const t = m?.cells?.find(c => c.id === 'MM-GAP-TRACE');
-  const e = m?.cells?.find(c => c.id === 'MM-GAP-EVENTSTABLE');
-  const ok = t?.status === 'gap' && e?.status === 'gap';
-  return { passed: ok, detail: ok ? 'MM-GAP-TRACE / MM-GAP-EVENTSTABLE 均为 gap（产品接线缺失）' : '双层 trace 相关 cell 状态与声明不符' };
+  const cells = ['MM-GAP-TRACE', 'MM-GAP-EVENTSTABLE']
+    .map(id => ({ id, cell: m?.cells?.find(c => c.id === id) }))
+    .filter(x => !!x.cell);
+  const problems = [];
+  for (const { id, cell } of cells) {
+    if (cell.status === 'gap' || cell.status === 'declared-only') {
+      // 未闭合：允许，但必须有缺口证明实验（anchor 非 none + executed）
+      if (cell.anchor?.kind === 'none' || cell.attestation === 'none') {
+        problems.push(`${id} 仍为缺口却没有可运行实验（不许无证据地登记缺口）`);
+      }
+    } else {
+      // 已闭合：必须给出实测证据（场景/断言锚点 + executed），否则就是假装完成
+      const anchored = cell.anchor?.kind === 'scenario' || cell.anchor?.kind === 'assertProbe';
+      if (!anchored || cell.attestation !== 'executed') {
+        problems.push(`${id} 声明已闭合但缺实测证据（anchor=${cell.anchor?.kind ?? 'none'} attestation=${cell.attestation}）`);
+      }
+    }
+  }
+  return {
+    passed: problems.length === 0,
+    detail: problems.length
+      ? problems.join('；')
+      : '两处声明均有对应证据（缺口→有实验；闭合→executed 实测）',
+  };
 });
 
 // ═══ ⑤ 规模与一致性 ═══

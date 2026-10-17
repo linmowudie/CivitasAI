@@ -81,7 +81,7 @@ middlewareRegistry.ts unregisterMiddleware() findIndex(name) + splice
 **并发两会话时的失效形式**：
 
 1. Loop B 注册重名失败（返回值被吞，无留痕）→ B 实际复用 A 的闭包，其 `getLoopId()/getIteration()/getTraceId()` **指向 A 的 LoopState** → `effect_journal` 与审批记录归属错位（审计链污染）；
-2. A 先结束 → `finally` 删除全局唯一 `ToolSafetyGate` → **仍在运行的 B 失去 FORBIDDEN 硬拒、行为法典检查、审批门、EffectJournal 全套管控**，`shell.exec` / 删除类工具直接裸执行；
+2. A 先结束 → `finally` 删除全局唯一 `ToolSafetyGate` → **仍在运行的 B 失去 FORBIDDEN 硬拒、行为法典检查、审批门、EffectJournal 全套管控**，`ShellExec` / 删除类工具直接裸执行；
 3. 反向成立：A 注销的可能正是 B 注册的实例。
 
 **失效取向不一致（🔧）**：`toolSafetyGate.ts` 在 `recordIntent` 失败时 **fail-closed** 拒绝执行（"副作用必须先写 INTENT，写入失败则禁止执行"，取向正确）；而同一控制族在 `registerMiddleware` 失败时 **fail-open** 静默继续。安全层不得以两种相反方向失效。

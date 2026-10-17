@@ -14,13 +14,14 @@
  * - 禁止混用 session_key / trace_id / operation_id
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 
 // ===== 类型定义 =====
 
 /** Span 类型（Docs/Client/01 §6.1） */
-export type SpanType = 'llm_call' | 'tool_exec' | 'agent_run' | 'middleware' | 'custom';
+export type SpanType =
+  "llm_call" | "tool_exec" | "agent_run" | "middleware" | "custom";
 
 /** Trace 上下文结构 */
 export interface TraceContext {
@@ -97,6 +98,10 @@ export async function runInTrace<T>(
  * span 会继承 trace_id，并设置新的 span_id 和 span_type。
  * 回调函数在 span 上下文内运行。
  *
+ * MM-GAP-TRACE（设计 §3.9「双层 trace」）：span 不仅要有执行期上下文，还必须是
+ * **可检索的产物** —— 本函数会把 span 记录进环形缓冲（含父子关系/耗时/状态），
+ * 由 `listSpans` / `getTraceSpans` / `exportTrace` 读取/回放。
+ *
  * @example
  * ```ts
  * const result = await runInSpan({ type: 'llm_call' }, async (ctx) => {
@@ -112,7 +117,7 @@ export async function runInSpan<T>(
   const current = storage.getStore();
   if (!current) {
     // 没有活跃 trace，直接在无 span 上下文下执行
-    return fn({ traceId: '', createdAt: Date.now() });
+    return fn({ traceId: "", createdAt: Date.now() });
   }
 
   const spanCtx: TraceContext = {
@@ -121,7 +126,84 @@ export async function runInSpan<T>(
     spanType: options.type,
     operationId: undefined, // span 内可再设 operation
   };
-  return storage.run(spanCtx, () => fn(spanCtx));
+
+  // span 产物（可检索）：父子关系靠 parentSpanId 串联，支持跨 Agent 归因
+  const record: TraceSpanRecord = {
+    traceId: spanCtx.traceId,
+    spanId: spanCtx.spanId ?? "",
+    ...(current.spanId ? { parentSpanId: current.spanId } : {}),
+    type: options.type,
+    ...(current.agentId ? { agentId: current.agentId } : {}),
+    startedAt: Date.now(),
+    status: "ok",
+  };
+  spanRecords.push(record);
+  if (spanRecords.length > MAX_SPAN_RECORDS) {
+    spanRecords.splice(0, spanRecords.length - MAX_SPAN_RECORDS);
+  }
+
+  try {
+    const result = await storage.run(spanCtx, () => fn(spanCtx));
+    record.endedAt = Date.now();
+    record.durationMs = record.endedAt - record.startedAt;
+    return result;
+  } catch (e) {
+    record.endedAt = Date.now();
+    record.durationMs = record.endedAt - record.startedAt;
+    record.status = "error";
+    throw e;
+  }
+}
+
+// ── span 产物（MM-GAP-TRACE）────────────────────────────────────────
+
+/** 一条已执行的 span（双层 trace 的 span 层产物） */
+export interface TraceSpanRecord {
+  traceId: string;
+  spanId: string;
+  /** 父 span（嵌套调用时用于还原 span 树 / 跨 Agent 归因） */
+  parentSpanId?: string;
+  type: SpanType;
+  agentId?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  status: "ok" | "error";
+}
+
+/** span 环形缓冲上限（长跑防膨胀） */
+export const MAX_SPAN_RECORDS = 2000;
+const spanRecords: TraceSpanRecord[] = [];
+
+/** 列出 span（按 traceId 过滤；limit 取最近 N 条） */
+export function listSpans(
+  filter: { traceId?: string; limit?: number } = {},
+): TraceSpanRecord[] {
+  let out = filter.traceId
+    ? spanRecords.filter((s) => s.traceId === filter.traceId)
+    : [...spanRecords];
+  if (filter.limit && filter.limit > 0) out = out.slice(-filter.limit);
+  return out.map((s) => ({ ...s }));
+}
+
+/** 取某 trace 的全部 span（按开始时间升序，便于还原调用顺序） */
+export function getTraceSpans(traceId: string): TraceSpanRecord[] {
+  return listSpans({ traceId }).sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/** 导出某 trace 的 span 产物（离线复核/回放） */
+export function exportTrace(traceId: string): {
+  traceId: string;
+  spans: TraceSpanRecord[];
+  spanCount: number;
+} {
+  const spans = getTraceSpans(traceId);
+  return { traceId, spans, spanCount: spans.length };
+}
+
+/** 清空 span 产物（测试隔离用） */
+export function resetTraceSpans(): void {
+  spanRecords.length = 0;
 }
 
 /**
@@ -135,7 +217,7 @@ export async function runWithOperation<T>(
 ): Promise<T> {
   const current = storage.getStore();
   if (!current) {
-    return fn({ traceId: '', createdAt: Date.now() });
+    return fn({ traceId: "", createdAt: Date.now() });
   }
 
   const opCtx: TraceContext = {
@@ -160,7 +242,7 @@ export function currentContext(): TraceContext | undefined {
  * 未激活时返回 'no-trace'。
  */
 export function currentTraceId(): string {
-  return storage.getStore()?.traceId ?? 'no-trace';
+  return storage.getStore()?.traceId ?? "no-trace";
 }
 
 /**
@@ -181,12 +263,12 @@ export function currentOperationId(): string | undefined {
 
 /** 生成 span_id（8位hex） */
 function generateSpanId(): string {
-  return randomUUID().replace(/-/g, '').slice(0, 8);
+  return randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
 /** 生成 operation_id：{timestamp_ms}-{4位hex}（Docs/Agent/14 §6） */
 function generateOperationId(): string {
   const ts = Date.now().toString(36);
-  const hex = randomUUID().replace(/-/g, '').slice(0, 4);
+  const hex = randomUUID().replace(/-/g, "").slice(0, 4);
   return `${ts}-${hex}`;
 }

@@ -11,6 +11,8 @@ import {
   getApproval,
   decideApproval,
   getRecentApprovals,
+  setSessionAutoApprove,
+  isSessionAutoApprove,
 } from "../../Services/LoopControl/approvalGate.js";
 import { listReviews } from "../../Core/AgentRuntime/agentRuntime.js";
 import { getAgent } from "../../Core/AgentRuntime/agentRegistry.js";
@@ -93,6 +95,29 @@ export function registerApprovalRoutes(): void {
   });
 
   registerRoute("GET", "/api/reviews", async () => json(listReviewRows()));
+
+  /**
+   * POST /api/sessions/auto-full-permission?sessionId=…&enabled=true|false
+   *
+   * **按会话**开启"自动完全权限"（跟随当前任务）：开启后该会话内不再产生审批卡与等待；
+   * 其它会话 / 新建任务仍按危险级别审批。
+   */
+  registerRoute("POST", "/api/sessions/auto-full-permission", async (req) => {
+    const sessionId = String(req.query["sessionId"] ?? "");
+    if (!sessionId) return apiError("缺少 sessionId", 400);
+    const enabled = String(req.query["enabled"] ?? "") === "true";
+    const state = setSessionAutoApprove(sessionId, enabled);
+    return json({ sessionId, autoFullPermission: state });
+  });
+
+  /** GET 同路径：刷新后回读当前会话状态 */
+  registerRoute("GET", "/api/sessions/auto-full-permission", async (req) => {
+    const sessionId = String(req.query["sessionId"] ?? "");
+    return json({
+      sessionId,
+      autoFullPermission: isSessionAutoApprove(sessionId),
+    });
+  });
 
   registerRoute("GET", "/api/approvals/:approvalId", async (req) => {
     const approvalId = req.params.approvalId;

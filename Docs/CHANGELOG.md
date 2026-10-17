@@ -4,6 +4,47 @@
 
 ---
 
+## [新增 · 三端接口文档（Server / 本地后端 / 客户端-桌面）] - 2026-10-17
+
+按"所有端的接口文档分别落到各自文档归属地"补齐三篇。抽取方式：**逐端点读源码**（Java 控制器注解 + 请求校验器字段链 + DTO record；TS 的 `registerRoute` + `req.params/query/body` 读取点；`preload.ts` 与 `ipcMain.*` 通道；`Client/src/services/**` 导出），再用脚本做一致性校验——38 条 Java 路由 / 80 条 `/api` 路由 / 51 条 IPC 通道 / 83 种 `EventType` 均在文档中出现，相对链接全部可解析。
+
+### 变更
+
+- **新增 `Server/01-服务端/REST-API接口文档.md`**：服务端（Spring Boot + PostgreSQL）对外 HTTP 契约——统一包络（`{ok,data}` / `{ok,error{code,message,details}}`）、14 种错误码与状态映射、Bearer 鉴权与会话回查、限流/请求体/安全头、38 条业务端点 + `/healthz`/`/readyz`、各资源请求字段约束（Auth/Memory/Settings/Stats/Task/A2A/Backup）、公共 DTO、环境变量与启动强校验。
+- **新增 `Agent/14-参数总典与接口契约/本地后端接口文档.md`**：`Src/Interface/**` 接入层对外契约——bind policy（默认回环）、本机控制面 API Token（`x-civitas-api-token` / Bearer + `/internal/api-token` 回环引导）、响应包络、API 限流（`supervision.apiRateLimit` 600×2）、80 条 `/api/**` 路由按 15 个模块列表（含 params/query/body/响应键）、EventBus 83 事件、IPC 桥 7 种命令与 `BridgeMessage`、`ai_events` 持久化与回放、输入去重 5 道防线、浏览器形态命令通道缺失的边界。
+- **新增 `Client/05-接口契约/客户端与桌面端接口文档.md`**：渲染层 + 桌面桥对外接口——`window.electronAPI` 分组结构与 51 条 IPC 通道全表（通道 × 方向 × 主进程处理位置 × 语义）、`ipcApi` 类型化封装与关键 DTO、`eventBusBridge`（`BridgeMessage` / 订阅 / 命令）、`serverApi`（`server-fetch` 白名单 + 401→refresh→重放）、`secureStore`、`syncService`/`a2aSync`/`providerDetect`、五条安全边界（凭据不出主进程 / 外联白名单 / preload 最小暴露 / 控制面身份门 / 审批身份验真）。
+- **`README.md`（文档总索引）**：Agent-14 行补「本地后端接口文档」、Client 新增 05 篇、Server-01 行补「REST API 接口文档」，分类计数 4 篇 → 5 篇。
+- **一致性保障**：新增/修改端点、IPC 通道、事件类型时，三篇文档与源码必须同批更新（各篇 §维护约定已写明"源码 > 文档"的判定顺序）。
+
+---
+
+## [校准 · L1 编排设计：兄弟端口改为按身份解析] - 2026-10-16
+
+G4 档 1 的前两步落地（只做**解析层**，生产装配仍未接）：端口容器是进程级单例、而两本账按 05 §9.4 属于**每个 L1 实例**，共享注入会让两个 L1 写进同一本域账本 —— 比 `NOT_ENABLED` 更糟，因为它看起来像成功。据此更正四份文档的口径。
+
+### 变更
+
+- **`Dev/L1编排设计/28-设计实现覆盖清点.md`**：§2 `agent.split`/`agent.merge` 行由「`splitMerge` 端口未注入」改为「端口形态已按身份解析（`splitMergeFor(agentId)`）+ **宿主未登记**」；§3 `agent.split` 行补入解析件 `l1HostRegistry` 与新取证数（31 + 12 条 / 变异 15+10 全杀）；§2 `orchestrator.compose`/`select` 行补 ⚠️「该端口仍是**进程级共享单例**」；§6 **G4** 写明档 1 第 1+2 步已落 + 剩余两项（真实 `openSiblingPeer`、`submitToRegulator → HITL → resolveMerge` 回投）；**§6.1 新增设计缺口 D4**（端口容器的作用域口径未规定；`orchestration` 侧同族缺陷**只登记不擅自推广**）。
+- **`Dev/L1编排设计/17-账本-子代与兄弟.md`**：§0.1 增「账本属于哪个实例」段，写明登记期两条硬判据（同一身份不得双宿主 / `rootId` 必须等于 agentId，后者是 `requestMerge` 的发起端约束使然）与恢复口径（整批校验后整批落位，不做半恢复）；验收口径更新为 32 + 31 + 12 条、变异 15+10 项。
+- **`Dev/L1编排设计/07-分裂与自合并.md`**：状态行的警告由「端口未注入」更正为「已按身份解析、但 `main.ts` 未登记任何 L1 宿主」，并补引 D4。
+- **`Agent/16-开发规范/Interfaces/toolsInterfaces.md`**：§3.2 `agent.split` 行的注入形态改述为 `splitMergeFor(agentId)` + 解析件落点；修订记录**追加 2026-10-16 独立条目**（不改写 10-15 的历史行），并如实记下变异 M10 首轮**存活**、补用例后才被抓到。
+
+---
+
+## [校准 · L1 编排设计：兄弟账本链路落地与状态口径回写] - 2026-10-15
+
+`agent.split` / `agent.merge`（含 `DomainLedger` 的 `merge_requests` 与归属转换）落地后，回写设计文档集的状态口径——**只按代码落点 + 测试取证改状态**，并把"实现完成"与"生产可用"分清。
+
+### 变更
+
+- **`Dev/L1编排设计/00-索引.md`**：文首 blanket 警告「均为目标态，尚未实现」**更正**为「18 项均有 TS 落点、有组件级+集成级取证，但生产链路无 composition root（G4）、真实 Agent 调用回归未做（G7）⇒ 对运行时行为仍无影响」；「状态」行保留仍然成立的**未提交 git**；模块清单第 28 行摘要同步（`11 ✅ / 3 🔴 / 4 ⬜` → **18 项均有落点** + §6.1 设计缺口）。
+- **`Dev/L1编排设计/07-分裂与自合并.md`**：状态行由「设计稿（未实现）」改为 ✅ 已实现（附 G4 / G7 / D1 三条限制），并修复一处把换行写成字面量 `` `n `` 的排版缺陷。
+- **`Dev/L1编排设计/17-账本-子代与兄弟.md`**：§0.1 补齐兄弟账本链路清单（`requestMerge`/`withdrawMerge`/`resolveMerge`/`dissolved`/`transferChildren`），写明「已裁决的历史不能用活体不变量复审 ⇒ 恢复走完整性校验、不自洽即整体拒绝」；验收口径 12 条更正为 **32 条账本用例 + 27 条工具用例 + 变异 15 项全杀**。
+- **`Dev/L1编排设计/28-设计实现覆盖清点.md`**：§1 增「18 完整 · 0 部分 · 0 未动」一行并紧跟**不等于生产可用**的警示；§2 未接线表新增 `agent.split`/`agent.merge` 行（⚠️ 半有：工具已注册、`splitMerge` 端口未注入 ⇒ `NOT_ENABLED`）；§3 两行由 🔴 缺口改为 ✅ 完整（含落点与取证）；§6 G3 划闭、G7 实调清单补入两个新工具；**新增 §6.1「实施中发现的设计缺口」D1~D3**（D1 兄弟数量无上限 / D2 本域根被并入后的账本去向 / D3 `reassign` 的转归清单来源未规定）。
+- **`Agent/16-开发规范/Interfaces/toolsInterfaces.md`**：`BUILTIN_TOOLS` 计数 **17 → 19**，§3.2 补 `agent.split`（DANGEROUS，入参无批量入口）与 `agent.merge`（CONTROLLED，成功恒 `merged: false`）两行；头部/可探索划分同步为 **10 + 9**（四个编排/兄弟工具均不进头部）；修订记录追加独立条目而非改写历史行。
+
+---
+
 ## [校准 · Server Java 重写文档收口] - 2026-10-14
 
 `Server/` 由 TS/Fastify 重写为 Java（Spring Boot 3.3.5 + Maven）后，对文档集做全量口径校准——以已通过验收的 Java 代码为准，回写设计文档、缺陷复核、计划偏差与使用/运维文档。

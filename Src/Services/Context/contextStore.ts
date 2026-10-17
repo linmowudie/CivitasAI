@@ -11,8 +11,8 @@
  * 从而命中提供商前缀缓存（实测前缀稳定 ≥90%）。
  */
 
-import { createHash } from 'node:crypto';
-import { sep } from 'node:path';
+import { createHash } from "node:crypto";
+import { sep } from "node:path";
 
 /** 上下文分区：同键代表"同一主题的最新内容" */
 export interface ContextSection {
@@ -43,7 +43,10 @@ export class ContextStore {
       return false;
     }
     // 新键 → 追加末尾；已有键 → 原位替换（Map.set 不改变已有键的插入顺序）
-    this.sections.set(section.key, { ...section, content: section.content.trim() });
+    this.sections.set(section.key, {
+      ...section,
+      content: section.content.trim(),
+    });
     return true;
   }
 
@@ -66,7 +69,10 @@ export class ContextStore {
    * 增量差异：自 knownKeys 以来新增的分区与已删除的键。
    * 供调用方判断是否需要重新序列化。
    */
-  diffSince(knownKeys: string[]): { added: ContextSection[]; removedKeys: string[] } {
+  diffSince(knownKeys: string[]): {
+    added: ContextSection[];
+    removedKeys: string[];
+  } {
     const knownSet = new Set(knownKeys);
     const added: ContextSection[] = [];
     const removedKeys: string[] = [];
@@ -91,11 +97,11 @@ export class ContextStore {
    * 转成追加式消息（role: 'system'，内容前缀 `[ctx:<key>] `）。
    * 按插入顺序排列，保证位置稳定。
    */
-  toAppendMessages(): Array<{ role: 'system'; content: string }> {
-    const messages: Array<{ role: 'system'; content: string }> = [];
+  toAppendMessages(): Array<{ role: "system"; content: string }> {
+    const messages: Array<{ role: "system"; content: string }> = [];
     for (const [key, section] of this.sections) {
       messages.push({
-        role: 'system',
+        role: "system",
         content: `[ctx:${key}] ${section.content}`,
       });
     }
@@ -116,7 +122,7 @@ export class ContextStore {
 // ── 会话工作目录（写侧接线）───────────────────────────
 
 /** 会话工作目录在追加区中的固定键（同一会话内位置稳定） */
-export const WORKSPACE_SECTION_KEY = 'workspace';
+export const WORKSPACE_SECTION_KEY = "workspace";
 
 /**
  * 构造"会话工作目录"追加分区。
@@ -129,18 +135,21 @@ export const WORKSPACE_SECTION_KEY = 'workspace';
  * @param workDir 会话绑定的工作目录（绝对路径）；空值返回 null（不注入）
  * @returns 追加分区，或 null
  */
-export function buildWorkspaceSection(workDir: string | undefined | null): ContextSection | null {
-  const dir = typeof workDir === 'string' ? workDir.trim() : '';
+export function buildWorkspaceSection(
+  workDir: string | undefined | null,
+): ContextSection | null {
+  const dir = typeof workDir === "string" ? workDir.trim() : "";
   if (!dir) return null;
   return {
     key: WORKSPACE_SECTION_KEY,
-    content: `当前会话工作目录：${dir}\n`
-      + '路径写法（三选一，勿混用）：'
-      + '① 相对本目录的路径，例：src/a.ts；'
-      + `② 完整绝对路径，例：${dir}${sep}src${sep}a.ts；`
-      + '③ 单写 "." 表示本目录本身。\n'
-      + '禁止：不要写只带本目录"一部分"的路径（例：Data\\workspaces\\<会话>\\src\\a.ts 或 <会话>\\src\\a.ts）'
-      + '——它会被当成相对路径解析，拼出不存在的重复目录。',
+    content:
+      `当前会话工作目录：${dir}\n` +
+      "路径写法（三选一，勿混用）：" +
+      "① 相对本目录的路径，例：src/a.ts；" +
+      `② 完整绝对路径，例：${dir}${sep}src${sep}a.ts；` +
+      '③ 单写 "." 表示本目录本身。\n' +
+      '禁止：不要写只带本目录"一部分"的路径（例：Data\\workspaces\\<会话>\\src\\a.ts 或 <会话>\\src\\a.ts）' +
+      "——它会被当成相对路径解析，拼出不存在的重复目录。",
     timestamp: Date.now(),
   };
 }
@@ -150,15 +159,15 @@ export function buildWorkspaceSection(workDir: string | undefined | null): Conte
  * 使用 sha256 取前 16 位十六进制。
  */
 export function messageFingerprint(role: string, content: string): string {
-  const hash = createHash('sha256');
+  const hash = createHash("sha256");
   hash.update(`${role}\u0000${content.slice(0, 300)}`);
-  return hash.digest('hex').slice(0, 16);
+  return hash.digest("hex").slice(0, 16);
 }
 
 // ── FE-054：上下文写侧接线（文件工作集）───────────────
 
-/** 记录到追加区的文件类工具（仅 `file.read`：其余工具结果非文件内容） */
-export const WORK_SET_FILE_TOOLS: readonly string[] = ['file.read'];
+/** 记录到追加区的文件类工具（仅 `FileRead`：其余工具结果非文件内容） */
+export const WORK_SET_FILE_TOOLS: readonly string[] = ["FileRead"];
 /** 单条追加内容上限（字符），超出截断（保持前缀稳定与预算可控） */
 export const WORK_SET_MAX_CHARS = 2000;
 
@@ -177,10 +186,16 @@ export function recordFileWorkSet(
 ): boolean {
   if (!store) return false;
   if (!WORK_SET_FILE_TOOLS.includes(toolName)) return false;
-  const path = typeof args?.['path'] === 'string' ? (args['path'] as string) : undefined;
+  const path =
+    typeof args?.["path"] === "string" ? (args["path"] as string) : undefined;
   if (!path || !content) return false;
-  const snapshot = content.length > WORK_SET_MAX_CHARS
-    ? `${content.slice(0, WORK_SET_MAX_CHARS)}\n…(已截断，共 ${content.length} 字符)`
-    : content;
-  return store.put({ key: `file:${path}`, content: snapshot, timestamp: Date.now() });
+  const snapshot =
+    content.length > WORK_SET_MAX_CHARS
+      ? `${content.slice(0, WORK_SET_MAX_CHARS)}\n…(已截断，共 ${content.length} 字符)`
+      : content;
+  return store.put({
+    key: `file:${path}`,
+    content: snapshot,
+    timestamp: Date.now(),
+  });
 }

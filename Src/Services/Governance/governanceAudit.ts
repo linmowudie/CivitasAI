@@ -17,30 +17,31 @@
  *  - 留痕失败**不得阻断治理动作本身**（借鉴"监管失效不阻断主流程"），但必须打日志。
  */
 
-import { publish } from '../EventBus/eventBus.js';
-import { createEvent } from '../EventBus/eventBus.js';
-import { EventType } from '../EventBus/eventTypes.js';
-import { logger } from '../../Infra/Logging/logger.js';
-import { getMainDb } from '../../Infra/Db/database.js';
-import { getActiveOwner } from '../AccountScope/activeAccount.js';
-import { ok } from '../../Infra/types.js';
-import type { Result } from '../../Infra/types.js';
+import { publish } from "../EventBus/eventBus.js";
+import { createEvent } from "../EventBus/eventBus.js";
+import { EventType } from "../EventBus/eventTypes.js";
+import { logger } from "../../Infra/Logging/logger.js";
+import { getMainDb } from "../../Infra/Db/database.js";
+import { getActiveOwner } from "../AccountScope/activeAccount.js";
+import { ok } from "../../Infra/types.js";
+import { createHash } from "node:crypto";
+import type { Result } from "../../Infra/types.js";
 
 /** 治理动作标识（域.动作） */
 export type GovernanceAction =
-  | 'approval.decide'
-  | 'audit.freeze'
-  | 'audit.unfreeze'
-  | 'audit.investigate'
-  | 'audit.patrol'
-  | 'arbitration.verdict'
-  | 'arbitration.suspension'
-  | 'arbitration.consolidate'
-  | 'regulation.intervene'
-  | 'regulation.escalate'
-  | 'regulation.rule_add'
-  | 'regulation.rule_remove'
-  | 'regulation.broadcast'
+  | "approval.decide"
+  | "audit.freeze"
+  | "audit.unfreeze"
+  | "audit.investigate"
+  | "audit.patrol"
+  | "arbitration.verdict"
+  | "arbitration.suspension"
+  | "arbitration.consolidate"
+  | "regulation.intervene"
+  | "regulation.escalate"
+  | "regulation.rule_add"
+  | "regulation.rule_remove"
+  | "regulation.broadcast"
   | string;
 
 /** 治理记录（四类元数据为强制字段，见 §1.2） */
@@ -57,9 +58,72 @@ export interface GovernanceRecord {
   readonly taskId: string | null;
   /** 动作与结果 */
   readonly action: GovernanceAction;
-  readonly outcome: 'allowed' | 'denied' | 'failed';
+  readonly outcome: "allowed" | "denied" | "failed";
   readonly reason?: string;
   readonly targetIds?: readonly string[];
+  /** 完整性链：本条摘要（缺失 = 迁移前的历史行） */
+  readonly hash?: string;
+  /** 完整性链：上一条摘要（链首为 null） */
+  readonly prevHash?: string | null;
+}
+
+/**
+ * 记录内容的规范化串（**不含** hash/prevHash 自身，否则摘要无法复算）。
+ * 字段顺序固定 —— 校验与写入必须共用，否则链一写入就自相矛盾。
+ */
+function canonicalRecord(record: {
+  recordId: string;
+  timestamp: number;
+  actorRole: string;
+  actorId: string;
+  traceId: string | null;
+  taskId: string | null;
+  action: GovernanceAction;
+  outcome: "allowed" | "denied" | "failed";
+  reason?: string;
+  targetIds?: readonly string[];
+}): string {
+  return JSON.stringify([
+    record.recordId,
+    record.timestamp,
+    record.actorRole,
+    record.actorId,
+    record.traceId,
+    record.taskId,
+    record.action,
+    record.outcome,
+    record.reason ?? null,
+    record.targetIds ?? [],
+  ]);
+}
+
+/** 计算一条记录在链上的摘要：sha256(prevHash | canonical(record)) */
+function computeRecordHash(
+  record: Parameters<typeof canonicalRecord>[0],
+  prevHash: string | null,
+): string {
+  return createHash("sha256")
+    .update(`${prevHash ?? ""}|${canonicalRecord(record)}`)
+    .digest("hex");
+}
+
+/** 当前属主链上最新一条记录的摘要（内存优先，其次库；无则 null） */
+function latestChainHash(owner: string): string | null {
+  for (let i = ledger.length - 1; i >= 0; i--) {
+    const r = ledger[i];
+    if (r && recordOwners.get(r.recordId) === owner && r.hash) return r.hash;
+  }
+  if (!canPersist()) return null;
+  try {
+    const row = getMainDb()
+      .prepare(
+        "SELECT hash FROM governance_records WHERE owner_user_id = ? AND hash IS NOT NULL ORDER BY timestamp DESC, record_id DESC LIMIT 1",
+      )
+      .get(owner) as { hash?: string } | undefined;
+    return row?.hash ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface RecordGovernanceInput {
@@ -68,7 +132,7 @@ export interface RecordGovernanceInput {
   actorId?: string;
   traceId?: string;
   taskId?: string;
-  outcome?: GovernanceRecord['outcome'];
+  outcome?: GovernanceRecord["outcome"];
   reason?: string;
   targetIds?: readonly string[];
 }
@@ -107,21 +171,35 @@ function canPersist(): boolean {
 function persistRecord(record: GovernanceRecord, owner: string): void {
   if (!canPersist()) return;
   try {
-    getMainDb().prepare(`
+    getMainDb()
+      .prepare(
+        `
       INSERT OR REPLACE INTO governance_records (
         record_id, timestamp, actor_role, actor_id, trace_id, task_id,
-        action, outcome, reason, target_ids_json, owner_user_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.recordId, record.timestamp, record.actorRole, record.actorId,
-      record.traceId, record.taskId, record.action, record.outcome,
-      record.reason ?? null,
-      record.targetIds ? JSON.stringify(record.targetIds) : null,
-      owner, Date.now(),
-    );
+        action, outcome, reason, target_ids_json, owner_user_id, created_at,
+        prev_hash, hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      )
+      .run(
+        record.recordId,
+        record.timestamp,
+        record.actorRole,
+        record.actorId,
+        record.traceId,
+        record.taskId,
+        record.action,
+        record.outcome,
+        record.reason ?? null,
+        record.targetIds ? JSON.stringify(record.targetIds) : null,
+        owner,
+        Date.now(),
+        record.prevHash ?? null,
+        record.hash ?? null,
+      );
   } catch (e) {
-    logger.warn('治理留痕落库失败（内存台账仍生效）', {
-      source: 'governanceAudit/persistRecord',
+    logger.warn("治理留痕落库失败（内存台账仍生效）", {
+      source: "governanceAudit/persistRecord",
       recordId: record.recordId,
       error: e instanceof Error ? e.message : String(e),
     });
@@ -130,32 +208,40 @@ function persistRecord(record: GovernanceRecord, owner: string): void {
 
 /** 行 → 记录 */
 function rowToRecord(row: Record<string, unknown>): GovernanceRecord {
-  const targets = row['target_ids_json'] ? JSON.parse(row['target_ids_json'] as string) : undefined;
+  const targets = row["target_ids_json"]
+    ? JSON.parse(row["target_ids_json"] as string)
+    : undefined;
   return {
-    recordId: String(row['record_id']),
-    timestamp: Number(row['timestamp']),
-    actorRole: String(row['actor_role']),
-    actorId: String(row['actor_id']),
-    traceId: (row['trace_id'] as string | null) ?? null,
-    taskId: (row['task_id'] as string | null) ?? null,
-    action: String(row['action']),
-    outcome: row['outcome'] as GovernanceRecord['outcome'],
-    ...(row['reason'] ? { reason: String(row['reason']) } : {}),
+    recordId: String(row["record_id"]),
+    timestamp: Number(row["timestamp"]),
+    actorRole: String(row["actor_role"]),
+    actorId: String(row["actor_id"]),
+    traceId: (row["trace_id"] as string | null) ?? null,
+    taskId: (row["task_id"] as string | null) ?? null,
+    action: String(row["action"]),
+    outcome: row["outcome"] as GovernanceRecord["outcome"],
+    ...(row["reason"] ? { reason: String(row["reason"]) } : {}),
     ...(targets ? { targetIds: targets as readonly string[] } : {}),
+    ...(row["hash"] ? { hash: String(row["hash"]) } : {}),
+    prevHash: (row["prev_hash"] as string | null) ?? null,
   };
 }
 
 /** 从库中按属主加载记录（不改变内存状态） */
-export function loadPersistedGovernanceRecords(owner: string = getActiveOwner()): GovernanceRecord[] {
+export function loadPersistedGovernanceRecords(
+  owner: string = getActiveOwner(),
+): GovernanceRecord[] {
   if (!canPersist()) return [];
   try {
-    const rows = getMainDb().prepare(
-      'SELECT * FROM governance_records WHERE owner_user_id = ? ORDER BY timestamp ASC',
-    ).all(owner) as Record<string, unknown>[];
+    const rows = getMainDb()
+      .prepare(
+        "SELECT * FROM governance_records WHERE owner_user_id = ? ORDER BY timestamp ASC",
+      )
+      .all(owner) as Record<string, unknown>[];
     return rows.map(rowToRecord);
   } catch (e) {
-    logger.warn('治理台账读取失败（降级为内存视图）', {
-      source: 'governanceAudit/loadPersistedGovernanceRecords',
+    logger.warn("治理台账读取失败（降级为内存视图）", {
+      source: "governanceAudit/loadPersistedGovernanceRecords",
       error: e instanceof Error ? e.message : String(e),
     });
     return [];
@@ -166,7 +252,7 @@ export function loadPersistedGovernanceRecords(owner: string = getActiveOwner())
 export function hydrateGovernanceLedger(): Result<number> {
   const owner = getActiveOwner();
   const persisted = loadPersistedGovernanceRecords(owner);
-  const known = new Set(ledger.map(r => r.recordId));
+  const known = new Set(ledger.map((r) => r.recordId));
   for (const rec of persisted) {
     if (!known.has(rec.recordId)) {
       ledger.push(rec);
@@ -186,8 +272,13 @@ export function hydrateGovernanceLedger(): Result<number> {
  *
  * @returns 产生的记录；即使发布事件失败也会返回记录（留痕不阻断治理动作）
  */
-export function recordGovernanceAction(input: RecordGovernanceInput): GovernanceRecord {
-  const record: GovernanceRecord = {
+export function recordGovernanceAction(
+  input: RecordGovernanceInput,
+): GovernanceRecord {
+  const owner = getActiveOwner();
+  // 完整性链（SUP-SEC-AUDITCHAIN）：本条摘要链接到同属主上一条摘要。
+  const prevHash = latestChainHash(owner);
+  const base = {
     recordId: `gov-${Date.now().toString(36)}-${++recordCounter}`,
     timestamp: Date.now(),
     actorRole: input.actorRole,
@@ -195,9 +286,14 @@ export function recordGovernanceAction(input: RecordGovernanceInput): Governance
     traceId: input.traceId ?? null,
     taskId: input.taskId ?? null,
     action: input.action,
-    outcome: input.outcome ?? 'allowed',
+    outcome: input.outcome ?? "allowed",
     ...(input.reason !== undefined ? { reason: input.reason } : {}),
     ...(input.targetIds !== undefined ? { targetIds: input.targetIds } : {}),
+  } as const;
+  const record: GovernanceRecord = {
+    ...base,
+    prevHash,
+    hash: computeRecordHash(base, prevHash),
   };
 
   ledger.push(record);
@@ -205,32 +301,33 @@ export function recordGovernanceAction(input: RecordGovernanceInput): Governance
     const dropped = ledger.splice(0, ledger.length - MAX_GOVERNANCE_RECORDS);
     for (const d of dropped) recordOwners.delete(d.recordId);
   }
-  const owner = getActiveOwner();
   recordOwners.set(record.recordId, owner);
   persistRecord(record, owner);
 
   try {
-    publish(createEvent({
-      eventType: EventType.GOVERNANCE_ACTION_RECORDED,
-      source: 'Governance/governanceAudit',
-      payload: {
-        // §1.2 四类元数据
-        recordId: record.recordId,
-        timestamp: record.timestamp,
-        actorRole: record.actorRole,
-        actorId: record.actorId,
-        traceId: record.traceId,
-        taskId: record.taskId,
-        // 动作语义
-        action: record.action,
-        outcome: record.outcome,
-        reason: record.reason,
-        targetIds: record.targetIds,
-      },
-    }));
+    publish(
+      createEvent({
+        eventType: EventType.GOVERNANCE_ACTION_RECORDED,
+        source: "Governance/governanceAudit",
+        payload: {
+          // §1.2 四类元数据
+          recordId: record.recordId,
+          timestamp: record.timestamp,
+          actorRole: record.actorRole,
+          actorId: record.actorId,
+          traceId: record.traceId,
+          taskId: record.taskId,
+          // 动作语义
+          action: record.action,
+          outcome: record.outcome,
+          reason: record.reason,
+          targetIds: record.targetIds,
+        },
+      }),
+    );
   } catch (e) {
-    logger.warn('治理留痕事件发布失败（治理动作本身不受影响）', {
-      source: 'governanceAudit/recordGovernanceAction',
+    logger.warn("治理留痕事件发布失败（治理动作本身不受影响）", {
+      source: "governanceAudit/recordGovernanceAction",
       recordId: record.recordId,
       action: record.action,
       error: e instanceof Error ? e.message : String(e),
@@ -241,17 +338,19 @@ export function recordGovernanceAction(input: RecordGovernanceInput): Governance
 }
 
 /** 查询台账（可按动作、角色、结果过滤；仅返回当前属主的记录） */
-export function listGovernanceRecords(filter: {
-  action?: string;
-  actorRole?: string;
-  outcome?: GovernanceRecord['outcome'];
-  limit?: number;
-} = {}): GovernanceRecord[] {
+export function listGovernanceRecords(
+  filter: {
+    action?: string;
+    actorRole?: string;
+    outcome?: GovernanceRecord["outcome"];
+    limit?: number;
+  } = {},
+): GovernanceRecord[] {
   // ★ 合并持久化记录（按属主）：重启后仍可查询历史（灵感源 §1.2 全链路可追溯）
   // ★ FE-044：内存台账同样按属主过滤（此前内存视图跨账号可见，与落库视图不一致）
   const owner = getActiveOwner();
   const seen = new Set<string>();
-  let out = ledger.filter(r => {
+  let out = ledger.filter((r) => {
     if (recordOwners.get(r.recordId) !== owner) return false;
     seen.add(r.recordId);
     return true;
@@ -259,16 +358,19 @@ export function listGovernanceRecords(filter: {
   for (const persisted of loadPersistedGovernanceRecords(owner)) {
     if (!seen.has(persisted.recordId)) out.push(persisted);
   }
-  if (filter.action) out = out.filter(r => r.action === filter.action);
-  if (filter.actorRole) out = out.filter(r => r.actorRole === filter.actorRole);
-  if (filter.outcome) out = out.filter(r => r.outcome === filter.outcome);
+  if (filter.action) out = out.filter((r) => r.action === filter.action);
+  if (filter.actorRole)
+    out = out.filter((r) => r.actorRole === filter.actorRole);
+  if (filter.outcome) out = out.filter((r) => r.outcome === filter.outcome);
   if (filter.limit !== undefined) out = out.slice(-filter.limit);
   return out;
 }
 
 /** 按 recordId 取单条（仅当前属主可见） */
-export function getGovernanceRecord(recordId: string): GovernanceRecord | undefined {
-  const rec = ledger.find(r => r.recordId === recordId);
+export function getGovernanceRecord(
+  recordId: string,
+): GovernanceRecord | undefined {
+  const rec = ledger.find((r) => r.recordId === recordId);
   if (!rec) return undefined;
   return recordOwners.get(rec.recordId) === getActiveOwner() ? rec : undefined;
 }
@@ -276,6 +378,81 @@ export function getGovernanceRecord(recordId: string): GovernanceRecord | undefi
 /** 台账规模（诊断） */
 export function governanceRecordCount(): number {
   return ledger.length;
+}
+
+/** 审计链校验结果（SUP-SEC-AUDITCHAIN） */
+export interface AuditChainVerification {
+  /** 链是否完整（**不含**"历史行无摘要"的降级口径） */
+  ok: boolean;
+  /** 实际校验的链上记录数 */
+  checked: number;
+  /** 是否检出篡改（内容被改 / 前驱不匹配 / 链被截断） */
+  tampered: boolean;
+  /** 第一个断链点的 recordId */
+  brokenAt?: string;
+  reason?: string;
+}
+
+/**
+ * 校验治理审计记录的完整性链（SUP-SEC-AUDITCHAIN，设计 §3.3）。
+ *
+ * 用法：
+ * - 无参：校验**当前属主**已落库的记录（按 timestamp 升序，链首=第一条带摘要的记录；
+ *   迁移前的历史行无摘要，跳过而非误报）；
+ * - 传入记录数组：校验调用方给出的链（供实验/离线复核直接构造被篡改样本）。
+ *
+ * 检出条件（任一即判篡改）：链中出现无摘要记录、前驱摘要不匹配、内容复算摘要不匹配。
+ */
+export function verifyAuditChain(
+  records?: readonly GovernanceRecord[],
+): AuditChainVerification {
+  const source = records ?? loadPersistedGovernanceRecords();
+  const start = source.findIndex(
+    (r) => typeof r.hash === "string" && r.hash.length > 0,
+  );
+  if (start < 0) {
+    // 没有可校验的链（全新库/全是迁移前历史行）：不误报篡改，但 checked=0
+    return { ok: true, checked: 0, tampered: false };
+  }
+  const head = source[start];
+  if (!head) return { ok: true, checked: 0, tampered: false };
+
+  let prev: string | null = head.prevHash ?? null;
+  let checked = 0;
+  for (let i = start; i < source.length; i++) {
+    const r = source[i];
+    if (!r) break;
+    if (!r.hash) {
+      return {
+        ok: false,
+        checked,
+        tampered: true,
+        brokenAt: r.recordId,
+        reason: "链中出现无摘要记录（链被截断/插入）",
+      };
+    }
+    if ((r.prevHash ?? null) !== prev) {
+      return {
+        ok: false,
+        checked,
+        tampered: true,
+        brokenAt: r.recordId,
+        reason: "前驱摘要不匹配（记录被插入/删除/重排）",
+      };
+    }
+    if (computeRecordHash(r, prev) !== r.hash) {
+      return {
+        ok: false,
+        checked,
+        tampered: true,
+        brokenAt: r.recordId,
+        reason: "记录摘要不匹配（内容被篡改）",
+      };
+    }
+    prev = r.hash;
+    checked++;
+  }
+  return { ok: true, checked, tampered: false };
 }
 
 /** 清空台账（测试用） */

@@ -12,7 +12,7 @@
 | **L0 静态对账** | 导出符号存在性、文档与实现差、零调用者扫描；适用全部 9 系统 | ✅ **已做且超出** | `Scripts/staticRecon.cjs`：**32 条检查**（11 lock + 21 gap），接入矩阵守门并逐 cell **双向交叉校验**；`--json` 供基线采集 |
 | L1 契约单测 | `Tests/**` 单文件跑 | ➖ 由 [`Tests/`](../Tests/) 承载 | 172 文件 / 2057 用例，不属本目录职责 |
 | L2 组件集成 | `Tests/LoopControl`、`Tests/A2A` | ➖ 同上 | — |
-| **L3 真实模型端到端** | 真实 API Key，≥3 轮真实 Agent 调用 | ❌ **环境不可执行** | 本机无 `HUAWEI_MAAS_API_KEY`；受门禁 12 条用例全部登记 **NOT-RUN**。凭据注入机制已就绪（`Tests/setup/credentials.ts` + vitest `setupFiles`）。矩阵 cell `AGENT-ENV-L3REAL` 已登记 |
+| **L3 真实模型端到端** | 真实 API Key，≥3 轮真实 Agent 调用 | ⚠️ **可执行，CI 侧 NOT-RUN** | 凭据就绪时**已真跑通**：2026-10-17 实测 `realAgent.spec.ts` **4/4**（221s）+ `llm.spec.ts` 30/30，均为真实 `/plan/v2` 调用。CI 未注入 `HUAWEI_MAAS_API_KEY` secret ⇒ `npm test` 下 12 条仍登记 **NOT-RUN**（是 CI 配置问题，非"不可执行"）。`AGENT-ENV-L3REAL` 的 oracle 要求 12 条**全部**真实执行且 NOT-RUN 归零，5 个 E2E 模式 spec 尚未在凭据下执行 ⇒ 保持 `gap` |
 | **L4 对抗注入** | 语料驱动（`adversarialSeeds.json`） | ⚠️ **部分** | 已驱动：间接注入（**中英双载荷**同轮投递）、记忆写侧红线/治理键分级/inferred 拒入。`memoryPoison.json`（20 种子）已交付但**多数条目尚未驱动成场景** |
 | **L5 混沌与恢复** | 崩溃 / 满盘 / 时钟回拨 / 分区 + checkpoint 恢复 | ⚠️ **部分** | ✅ 工具失败、模型失败、**DB 不可用**、**时钟回拨**；❌ 崩溃重放（卡在产品侧：`iterationCheckpoint` 只有写路径，无 load/resume → cell `AG-BEN-RESUME` 为 gap）、分区 |
 
@@ -57,7 +57,7 @@
 |---|---|---|
 | 15 面、**88 cell** | **15 面、74 cell** | 用户在第 11–12 轮重新裁定了范围：**"Benchmark 和 Test 不是一个系统"**——文档方案的 cell 锚 `Tests/**` 的 spec，而那正是用户否掉的形态；随后又明确"实验矩阵是 benchmark 的配套系统，过了才到打分矩阵"。据此重建为**双轴**（能力轴 6 面 18 cell + 系统轴 9 面 56 cell） |
 | 保留并扩面：启动与配置 / 持久执行 / LLM 通道 / Loop 控制 / Token 经济 / 并行与隔离 / 交互与可观测 | ⚠️ **降级为 `prerequisites`** | 这 7 个面的原 42 cell 保留在 `prerequisites`（锚 `Tests/**`，作为**平台就绪前置**），但**未按文档 §4 扩 cell**。它们是"对象=模块/接口"的检查，按用户口径属 Tests 领域 |
-| 状态分布：existing 12 / new-scaffold 15 / gap 16 / declared-only 8 | 现状：existing-covered 33 / gap 26 / declared-only 6（**无 new-scaffold**） | 我未使用 `new-scaffold` 状态：能跑的已直接落为 `existing-covered`，跑不了的落为 `gap`。**少了一个中间态**，这是简化，但与文档三态口径不完全一致 |
+| 状态分布：existing 12 / new-scaffold 15 / gap 16 / declared-only 8 | 现状：**existing-covered 32 / gap 27 / declared-only 15**（**无 new-scaffold**）——2026-10-17 复核对齐 JSON 实测值 | 我未使用 `new-scaffold` 状态：能跑的已直接落为 `existing-covered`，跑不了的落为 `gap`。**少了一个中间态**，这是简化，但与文档三态口径不完全一致。declared-only 由 6 增至 15：分裂面按 2026-10-14 裁定拆成 13 条声明（`SPLIT-SEM-*`）+ 多模态 2 条 |
 
 ## 六、§5 实验所缺资产
 
@@ -78,7 +78,7 @@
 | 1 | 重锚 6 条过度声称 / 13 处改判 NOT-RUN / MMAS-BEN-GREEN 真实绿灯基线 | ✅ 6 条已逐条复检处置；NOT-RUN ✅ | **复检结论（2026-10-13）**：3 条确为弱锚或锚错文件，已重锚 —— `BEN-TOOL` → `Tests/Durable/faultInjection.spec.ts`（DUR-005/006 真断言）、`ENV-DEADLOCK` → `Tests/LoopControl/loopControl.spec.ts`（⑤ 风险退出）、`SEC-ARBMANIP` → `Tests/Judicial/judicialSupervision.spec.ts`（强制裁决 + 重复挂起抑制两个半句都在）；**另 3 条文档判断已过时** —— `SEC-SPY`/`SEC-FREEZEEVADE`/`SEC-CONF` 的断言与 oracle 完全相符，已从 `new-scaffold` 转正为 `existing-covered`。`--strict` 弱锚 **11 → 9** |
 | 2 | 约 15 条 new-scaffold（L1/L2 可运行） | ⚠️ 我未新增 `Tests/**` 用例；而是新建 **15 个 Benchmark 场景**（回路 11 / 记忆 1 / 检索 1 / 混沌 2） |
 | 3 | 16 条 gap 证明实验，红灯产出即代码债清单 | ✅ 26 条 gap + 6 条 declared-only，`GAP-REGISTER.md` 分四类（产品缺失 19 / 不可达 6 / 设计态 6 / 行为缺陷 1） |
-| 4 | L3 真实端到端（凭据就绪后） | ❌ 无凭据，已登记 `AGENT-ENV-L3REAL` 为环境不可执行 |
+| 4 | L3 真实端到端（凭据就绪后） | ⚠️ **部分执行**：2026-10-17 在凭据下实测 `realAgent` 4/4 + `llm.spec` 30/30 通过（221s）。仍未执行的是 5 个 E2E 模式 spec；CI 未注入 secret ⇒ CI 侧恒 NOT-RUN。`AGENT-ENV-L3REAL` 保持 `gap`（oracle 要求 12 条全执行、NOT-RUN 归零） |
 | 5 | 面 H（分裂）/ 面 I（多模态）产品语义裁定 | ✅ **已于 2026-10-14 裁定并录入**（见 §10.4）。**剩下的是产品实现**，不是语义裁定 —— 语义已定，缺的是代码 |
 
 ## 八、证据强度审计（Round 15–16 反向审计）
@@ -337,7 +337,7 @@ if (spec.dangerLevel === 'FORBIDDEN') { errors.push('FORBIDDEN 级别工具不�
 
 - 记忆写：唯一的 `Core→记忆写` 路径是 `consolidateLoopKnowledge`（仅 `success` 且长度达标的沉淀），
   **产生不了** FORBIDDEN 键、治理键、任意 version 冲突这类被测输入；
-- 检索：真实工具 `vector.search` 位于 **Tools 层（在 Services 之下）**，且检索器**未接入 prompt**（`AG-SEC-POISON` 已登记），
+- 检索：真实工具 `VectorSearch` 位于 **Tools 层（在 Services 之下）**，且检索器**未接入 prompt**（`AG-SEC-POISON` 已登记），
   产品里不存在「Agent 从上方驱动检索」的链路。
 
 按已裁定的分工（**Benchmark 测 Agent 数据流转；Tests 测接口能不能正常调用**），这两处度量**本质属 Tests 领域**：
@@ -359,7 +359,7 @@ if (spec.dangerLevel === 'FORBIDDEN') { errors.push('FORBIDDEN 级别工具不�
 | 设施 | 上层入口 | 生产启用 | 迁移状态 |
 |---|---|---|---|
 | **检索** `FAC-RETRIEVAL-SUITE` | `IterationContext.memorySearchPort`，在 ⑷ ContextAssembly 消费（`Src/Core/Loop/runIteration.ts`）；稳定键 `ctx:memory:retrieval` 进追加式上下文，不破坏前缀缓存 | ❌ 未注入（`main.ts` 未改）→ 行为逐字节不变 | ⏳ **待迁移**（设计见 10.3.2） |
-| **记忆写** `FAC-MEMORY-PROBES` | 内置工具 `memory.write`（`Src/Tools/Builtin/Memory/memoryWrite.ts`）+ 端口 `ToolServicePorts.memoryWrite`；实验侧有包装探针 `bench.memwrite`（转交真实执行体、只记录结果） | ✅ 已注入（`main.ts`） | ⚠️ **部分**：机制就绪；场景迁移见 10.3.3 |
+| **记忆写** `FAC-MEMORY-PROBES` | 内置工具 `MemoryWrite`（`Src/Tools/Builtin/Memory/memoryWrite.ts`）+ 端口 `ToolServicePorts.memoryWrite`；实验侧有包装探针 `BenchMemWrite`（转交真实执行体、只记录结果） | ✅ 已注入（`main.ts`） | ⚠️ **部分**：机制就绪；场景迁移见 10.3.3 |
 
 #### 10.3.2 检索迁移设计（下一步可直接执行）
 
@@ -377,7 +377,7 @@ if (spec.dangerLevel === 'FORBIDDEN') { errors.push('FORBIDDEN 级别工具不�
 #### 10.3.3 记忆写迁移的阻塞点（需裁定）
 
 `scn-memory-governance` 的 5 条探针里，**只有 1 条**（`MP-INT-05` inferred 不入长期记忆）能被
-`memory.write` 覆盖；另外 4 条测的是 **GlobalWorkspace 写入守卫**（`MP-INT-01` FORBIDDEN 键、
+`MemoryWrite` 覆盖；另外 4 条测的是 **GlobalWorkspace 写入守卫**（`MP-INT-01` FORBIDDEN 键、
 `MP-GOV-01` 治理键前缀、`MP-CTL-01` 正常对照、`MP-INT-04` 乐观锁 version 冲突）——
 那是**另一个存储、另一条写入路径**，当前没有 Agent 可触达的入口。
 

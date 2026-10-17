@@ -190,6 +190,15 @@ export function configureToolSafetyGate(
  *
  * 注册为 wrapToolCall 钩子，按工具危险分级执行不同管控策略。
  */
+/**
+ * 已获**人工同意**的调用（toolCallId 唯一）。
+ *
+ * 语义：**人工同意即放行** —— 人已经拍板同意的执行，不得再被 fail-closed 类门拦下
+ * （如 EffectJournal INTENT 写入失败）。键为唯一 toolCallId，使用即删除，不残留状态。
+ * 注意：不覆盖 FORBIDDEN 硬拒与行为法典硬红线（那两道在审批之前，属安全边界）。
+ */
+const humanApprovedCalls = new Set<string>();
+
 export function createToolSafetyGateMiddleware(
   getLoopId: () => string,
   getIteration: () => number,
@@ -237,7 +246,7 @@ export function createToolSafetyGateMiddleware(
 
       // ── 行为法典检查（FE-060：enforceable 规则命中 → 拒绝执行）──
       //   规则由治理者经 `POST /api/regulation/rules` 维护（默认规则集不含工具禁用规则——
-      //   机制已接、策略可配；如添加 `tool.forbid(shell.exec)` 即真实阻断）。
+      //   机制已接、策略可配；如添加 `tool.forbid(ShellExec)` 即真实阻断）。
       const violation = checkViolation({
         agentId: ctx.agentId,
         action: input.toolName,
@@ -326,6 +335,8 @@ export function createToolSafetyGateMiddleware(
           );
         }
         const approvalResult = createApproval({
+          // 自动完全权限按会话开启（跟随当前任务）：门必须把会话键交给审批门
+          sessionId: ctx.sessionId,
           loopId,
           traceId,
           iteration,
@@ -451,6 +462,8 @@ export function createToolSafetyGateMiddleware(
             };
           }
         }
+        // 人工同意即放行：登记本次调用，后续 fail-closed 段不得再拦（见 EffectJournal 段）
+        humanApprovedCalls.add(input.toolCallId);
         // 审批通过（人工或自动）→ 放开阻塞，继续执行工具
       }
 
@@ -475,7 +488,20 @@ export function createToolSafetyGateMiddleware(
           toolCallId: input.toolCallId,
         });
 
-        if (!intentResult.ok) {
+        // 人工同意即放行：人已拍板 ⇒ 副作用日志写入失败也不再拦截（记录后继续执行）
+        const humanApproved = humanApprovedCalls.delete(input.toolCallId);
+        if (!intentResult.ok && humanApproved) {
+          logger.warn(
+            "EffectJournal INTENT 写入失败，但已获人工同意 ⇒ 放行执行（人工同意即放行）",
+            {
+              source: "ToolSafetyGate",
+              tool: input.toolName,
+              toolCallId: input.toolCallId,
+              error: intentResult.error,
+            },
+          );
+        }
+        if (!intentResult.ok && !humanApproved) {
           logger.error(
             "EffectJournal INTENT 写入失败，拒绝执行（fail-closed）",
             {

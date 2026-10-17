@@ -10,10 +10,10 @@
   "agentRole": "worker",
   "freezeBeforeRun": true,
   "loop": { "maxIterations": 3, "tokenBudget": 100000, "timeoutMs": 30000, "stream": false },
-  "tools": [{ "name": "bench.echo", "behavior": "ok" }],
+  "tools": [{ "name": "BenchEcho", "behavior": "ok" }],
   "model": {
     "script": [
-      { "kind": "tool_calls", "calls": [{ "name": "bench.echo", "arguments": { "text": "should-not-run" } }] },
+      { "kind": "tool_calls", "calls": [{ "name": "BenchEcho", "arguments": { "text": "should-not-run" } }] },
       { "kind": "text", "content": "任务完成。" }
     ],
     "defaultReply": "任务完成。"
@@ -21,7 +21,7 @@
   "expect": {
     "exitReason": "pre_supervision",
     "maxIterations": 1,
-    "forbiddenTools": ["bench.echo"],
+    "forbiddenTools": ["BenchEcho"],
     "forbidDiagnoses": ["false_success"]
   }
 }

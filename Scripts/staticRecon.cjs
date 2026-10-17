@@ -249,7 +249,7 @@ const CHECKS = {
 
   'SC-GAP-TOOL-EGRESS': {
     kind: 'gap',
-    title: 'web.search 联网前经 isNetworkAllowed 白名单校验',
+    title: 'WebSearch 联网前经 isNetworkAllowed 白名单校验',
     run() {
       const t = readText('Src/Tools/Builtin/Search/webSearch.ts');
       if (t === null) return R(false, 'webSearch.ts 不存在（判定点已迁移，需重新定位）');

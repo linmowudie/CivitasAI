@@ -1,7 +1,7 @@
 /**
  * 检索的 **Core 层入口**（裁定 (a)，2026-10-14 项目负责人）
  *
- * 为什么需要它：记忆检索属 Services 层，产品里此前只有 Tools 层的 `vector.search` 能到达它
+ * 为什么需要它：记忆检索属 Services 层，产品里此前只有 Tools 层的 `VectorSearch` 能到达它
  * （Tools 在 Services **之下**，不是上层入口），而 Core 没有任何检索调用点
  * —— 这正是 `AG-SEC-POISON`「检索器未接入 prompt」登记的事实。
  *

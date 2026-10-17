@@ -187,7 +187,7 @@ function ToolCallItem({ tc }: { tc: ToolCallEntry }) {
         {/* 模型正在生成参数阶段（尚未执行）：明确文案，避免长参数生成期间界面"看起来卡住" */}
         {tc.status === 'generating' && (
           <span className="text-[10px] text-warning/80 flex-shrink-0">
-            {/write|edit|create|write_file|file\.write|file\.edit/i.test(tc.name) ? '准备写入…' : '生成中…'}
+            {/write|edit|create|write_file|file\.write|file\.edit|FileWrite|FileEdit/i.test(tc.name) ? '准备写入…' : '生成中…'}
           </span>
         )}
         <span className={`${styles.badge} ${getSubgroupBadgeClass(subgroup)}`}>

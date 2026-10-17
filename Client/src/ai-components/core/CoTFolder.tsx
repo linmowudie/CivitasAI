@@ -31,7 +31,9 @@ export function CoTFolder({ reasoning, isStreaming }: CoTFolderProps) {
         onClick={() => setOpen(o => !o)}
       >
         <Brain size={12} className={isStreaming ? styles.iconThinking : ''} />
-        <span>{isStreaming ? '思考中…' : '思考过程'}</span>
+        <span>
+          {isStreaming ? '思考中…' : open ? '思考过程' : '思考过程（点击展开）'}
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </button>
       {open && (

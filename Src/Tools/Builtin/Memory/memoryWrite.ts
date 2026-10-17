@@ -1,5 +1,5 @@
 /**
- * `memory.write` —— 记忆写入的**上层入口**（裁定 (a)，2026-10-14 项目负责人）
+ * `MemoryWrite` —— 记忆写入的**上层入口**（裁定 (a)，2026-10-14 项目负责人）
  *
  * 为什么要这个工具：记忆写属 Services 层，而产品里唯一的 Core→记忆写 路径是
  * `consolidateLoopKnowledge`（仅 success 且长度达标的沉淀），**产生不了**
@@ -19,7 +19,7 @@ import { getToolServicePorts } from "../../Registry/toolServicePorts.js";
 
 export const memoryWrite: ToolDefinition = {
   spec: {
-    name: "memory.write",
+    name: "MemoryWrite",
     description:
       "把一条观察到的结论写入长期记忆（仅 observed 可入；红线键与治理键会被拒绝）",
     inputSchema: {

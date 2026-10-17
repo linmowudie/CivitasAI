@@ -7,14 +7,14 @@
  * - 生成 RecoveryPlan[]（四分支裁决）
  */
 
-import { getMainDb } from '../Db/database.js';
-import type { Result } from '../types.js';
-import { ok, err } from '../types.js';
+import { getMainDb } from "../Db/database.js";
+import type { Result } from "../types.js";
+import { ok, err } from "../types.js";
 
-import { resolveTimedOutEffects, getUnknownEffects } from './effectJournal.js';
-import { loadLatestCheckpoint } from './checkpointStore.js';
-import type { RecoveryPlan, RecoveryStrategy } from './schemas/RecoveryPlan.js';
-import type { EffectRecord } from './schemas/EffectRecord.js';
+import { resolveTimedOutEffects, getUnknownEffects } from "./effectJournal.js";
+import { loadLatestCheckpoint } from "./checkpointStore.js";
+import type { RecoveryPlan, RecoveryStrategy } from "./schemas/RecoveryPlan.js";
+import type { EffectRecord } from "./schemas/EffectRecord.js";
 
 // ===== 类型导出 =====
 export type { RecoveryPlan, RecoveryStrategy };
@@ -67,10 +67,14 @@ export function scanAndProposeRecovery(): Result<RecoveryPlan[]> {
 
     // Step 2: 查找未完成 Loop
     const db = getMainDb();
-    const unfinishedLoops = db.prepare(`
+    const unfinishedLoops = db
+      .prepare(
+        `
       SELECT loop_id, phase, budget_used_tokens FROM loops
       WHERE phase NOT IN ('completed', 'failed')
-    `).all() as LoopRow[];
+    `,
+      )
+      .all() as LoopRow[];
 
     if (unfinishedLoops.length === 0) {
       return ok([]);
@@ -86,7 +90,7 @@ export function scanAndProposeRecovery(): Result<RecoveryPlan[]> {
     return ok(plans);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return err(`恢复扫描失败: ${message}`, 'FATAL');
+    return err(`恢复扫描失败: ${message}`, "FATAL");
   }
 }
 
@@ -94,14 +98,14 @@ export function scanAndProposeRecovery(): Result<RecoveryPlan[]> {
  * 获取需要人工干预的恢复计划
  */
 export function getHumanRequiredPlans(plans: RecoveryPlan[]): RecoveryPlan[] {
-  return plans.filter(p => p.strategy === 'REQUIRE_HUMAN');
+  return plans.filter((p) => p.strategy === "REQUIRE_HUMAN");
 }
 
 /**
  * 获取可自动恢复的恢复计划
  */
 export function getAutoResumePlans(plans: RecoveryPlan[]): RecoveryPlan[] {
-  return plans.filter(p => p.strategy === 'AUTO_RESUME');
+  return plans.filter((p) => p.strategy === "AUTO_RESUME");
 }
 
 // ===== 内部函数 =====
@@ -118,7 +122,9 @@ function classifyLoop(loop: LoopRow): RecoveryPlan {
 
   // 获取 UNKNOWN 副作用
   const unknownResult = getUnknownEffects(loopId);
-  const unknownEffects: EffectRecord[] = unknownResult.ok ? unknownResult.value : [];
+  const unknownEffects: EffectRecord[] = unknownResult.ok
+    ? unknownResult.value
+    : [];
 
   // 四分支裁决（Docs/Agent/12 §6.2）
   const strategy = classify(loop, lastCkpt, unknownEffects);
@@ -131,6 +137,27 @@ function classifyLoop(loop: LoopRow): RecoveryPlan {
     unknownEffects,
     estimatedWastedTokens: estimateWaste(loop),
     reason,
+    // 归属/目标从快照提取：自动续跑需要"替谁继续跑、跑什么"
+    ...(() => {
+      const snapshot = (lastCkpt?.stateSnapshot ?? {}) as Record<
+        string,
+        unknown
+      >;
+      return {
+        ...(typeof snapshot["agentId"] === "string"
+          ? { agentId: snapshot["agentId"] as string }
+          : {}),
+        ...(typeof snapshot["traceId"] === "string"
+          ? { traceId: snapshot["traceId"] as string }
+          : {}),
+        ...(typeof snapshot["goal"] === "string"
+          ? { goal: snapshot["goal"] as string }
+          : {}),
+        ...(typeof snapshot["iteration"] === "number"
+          ? { resumedIteration: snapshot["iteration"] as number }
+          : {}),
+      };
+    })(),
   };
 }
 
@@ -144,12 +171,12 @@ function classify(
 ): RecoveryStrategy {
   // 有不可自动裁决的 UNKNOWN → REQUIRE_HUMAN
   if (unknownEffects.length > recoveryConfig.autoResumeMaxUnknownEffects) {
-    return 'REQUIRE_HUMAN';
+    return "REQUIRE_HUMAN";
   }
 
   // 无 checkpoint（首轮崩溃）→ RESTART_FROM_SCRATCH
   if (!lastCkpt) {
-    return 'RESTART_FROM_SCRATCH';
+    return "RESTART_FROM_SCRATCH";
   }
 
   // 预算已用 ≥ 80% → REQUIRE_HUMAN
@@ -157,11 +184,11 @@ function classify(
   // 实际应由外部传入总预算，此处暂用固定阈值
   const budgetUsedRatio = estimateBudgetUsedRatio(loop);
   if (budgetUsedRatio >= recoveryConfig.autoResumeMaxBudgetUsedRatio) {
-    return 'REQUIRE_HUMAN';
+    return "REQUIRE_HUMAN";
   }
 
   // 无 UNKNOWN + 有 checkpoint + 预算未超阈 → AUTO_RESUME
-  return 'AUTO_RESUME';
+  return "AUTO_RESUME";
 }
 
 /**
@@ -191,16 +218,16 @@ function buildReason(
   strategy: RecoveryStrategy,
 ): string {
   switch (strategy) {
-    case 'AUTO_RESUME':
+    case "AUTO_RESUME":
       return `无 UNKNOWN 副作用，有可用 checkpoint (${lastCkpt?.checkpointId})，预算未超阈值`;
-    case 'REQUIRE_HUMAN':
+    case "REQUIRE_HUMAN":
       if (unknownEffects.length > 0) {
         return `存在 ${unknownEffects.length} 个 UNKNOWN 副作用，需人工裁决`;
       }
       return `预算使用已接近上限，需人工确认是否继续`;
-    case 'RESTART_FROM_SCRATCH':
+    case "RESTART_FROM_SCRATCH":
       return `无 checkpoint（首轮崩溃），需从目标重建`;
-    case 'REBUILD_FROM_JOURNAL':
+    case "REBUILD_FROM_JOURNAL":
       return `checkpoint 数据可能损坏，需从 effect_journal 重建`;
   }
 }

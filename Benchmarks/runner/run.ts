@@ -71,6 +71,38 @@ export function evaluateChecks(
       : "无运行期异常",
   });
 
+  /*
+   * 真实调用探针：`assertProbesMustPass` 声明的探针必须全部通过。
+   *
+   * 为什么单独成判据（2026-10-17 修正）：
+   * - 探针失败此前被 harness 记成 `fatalError` → 场景被判"实验无效"，
+   *   于是"产品缺了这个设计接口"被误报成"实验台故障"。缺口证明实验永远显示为无效，
+   *   检测不出产品缺口。
+   * - 现在：探针失败 = **判据失败**（场景红、但有效）；`fatalError` 只保留给
+   *   真正的实验台/环境故障。
+   * - 未执行（声明了却没出现在结果里）同样判失败 —— 不许静默跳过。
+   */
+  if (e.assertProbesMustPass?.length) {
+    const byId = new Map((trace.assertProbes ?? []).map((p) => [p.id, p]));
+    const missing = e.assertProbesMustPass.filter((id) => !byId.has(id));
+    const failed = e.assertProbesMustPass.filter(
+      (id) => byId.get(id)?.passed === false,
+    );
+    const failedDetail = failed
+      .map((id) => `${id}: ${byId.get(id)?.detail ?? ""}`)
+      .join("；");
+    checks.push({
+      id: "CHK-ASSERT-PROBES",
+      passed: missing.length === 0 && failed.length === 0,
+      detail:
+        missing.length > 0
+          ? `未执行的探针：${missing.join(", ")}`
+          : failed.length > 0
+            ? `探针未通过（${failed.length}/${e.assertProbesMustPass.length}）：${failedDetail}`
+            : `真实调用探针全部通过（${e.assertProbesMustPass.length}）`,
+    });
+  }
+
   if (e.exitReason !== undefined) {
     checks.push({
       id: "CHK-EXIT-REASON",
@@ -142,6 +174,23 @@ export function evaluateChecks(
     });
   }
 
+  // 必须出现指定工具错误码（如 TOOL_TIMEOUT / TOOL_RATE_LIMITED）。
+  // 只断"有 error"不够：角色受限、参数非法、执行异常都会给 error 状态，
+  // 会让"超时判据"被无关错误冒充 → 必须落到**错误码**这一层。
+  if (e.toolErrorCodes?.length) {
+    const seenCodes = new Set<string>();
+    for (const t of trace.iterations)
+      for (const c of t.toolResultCodes ?? []) seenCodes.add(c);
+    const missing = e.toolErrorCodes.filter((c) => !seenCodes.has(c));
+    checks.push({
+      id: "CHK-TOOL-ERROR-CODES",
+      passed: missing.length === 0,
+      detail: missing.length
+        ? `未出现期望的工具错误码（缺失：${missing.join(", ")}；实际：${[...seenCodes].join(", ") || "无"}）`
+        : `已出现期望的工具错误码（${e.toolErrorCodes.join(", ")}）`,
+    });
+  }
+
   // 工具调用与结果必须成对（REV-341 同类：孤儿结果会让供应商判非法请求）
   const unpaired = trace.iterations.filter(
     (t) => t.toolCalls.length !== t.toolResultStatuses.length,
@@ -163,6 +212,32 @@ export function evaluateChecks(
       : "十步序列未被破坏",
   });
 
+  /*
+   * MM-GAP-TRACE（生产验收，而非库能力）：
+   * 只要真实运行里发生过模型调用/工具执行，产品就必须从**执行路径**留下 span 产物，
+   * 且能按 traceId 取回。读取面是产品的 `getTraceSpans`（不是基准自造观测）。
+   * 若模型/工具调用点没埋 span，这条会直接红——不允许"有 span API 就算接线"。
+   */
+  {
+    const modelCalls = trace.modelCalls.length;
+    const toolCalls = trace.totalToolCalls;
+    const spans = trace.spans;
+    const needLlm = modelCalls > 0;
+    const needTool = toolCalls > 0;
+    const ok =
+      !!spans &&
+      (!needLlm || spans.llm >= 1) &&
+      (!needTool || spans.tool >= 1) &&
+      (modelCalls === 0 || spans.traceIds.length >= 1);
+    checks.push({
+      id: "CHK-SPAN-WIRING",
+      passed: ok,
+      detail: ok
+        ? `真实运行留下 span（llm=${spans?.llm ?? 0} / tool=${spans?.tool ?? 0} / trace=${(spans?.traceIds ?? []).length}）`
+        : `真实运行未留下足够 span 产物（模型调用 ${modelCalls} 次 → llm span ${spans?.llm ?? 0}；工具调用 ${toolCalls} 次 → tool span ${spans?.tool ?? 0}）—— 执行路径缺埋点`,
+    });
+  }
+
   // 场景可声明"不允许出现的诊断结论"：准入不仅看期望值**命中**，
   // 也看**没有出现**已知问题形态（否则"跑出正确退出类别但内部在打转"会被放行去打分）。
   if (e.forbidDiagnoses?.length) {
@@ -175,6 +250,26 @@ export function evaluateChecks(
       detail: forbidden.length
         ? `出现被禁止的问题形态：${forbidden.join(", ")}`
         : `未出现被禁止的问题形态（${e.forbidDiagnoses.join(", ")}）`,
+    });
+  }
+
+  // 场景可声明"必须诊断出的问题形态"（cell oracle 的**正面**要求）。
+  //
+  // 为什么不能只靠上面那条反向断言：`AG-ENV-TOOLLOOP` 的 oracle 是
+  // "诊断出 tool_loop 且退出类别不是 success"。若只写 `forbidDiagnoses`，
+  // 系统哪怕根本没识别出极限环、只是耗尽迭代上限退出，也会被判通过 ——
+  // 那就成了"用反向断言冒充正向证据"。本判据要求该形态**真的出现在诊断里**
+  // （匹配 `type`，不看 severity：`allowDiagnoses` 会把它降级成 info，但类型仍在）。
+  if (e.requiredDiagnoses?.length) {
+    const seen = new Set<string>(diagnoses.map((d) => d.type));
+    const missing = e.requiredDiagnoses.filter((t) => !seen.has(t));
+    checks.push({
+      id: "CHK-REQUIRED-DIAGNOSIS",
+      passed: missing.length === 0,
+      detail: missing.length
+        ? `未诊断出期望的问题形态（缺失：${missing.join(", ")}；实际诊断：` +
+          `${[...seen].filter((t) => t !== "none").join(", ") || "无"}）`
+        : `已诊断出期望的问题形态（${e.requiredDiagnoses.join(", ")}）`,
     });
   }
 
