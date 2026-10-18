@@ -15,10 +15,15 @@
  */
 
 import {
-  createL1HostRegistry,
   type L1HostRegistry,
   type SplitMergeRuntimeDeps,
 } from "./l1HostRegistry.js";
+// P0 融合：账本所有权统一到 LedgerHub（外层/分裂/监管共用同一份 L1 账本）
+import {
+  getL1HostRegistry,
+  ensureL1Host,
+  resetL1LedgerHub,
+} from "./ledgerHub.js";
 import { createSplitMergeToolPort } from "./splitMergeToolPort.js";
 import {
   spawnSiblingAgent,
@@ -26,6 +31,12 @@ import {
   type SplitAgentDeps,
 } from "./splitAgent.js";
 import type { SplitMergePort } from "../../Tools/Registry/toolServicePorts.js";
+// 分裂语义层（同层 Core/AgentRuntime）：授权单留痕 + 同级登记 + 形态判定，经端口透出给 Tools
+import {
+  requestSplitApproval,
+  registerPeerSplit,
+  mergeKindOf,
+} from "../AgentRuntime/splitSemantics.js";
 import { write as writeWorkspace } from "../../Services/SharedMemory/globalWorkspace.js";
 import { createApproval } from "../../Services/LoopControl/approvalGate.js";
 import { ok, err } from "../../Infra/types.js";
@@ -38,7 +49,7 @@ let portFactory: ((agentId: string) => SplitMergePort | undefined) | null =
 function ensureInitialized(): void {
   if (registry && portFactory) return;
 
-  const hostRegistry = createL1HostRegistry();
+  const hostRegistry = getL1HostRegistry();
 
   // 分裂 Agent 本体的宿主依赖（组合根提供）：域账本登记/关闭 + 循环启动
   const splitDeps: SplitAgentDeps = {
@@ -117,6 +128,11 @@ function ensureInitialized(): void {
     },
 
     now: () => Date.now(),
+
+    hostAgentId: parentAgentId,
+    requestSplitApproval,
+    registerPeerSplit,
+    mergeKind: mergeKindOf,
   });
 
   registry = hostRegistry;
@@ -141,7 +157,7 @@ export function splitMergePortFor(agentId: string): SplitMergePort | undefined {
   const trimmed = agentId.trim();
   if (!registry || !portFactory || trimmed === "") return undefined;
   if (!registry.resolve(trimmed)) {
-    const opened = registry.open({ agentId: trimmed });
+    const opened = ensureL1Host(trimmed);
     if (!opened.ok) {
       logger.warn("L1 宿主懒登记失败（分裂能力对该 Agent 不可用）", {
         source: "Orchestration/splitMergeComposition",
@@ -159,8 +175,9 @@ export function listSplitMergeHosts(): string[] {
   return registry?.hostIds() ?? [];
 }
 
-/** 重置（测试隔离用） */
+/** 重置（测试隔离用；同时清空 LedgerHub，保证测试间账本不串） */
 export function resetSplitMergeComposition(): void {
   registry = null;
   portFactory = null;
+  resetL1LedgerHub();
 }

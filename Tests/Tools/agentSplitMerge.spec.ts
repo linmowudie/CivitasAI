@@ -29,6 +29,12 @@ import {
   createSplitMergeToolPort,
   type MergeRequestSubmission,
 } from "../../Src/Core/Orchestration/splitMergeToolPort.js";
+import {
+  requestSplitApproval,
+  registerPeerSplit,
+  mergeKindOf,
+  resetSplitSemantics,
+} from "../../Src/Core/AgentRuntime/splitSemantics.js";
 import { ok, err, type Result } from "../../Src/Infra/types.js";
 
 import { agentSplit } from "../../Src/Tools/Custom/agentSplit.js";
@@ -67,6 +73,8 @@ interface Fixture {
   /** 监管收到的合并请求 */
   submitted: MergeRequestSubmission[];
   submitFails: boolean;
+  /** 经端口写入的同级关系（"a|b"） */
+  peerRegistered: string[];
   /** 撤销补偿本身失败（⇒ 分叉上报分支） */
   withdrawFails: boolean;
 }
@@ -90,6 +98,7 @@ function mkFixture(root: string = ROOT): Fixture {
     publishFails: false,
     submitted: [],
     submitFails: false,
+    peerRegistered: [],
     withdrawFails: false,
   };
 
@@ -134,6 +143,15 @@ function mkFixture(root: string = ROOT): Fixture {
       return ok({ caseId: `case-${fx.submitted.length}` });
     },
     now: () => (clock += 1),
+    // 分裂语义层依赖（生产由组合根注入）：授权单/形态判定接真实现，
+    // 同级登记记录到内存以便断言"写方确实被调用"
+    hostAgentId: root,
+    requestSplitApproval,
+    registerPeerSplit: (a, b) => {
+      fx.peerRegistered.push(`${a}|${b}`);
+      registerPeerSplit(a, b);
+    },
+    mergeKind: mergeKindOf,
   });
 
   return fx;
@@ -151,6 +169,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetToolServicePorts();
+  resetSplitSemantics();
 });
 
 /** 工具执行上下文（split/merge 只依赖 agentId / agentRole / operationId） */
@@ -400,6 +419,8 @@ describe("★ 反例 2 + 反例 6 + 反例 7 —— 兄弟不是下级（结构�
     expect(fx.children.outstanding()).toHaveLength(0);
     expect(fx.children.get(peerId)).toBeUndefined();
     expect(fx.domain.peers().map((p) => p.peerId)).toEqual([peerId]);
+    // 同级关系经端口写入，发起端 = 绑定身份（不是工具自报的 agentId）
+    expect(fx.peerRegistered).toEqual([`${ROOT}|${peerId}`]);
   });
 
   it("【负向·反例 6】兄弟未收敛 ⇒ 域不得宣布完成（子代侧 quiescent 为真，两者不可互替）", async () => {

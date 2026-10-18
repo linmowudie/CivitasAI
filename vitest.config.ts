@@ -30,7 +30,9 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      reporter: ["text", "json", "html"],
+      // json-summary 不可省：CI 覆盖率门禁读 coverage/coverage-summary.json，
+      // 只有 json（coverage-final 格式）会让该文件不存在、门禁直接崩。
+      reporter: ["text", "json", "json-summary", "html"],
       include: ["Src/**/*.ts", "Client/src/ai-components/**/*.{ts,tsx}"],
       exclude: ["Src/main.ts", "Src/**/types.ts", "**/*.d.ts"],
     },

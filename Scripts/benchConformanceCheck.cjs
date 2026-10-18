@@ -57,14 +57,17 @@ check('L0：守门确实调用 staticRecon（不是只在文档里说）', () =>
 });
 
 // ═══ ② §2.2 铁律 1：NOT-RUN ═══
-check('NOT-RUN：清单存在、条数 ≥1 且与 vitest passed 的关系可复算', () => {
+check('NOT-RUN：清单存在，条数与凭据状态自洽且与 vitest passed 的关系可复算', () => {
   const nr = readJson('Benchmarks/baselines/notRun.json');
   if (!nr) return { passed: false, detail: 'notRun.json 缺失（先跑 npm run bench:notrun）' };
   const recomputed = Math.max(0, (nr.vitest?.passed ?? 0) - nr.notRunCount);
-  const ok = nr.notRunCount >= 1 && nr.effectivePassed === recomputed && nr.rule.includes('NOT-RUN');
+  // 铁律是条件式的：采集时**缺**凭据 ⇒ 受门禁用例必须记 NOT-RUN（≥1）；
+  // 采集时**有**凭据 ⇒ 用例真实执行过，NOT-RUN 为 0 才是诚实的。
+  const countConsistent = nr.credentialPresent ? nr.notRunCount === 0 : nr.notRunCount >= 1;
+  const ok = countConsistent && nr.effectivePassed === recomputed && nr.rule.includes('NOT-RUN');
   return {
     passed: ok,
-    detail: `notRun=${nr.notRunCount} / vitest.passed=${nr.vitest?.passed} / effectivePassed=${nr.effectivePassed}（复算 ${recomputed}）`,
+    detail: `credentialPresent=${nr.credentialPresent} / notRun=${nr.notRunCount} / vitest.passed=${nr.vitest?.passed} / effectivePassed=${nr.effectivePassed}（复算 ${recomputed}）`,
   };
 });
 

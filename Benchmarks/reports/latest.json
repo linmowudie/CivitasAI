@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T11:28:26.338Z",
+  "generatedAt": "2026-10-18T03:12:48.454Z",
   "layer1": "实验矩阵（准入）",
   "layer2": "打分矩阵（评分）",
   "scoringMatrix": "Benchmarks/scoringMatrix.json",
@@ -12,8 +12,8 @@
           "governance",
           "security"
         ],
-        "startedAt": "2026-10-17T11:28:20.558Z",
-        "durationMs": 167,
+        "startedAt": "2026-10-18T03:12:44.137Z",
+        "durationMs": 154,
         "iterations": [
           {
             "index": 1,
@@ -261,8 +261,8 @@
           "assembly",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:20.741Z",
-        "durationMs": 136,
+        "startedAt": "2026-10-18T03:12:44.303Z",
+        "durationMs": 100,
         "iterations": [
           {
             "index": 1,
@@ -475,8 +475,8 @@
           "cost",
           "convergence"
         ],
-        "startedAt": "2026-10-17T11:28:20.891Z",
-        "durationMs": 139,
+        "startedAt": "2026-10-18T03:12:44.413Z",
+        "durationMs": 101,
         "iterations": [
           {
             "index": 1,
@@ -732,8 +732,8 @@
           "chaos",
           "reliability"
         ],
-        "startedAt": "2026-10-17T11:28:21.039Z",
-        "durationMs": 122,
+        "startedAt": "2026-10-18T03:12:44.522Z",
+        "durationMs": 96,
         "iterations": [
           {
             "index": 1,
@@ -918,8 +918,8 @@
           "convergence",
           "tool-use"
         ],
-        "startedAt": "2026-10-17T11:28:21.172Z",
-        "durationMs": 127,
+        "startedAt": "2026-10-18T03:12:44.626Z",
+        "durationMs": 107,
         "iterations": [
           {
             "index": 1,
@@ -1136,8 +1136,8 @@
           "chaos",
           "durability"
         ],
-        "startedAt": "2026-10-17T11:28:21.311Z",
-        "durationMs": 140,
+        "startedAt": "2026-10-18T03:12:44.742Z",
+        "durationMs": 112,
         "iterations": [
           {
             "index": 1,
@@ -1277,10 +1277,10 @@
           "injected": true,
           "logFiles": 2,
           "matchedLines": [
-            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败（快照外键将不满足）（数据库未初始化，按纯内存运行）\",\"source\":\"loopRepository/ensureLoopRow\",\"data\":{\"fallback\":\"返回 false（本轮无 checkpoints 父行，崩溃恢复不可用）\",\"loopId\":\"bench-scn-db-unavailable\"}}",
-            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"迭代快照写入失败（崩溃恢复能力降级）（数据库未初始化，按纯内存运行）\",\"source\":\"iterationCheckpoint/writeIterationCheckpoint\",\"data\":{\"fallback\":\"本轮无快照（恢复回退到上一轮）\",\"loopId\":\"bench-scn-db-unavailable\",\"iteration\":1}}",
-            "{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"事件落库失败（跨进程回放降级；仅告警一次）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"eventBus/persistDomainEvent\",\"data\":{\"error\":\"数据库未初始化，请先调用 initDatabase()\"}}",
-            "{\"timestamp\":\"2026-10-17T11:28:21.448Z\",\"epochMs\":1792236501448,\"level\":\"warn\",\"track\":\"business\",\"message\":\"Agent 载入失败（数据库未初始化，按纯内存运行）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"agentRepository/loadAgents\",\"data\":{\"fallback\":\"返回空列表（启动回灌会读成\\\"库里没有 Agent\\\"）\",\"includeDestroyed\":false}}"
+            "{\"timestamp\":\"2026-10-18T03:12:44.851Z\",\"epochMs\":1792293164851,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败（快照外键将不满足）（数据库未初始化，按纯内存运行）\",\"source\":\"loopRepository/ensureLoopRow\",\"data\":{\"fallback\":\"返回 false（本轮无 checkpoints 父行，崩溃恢复不可用）\",\"loopId\":\"bench-scn-db-unavailable\"}}",
+            "{\"timestamp\":\"2026-10-18T03:12:44.852Z\",\"epochMs\":1792293164852,\"level\":\"warn\",\"track\":\"business\",\"message\":\"迭代快照写入失败（崩溃恢复能力降级）（数据库未初始化，按纯内存运行）\",\"source\":\"iterationCheckpoint/writeIterationCheckpoint\",\"data\":{\"fallback\":\"本轮无快照（恢复回退到上一轮）\",\"loopId\":\"bench-scn-db-unavailable\",\"iteration\":1}}",
+            "{\"timestamp\":\"2026-10-18T03:12:44.852Z\",\"epochMs\":1792293164852,\"level\":\"warn\",\"track\":\"business\",\"message\":\"事件落库失败（跨进程回放降级；仅告警一次）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"eventBus/persistDomainEvent\",\"data\":{\"error\":\"数据库未初始化，请先调用 initDatabase()\"}}",
+            "{\"timestamp\":\"2026-10-18T03:12:44.852Z\",\"epochMs\":1792293164852,\"level\":\"warn\",\"track\":\"business\",\"message\":\"Agent 载入失败（数据库未初始化，按纯内存运行）\",\"traceId\":\"bench-trace-scn-db-unavailable\",\"source\":\"agentRepository/loadAgents\",\"data\":{\"fallback\":\"返回空列表（启动回灌会读成\\\"库里没有 Agent\\\"）\",\"includeDestroyed\":false}}"
           ]
         },
         "clockSkew": null,
@@ -1345,7 +1345,7 @@
         {
           "id": "CHK-DB-FAILURE-LOGGED",
           "passed": true,
-          "detail": "已留痕 4 行（日志文件 2 个）：{\"timestamp\":\"2026-10-17T11:28:21.447Z\",\"epochMs\":1792236501447,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败",
+          "detail": "已留痕 4 行（日志文件 2 个）：{\"timestamp\":\"2026-10-18T03:12:44.851Z\",\"epochMs\":1792293164851,\"level\":\"warn\",\"track\":\"business\",\"message\":\"loops 行补齐失败",
           "observed": 4
         }
       ],
@@ -1412,8 +1412,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:21.481Z",
-        "durationMs": 159,
+        "startedAt": "2026-10-18T03:12:44.876Z",
+        "durationMs": 139,
         "iterations": [
           {
             "index": 1,
@@ -1616,8 +1616,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:21.663Z",
-        "durationMs": 181,
+        "startedAt": "2026-10-18T03:12:45.026Z",
+        "durationMs": 129,
         "iterations": [
           {
             "index": 1,
@@ -1846,8 +1846,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:21.855Z",
-        "durationMs": 218,
+        "startedAt": "2026-10-18T03:12:45.164Z",
+        "durationMs": 105,
         "iterations": [
           {
             "index": 1,
@@ -1913,7 +1913,7 @@
           {
             "id": "MM-GAP-EVENTSTABLE",
             "passed": true,
-            "detail": "事件已落库并可回放（trace=probe-events-1792236502048，回放 1 条）"
+            "detail": "事件已落库并可回放（trace=probe-events-1792293165262，回放 1 条）"
           },
           {
             "id": "MM-DECL-MULTIMODAL",
@@ -2056,8 +2056,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:22.088Z",
-        "durationMs": 168,
+        "startedAt": "2026-10-18T03:12:45.278Z",
+        "durationMs": 105,
         "iterations": [
           {
             "index": 1,
@@ -2240,8 +2240,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:22.267Z",
-        "durationMs": 139,
+        "startedAt": "2026-10-18T03:12:45.392Z",
+        "durationMs": 115,
         "iterations": [
           {
             "index": 1,
@@ -2314,7 +2314,7 @@
           {
             "id": "SPLIT-SEM-AUTH",
             "passed": true,
-            "detail": "分裂授权单已登记（split-approval-mvcbc7su-1）"
+            "detail": "分裂授权单已登记（split-approval-mvd92pbu-1）"
           },
           {
             "id": "SPLIT-SEM-VISIBILITY",
@@ -2500,8 +2500,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:22.421Z",
-        "durationMs": 153,
+        "startedAt": "2026-10-18T03:12:45.517Z",
+        "durationMs": 121,
         "iterations": [
           {
             "index": 1,
@@ -2702,8 +2702,8 @@
           "design-contract",
           "real-call"
         ],
-        "startedAt": "2026-10-17T11:28:22.588Z",
-        "durationMs": 126,
+        "startedAt": "2026-10-18T03:12:45.647Z",
+        "durationMs": 105,
         "iterations": [
           {
             "index": 1,
@@ -2885,8 +2885,8 @@
         "tags": [
           "governance"
         ],
-        "startedAt": "2026-10-17T11:28:22.728Z",
-        "durationMs": 119,
+        "startedAt": "2026-10-18T03:12:45.760Z",
+        "durationMs": 106,
         "iterations": [
           {
             "index": 1,
@@ -3065,8 +3065,8 @@
           "constraint-retention",
           "governance"
         ],
-        "startedAt": "2026-10-17T11:28:22.861Z",
-        "durationMs": 146,
+        "startedAt": "2026-10-18T03:12:45.874Z",
+        "durationMs": 108,
         "iterations": [
           {
             "index": 1,
@@ -3345,8 +3345,8 @@
           "recovery",
           "durability"
         ],
-        "startedAt": "2026-10-17T11:28:23.026Z",
-        "durationMs": 257,
+        "startedAt": "2026-10-18T03:12:45.991Z",
+        "durationMs": 104,
         "iterations": [
           {
             "index": 1,
@@ -3608,8 +3608,8 @@
           "security",
           "tool-use"
         ],
-        "startedAt": "2026-10-17T11:28:23.305Z",
-        "durationMs": 240,
+        "startedAt": "2026-10-18T03:12:46.104Z",
+        "durationMs": 108,
         "iterations": [
           {
             "index": 1,
@@ -3825,8 +3825,8 @@
           "governance",
           "security"
         ],
-        "startedAt": "2026-10-17T11:28:23.575Z",
-        "durationMs": 257,
+        "startedAt": "2026-10-18T03:12:46.220Z",
+        "durationMs": 109,
         "iterations": [
           {
             "index": 1,
@@ -4104,8 +4104,8 @@
           "recovery",
           "diagnosis"
         ],
-        "startedAt": "2026-10-17T11:28:23.862Z",
-        "durationMs": 216,
+        "startedAt": "2026-10-18T03:12:46.338Z",
+        "durationMs": 104,
         "iterations": [
           {
             "index": 1,
@@ -4289,8 +4289,8 @@
           "convergence",
           "diagnosis"
         ],
-        "startedAt": "2026-10-17T11:28:24.099Z",
-        "durationMs": 227,
+        "startedAt": "2026-10-18T03:12:46.451Z",
+        "durationMs": 108,
         "iterations": [
           {
             "index": 1,
@@ -4559,8 +4559,8 @@
           "recovery",
           "resilience"
         ],
-        "startedAt": "2026-10-17T11:28:24.347Z",
-        "durationMs": 222,
+        "startedAt": "2026-10-18T03:12:46.568Z",
+        "durationMs": 107,
         "iterations": [
           {
             "index": 1,
@@ -4850,8 +4850,8 @@
           "retrieval",
           "memory"
         ],
-        "startedAt": "2026-10-17T11:28:24.588Z",
-        "durationMs": 907,
+        "startedAt": "2026-10-18T03:12:46.684Z",
+        "durationMs": 802,
         "iterations": [
           {
             "index": 1,
@@ -5659,8 +5659,8 @@
           "tool-use",
           "diagnosis"
         ],
-        "startedAt": "2026-10-17T11:28:25.520Z",
-        "durationMs": 231,
+        "startedAt": "2026-10-18T03:12:47.510Z",
+        "durationMs": 200,
         "iterations": [
           {
             "index": 1,
@@ -5940,8 +5940,8 @@
           "correctness",
           "false-success"
         ],
-        "startedAt": "2026-10-17T11:28:25.766Z",
-        "durationMs": 201,
+        "startedAt": "2026-10-18T03:12:47.731Z",
+        "durationMs": 202,
         "iterations": [
           {
             "index": 1,
@@ -6153,8 +6153,8 @@
           "resilience",
           "timeout"
         ],
-        "startedAt": "2026-10-17T11:28:25.992Z",
-        "durationMs": 330,
+        "startedAt": "2026-10-18T03:12:47.950Z",
+        "durationMs": 482,
         "iterations": [
           {
             "index": 1,

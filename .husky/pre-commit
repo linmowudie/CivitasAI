@@ -10,9 +10,15 @@ set -e
 echo "[pre-commit] Running prettier on staged files..."
 npx pretty-quick --staged --pattern '**/*.ts' 2>/dev/null || true
 
-# 2. ESLint 检查（仅暂存文件）
-echo "[pre-commit] Running ESLint on staged files..."
-npx eslint --ext .ts $(git diff --cached --name-only --diff-filter=ACM | grep '\.ts$' | tr '\n' ' ') 2>/dev/null || true
+# 2. ESLint 检查（口径与 CI 的 `npm run lint` 一致：只检 Src/ 下的暂存 TS 文件）
+#    不吞错 —— 错误必须挡住提交，否则问题只会到 GitHub CI 才暴露。
+#    Src 之外（Benchmarks/Client/Tests）不在 .eslintrc 的 parserOptions.project 内，
+#    直接送进 eslint 会报 "file was not found in any of the provided project(s)"。
+echo "[pre-commit] Running ESLint on staged Src files..."
+STAGED_SRC=$(git diff --cached --name-only --diff-filter=ACM | grep '^Src/.*\.ts$' | tr '\n' ' ')
+if [ -n "$STAGED_SRC" ]; then
+  npx eslint --ext .ts $STAGED_SRC
+fi
 
 # 3. TypeScript 类型检查（Src + electron 两组配置）
 echo "[pre-commit] Running TypeScript type check..."

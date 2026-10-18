@@ -153,7 +153,8 @@ const CHECKS = {
     run() {
       const t = readText('Src/Services/Retrieval/retriever.ts');
       if (t === null) return R(false, 'retriever.ts 不存在');
-      const has = /source:\s*'long-term-memory'/.test(t);
+      // 引号无关：prettier 会把字面量统一为双引号，写死单引号会造成"行为没变、锁先红"的假阳性
+      const has = /source:\s*["']long-term-memory["']/.test(t);
       return R(has, has ? '仍为硬编码字面量（任何其它 sources 取值会把结果清零）' : 'source 已改为可配置 —— 需复核 RET 相关 cell 的 oracle');
     },
   },
@@ -183,7 +184,7 @@ const CHECKS = {
       // 由守门迫使 TOOL-BEN-SCHEMA 从 existing-covered 降级。
       // 精确到**规则 12 的实际形态**（`dangerLevel === 'FORBIDDEN'` → errors.push），
       // 否则紧邻的「枚举校验 errors.push」会被窗口吃到（实测踩过这个假阳性）
-      const refuses = /dangerLevel\s*===\s*'FORBIDDEN'[\s\S]{0,160}?errors\.push/.test(t);
+      const refuses = /dangerLevel\s*===\s*["']FORBIDDEN["'][\s\S]{0,160}?errors\.push/.test(t);
       return R(refuses, refuses ? '规则 12 存在：FORBIDDEN 级别工具不允许注册' : '未找到 FORBIDDEN 拒注规则 —— 覆盖声明不成立');
     },
   },

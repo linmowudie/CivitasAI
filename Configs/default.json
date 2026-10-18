@@ -12,7 +12,9 @@
     "allowRemoteAccess": false,
     "httpPort": 3000,
     "wsPort": 3001,
-    "corsOrigins": ["http://localhost:5173"]
+    "corsOrigins": [
+      "http://localhost:5173"
+    ]
   },
   "database": {
     "mainPath": "Data/db/civitas_main.db",
@@ -26,5 +28,10 @@
     "approvalQueueRefreshSec": 30,
     "streamFlushIntervalMs": 100,
     "maxEventBufferSize": 500
+  },
+  "orchestration": {
+    "kernel": {
+      "enabled": true
+    }
   }
 }

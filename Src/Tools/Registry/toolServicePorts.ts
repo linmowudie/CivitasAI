@@ -253,6 +253,20 @@ export interface DomainViewPort {
 }
 
 /**
+ * 分裂语义的端口视图（实现由组合根接到 `Core/AgentRuntime/splitSemantics`）。
+ *
+ * 工具层不得 import Core（分层红线），故这里只保留工具**实际要上报的字段**，
+ * 形态集合用原始字面量联合表达，不复用 Core 的 `MergeKind`。
+ */
+export interface SplitApprovalOutcomePort {
+  /** 治理侧受理号（本端口只登记，**不代表已批准**） */
+  approvalId: string;
+  status: "pending";
+}
+
+export type MergeKindPort = "self_merge" | "peer_merge" | "absorb" | "none";
+
+/**
  * 分裂与自合并的端口（端口实现在 `Core/Orchestration/splitMergeToolPort.ts`，
  * 「按 L1 身份绑定域账本」的解析器在 `Core/Orchestration/l1HostRegistry.ts`，由组合根注入）。
  *
@@ -284,6 +298,19 @@ export interface SplitMergePort {
   domainView(): DomainViewPort;
   /** 重投域进展（split 广播失败后的补救入口） */
   republishShared(): Promise<Result<void>>;
+  /**
+   * 登记**分裂授权单**（治理留痕；返回待审批受理号，本端口不伪造"已批准"）。
+   * 发起端取本端口绑定的宿主身份，不由工具传入 —— 与 `split` 同源，
+   * 避免"工具声称自己是别人"。
+   */
+  requestSplitApproval(input: {
+    conflictDomain: string;
+    task: string;
+  }): Result<SplitApprovalOutcomePort>;
+  /** 登记一对同级关系（分裂成功后写入，供 `mergeKind` 判定） */
+  registerPeerSplit(peerId: string): void;
+  /** 合并形态判定（自合并 / 同级合并 / 吸收 / 不可合并）；仅标注，裁决归监管 */
+  mergeKind(peerId: string): MergeKindPort;
 }
 
 // ── 端口容器 ────────────────────────────────────────────────────────

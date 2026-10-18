@@ -18,8 +18,6 @@ import type { ToolDefinition } from "../Traits/toolSpec.js";
 import { toolSuccess, toolError } from "../Traits/toolSpec.js";
 import { contentOutputSchema } from "../Builtin/_shared.js";
 import { getToolServicePorts } from "../Registry/toolServicePorts.js";
-// 合并语义层（设计 §3.7）：合并形态/同级关系判定（生产路径调用）
-import { mergeKindOf } from "../../Core/AgentRuntime/splitSemantics.js";
 
 const MAX_EVIDENCE_LENGTH = 500;
 
@@ -125,10 +123,10 @@ export const agentMerge: ToolDefinition = {
       );
     }
 
-    // 合并语义层（生产调用点）：计算合并形态并随请求上报监管，供裁决参考。
+    // 合并语义层（经端口注入调用，设计 §3.7）：计算合并形态并随请求上报监管，供裁决参考。
     // 注意：**域归属判定归账本**（17 §3 的纪律），工具不复制该判定 ——
     // 目标不在本域仍由 DomainLedger 拒绝；这里只做"形态"标注，不做前置拦截。
-    const mergeKind = mergeKindOf(context.agentId, withPeerId);
+    const mergeKind = port.mergeKind(withPeerId);
 
     const out = await port.requestMerge({
       by: context.agentId,

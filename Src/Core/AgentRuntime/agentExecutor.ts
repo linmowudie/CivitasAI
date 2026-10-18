@@ -26,6 +26,10 @@ import { ok, err } from "../../Infra/types.js";
 
 import { assignTask, getPendingReview } from "./agentRuntime.js";
 import { getAgent } from "./agentRegistry.js";
+import {
+  isOrchestrationKernelEnabled,
+  runL1Dialogue,
+} from "../Orchestration/l1Entry.js";
 
 export interface AgentExecutionResult {
   agentId: string;
@@ -163,6 +167,43 @@ export async function executeAssignedTask(params: {
       ? `从第 ${params.resumedFromIteration} 轮断点继续执行未完成任务；保持原目标不变。`
       : `执行你被分配的任务（taskId=${assignedTaskId}）。` +
         "若任务详情不可见，请基于你的角色职责与已登记约束继续。");
+
+  // ── P2 融合（flag 默认关闭）：L1 角色任务走**编排内核外层循环**；
+  //    worker 不变；内层执行仍是 legacy runIteration。关闭时与旧行为完全一致。
+  if (
+    isOrchestrationKernelEnabled() &&
+    (agent.role === "partner" || agent.role === "prime_director")
+  ) {
+    const orchestrated = await runL1Dialogue({
+      agentId: params.agentId,
+      traceId,
+      task: instruction,
+    });
+    if (!orchestrated.ok) {
+      return err(`编排内核执行失败：${orchestrated.error}`);
+    }
+    const outcome = orchestrated.value;
+    logger.info("L1 任务经编排内核完成", {
+      source: "AgentRuntime/executeAssignedTask",
+      agentId: params.agentId,
+      loopId: outcome.loopId,
+      state: outcome.state,
+      cycles: outcome.cycles,
+    });
+    return ok({
+      agentId: params.agentId,
+      loopId: outcome.loopId,
+      traceId,
+      exitReason: outcome.state === "domain_complete" ? "success" : "degraded",
+      iterations: outcome.cycles,
+      tokensConsumed: outcome.tokensConsumed,
+      output: JSON.stringify({
+        state: outcome.state,
+        gaps: outcome.gaps,
+        assemblyId: outcome.assemblyId,
+      }),
+    });
+  }
 
   const loopState = createLoopState({
     loopId,

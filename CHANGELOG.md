@@ -8,6 +8,49 @@
 
 ---
 
+## 2026-10-17 — CI 全绿修复：分层违规 + 三处测量仪器假红 + pre-commit 吞错
+
+**现象**：每次 push 到 GitHub 都收到 CI 失败邮件；本地提交时钩子却显示"跑过了"。
+
+**四处根因与修法**：
+
+1. **lint job（真产品缺陷）**：`AgentSplit` / `AgentMerge` 直接 `import` `Core/AgentRuntime/splitSemantics`，
+   命中 `import/no-restricted-paths` 分层红线 2 处 error；`test`/`bench` 两个 job `needs: lint`，被连带跳过。
+   按项目既有端口模式收口：`SplitMergePort` 新增 `requestSplitApproval` / `registerPeerSplit` / `mergeKind`
+   三个方法（类型定义在 Tools 层，用原始字面量联合避免 →Core 类型依赖），实现仍由组合根
+   `Core/Orchestration/splitMergeComposition.ts` 接到 `splitSemantics`（同层 Core→Core 合规）。
+   发起端身份改取端口绑定的 `hostAgentId`，不再由工具自报 `context.agentId`。
+   `Tests/Tools/agentSplitMerge.spec.ts` 补断言：同级登记确经端口写入（`${ROOT}|${peerId}`）。
+   → `npm run lint` **0 error**（420 warnings 为既有降级项）。
+
+2. **bench:static 假红（仪器缺陷，非行为漂移）**：两条 lock 的正则把**单引号字面量**写死
+   （`/source:\s*'long-term-memory'/`、`/===\s*'FORBIDDEN'/`），而 prettier 把代码统一成双引号 ⇒ 判据失效。
+   实测 `retriever.ts:75` 仍硬编码、`specValidator.ts:141` 规则 12 仍在拒 FORBIDDEN，**行为一字未变**。
+   改为引号无关匹配（`["']…["']`），行为级判据（必须落到 `errors.push`）保留。
+   连带效应：staticRecon 一旦非 0 退出，`experimentMatrix.cjs` 保守取空表 ⇒ 所有 static 锚报"无法解析"，
+   把 `bench:matrix` / `bench:metrics:check` / `bench:selftest` 一起拖红（此前 6 条自测失败全是这一条的投影）。
+
+3. **bench:conformance 铁律口径**：NOT-RUN 断言原写作无条件 `notRunCount ≥ 1`，
+   但铁律 1 的真实形态是**条件式**的（缺凭据 ⇒ 必须记 NOT-RUN；有凭据 ⇒ 用例真实执行、NOT-RUN 为 0 才诚实）。
+   改为按 `notRun.json` 自身记录的 `credentialPresent` 判定，审计结论只依赖落盘证据、不依赖执行机环境变量。→ **16/16**。
+
+4. **pre-commit 吞错（问题外溢到 CI 的通道）**：钩子用 `… 2>/dev/null || true` 吞掉 eslint 退出码，
+   使分层违规能顺利提交；且把全部暂存 TS 文件送进 eslint，而 `.eslintrc` 的 `parserOptions.project`
+   只登记 `./tsconfig.json`（`include: Src/**`），Benchmarks/Client/Tests 必然报解析错。
+   改为与 CI 同口径（只检 `Src/` 下暂存文件）且**不吞错**——错误当场挡住提交。
+
+**验证**：`npm run lint` 0 error；`tsc --noEmit` / `typecheck:electron` / `bench:typecheck` 均 0；
+`bench:selftest` 48 项、`bench:notrun`、`bench:static`（lock 0 / gap 8 / 已还 13）、`bench:matrix`、
+`bench:metrics:check`、`bench:conformance` 16/16、`bench:run` 25/25 放行（均分 0.9219）；
+`npx vitest run` 全量 208 文件 / 2511 用例通过。
+
+**采集纪律（本轮踩到，如实登记）**：`bench:notrun` / `bench:run` 会**覆写**
+`Benchmarks/baselines/notRun.json` 与 `reports/latest.*`。本机持有 `HUAWEI_MAAS_API_KEY`，
+跑出的 `credentialPresent=true / notRun=0` 与 GitHub CI 的无凭据态相反 ⇒ 这类环境产物不得随手入库，
+重跑后须比对再决定是否提交。
+
+---
+
 ## 2026-10-16 — 工具名统一为大驼峰（修复 DeepSeek 400）
 
 **现象**：切换到 `deepseek/deepseek-flash` 后每次生成都失败：

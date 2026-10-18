@@ -181,6 +181,11 @@ import { configureToolServicePorts } from "./Tools/Registry/toolServicePorts.js"
 import { createDefaultSandboxGate } from "./Tools/Registry/sandboxGate.js";
 import { splitMergePortFor } from "./Core/Orchestration/splitMergeComposition.js";
 import {
+  initOrchestrationRuntime,
+  getOrchestrationPort,
+} from "./Core/Orchestration/orchestrationRuntime.js";
+import { setOrchestrationKernelEnabled } from "./Core/Orchestration/l1Entry.js";
+import {
   replaceTodos,
   listTodosForAgent,
   MAX_TODOS_PER_AGENT,
@@ -936,6 +941,35 @@ export async function startServer(): Promise<{
   //   门禁保持 import/no-restricted-paths 红线不放松）。覆盖：
   //   FE-064 工具结果缓存 / FE-066 Pre·PostToolExecute Hook 审计链路 /
   //   TodoWrite（Planning/todoStore）/ VectorSearch（Retrieval）/ AgentRecruit / AgentSubmitReview。
+  // P2 融合（29 号）：内核路由开关由配置显式接管（默认 false；开启后 L1 角色任务走 OuterLoop）。
+  // 环境变量 CIVITAS_ORCHESTRATION_KERNEL=1 仍作为运维覆盖（l1Entry 内已支持）。
+  {
+    const kernelCfg = getConfigValueOr<Record<string, unknown>>(
+      config,
+      "orchestration.kernel",
+      {},
+    );
+    // 优先级：显式 env（1/0，运维覆盖）> 配置（默认 true，内核优先）
+    const envOverride = process.env["CIVITAS_ORCHESTRATION_KERNEL"];
+    const enabled =
+      envOverride === "1"
+        ? true
+        : envOverride === "0"
+          ? false
+          : kernelCfg["enabled"] === true;
+    setOrchestrationKernelEnabled(enabled);
+  }
+
+  // P1 融合（29 号）：编排内核的组装子系统生产组合根——目录/校验/组装闭环 + 治理审计。
+  // 初始化失败不阻断启动：端口为 undefined 时 OrchestratorCompose/Select 如实 NOT_ENABLED。
+  const orchestrationInit = initOrchestrationRuntime();
+  if (!orchestrationInit.ok) {
+    logger.warn("编排运行时初始化失败（编排类工具保持 NOT_ENABLED）", {
+      source: "main",
+      error: orchestrationInit.error,
+    });
+  }
+
   configureToolServicePorts({
     // 沙箱承载门（TOOL-SEC-SANDBOX）：声明 strict/standard 的工具经此确认承载可用，
     // 不可用即 fail-closed（桌面运行时自带工作区隔离，默认声明可用）。
@@ -988,6 +1022,8 @@ export async function startServer(): Promise<{
     // 两工具在生产恒返回 NOT_ENABLED。现由组合根提供真实依赖：
     // 同级 L1 工厂（真实建 Agent + 独立域账本）、共享上下文投递、监管受理（真实审批单）。
     splitMergeFor: splitMergePortFor,
+    // P1：编排组装端口（OrchestratorCompose / OrchestratorSelect 的真实依赖）
+    orchestration: getOrchestrationPort(),
   });
   logger.info("工具服务端口已注入", { source: "main" });
 

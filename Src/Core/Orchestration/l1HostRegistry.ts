@@ -154,7 +154,7 @@ export function createL1HostRegistry(): L1HostRegistry {
   };
 }
 
-/** 除域账本之外的运行时依赖（同级 L1 工厂 / 回收 / 共享上下文 / 监管提交口 / 时钟） */
+/** 除域账本之外的运行时依赖（同级 L1 工厂 / 回收 / 共享上下文 / 监管提交口 / 时钟 / 分裂语义） */
 export type SplitMergeRuntimeDeps = Omit<SplitMergeToolPortDeps, "domain">;
 
 /**

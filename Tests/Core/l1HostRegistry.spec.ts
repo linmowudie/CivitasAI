@@ -49,6 +49,12 @@ function mkRuntime(rec: Rec): SplitMergeRuntimeDeps {
       return ok({ caseId: "case-1" });
     },
     now: () => 100,
+    // 本文件只考「身份 → 私有端口」的解析与账本归属；分裂语义给最小可用桩
+    hostAgentId: "agent-a",
+    requestSplitApproval: () =>
+      ok({ approvalId: "split-approval-stub", status: "pending" }),
+    registerPeerSplit: () => {},
+    mergeKind: () => "peer_merge",
   };
 }
 

@@ -25,7 +25,9 @@ import { ok, err } from "../../Infra/types.js";
 import type { DomainLedger, SharedContextSink } from "../Ledger/ledgers.js";
 import type {
   DomainViewPort,
+  MergeKindPort,
   MergeRequestOutcomePort,
+  SplitApprovalOutcomePort,
   SplitMergePort,
   SplitOutcomePort,
 } from "../../Tools/Registry/toolServicePorts.js";
@@ -57,6 +59,18 @@ export interface SplitMergeToolPortDeps {
   ): Promise<Result<{ caseId: string }>>;
   /** 时间源（测试可注入确定性时钟） */
   now(): number;
+  /** 本端口绑定的宿主 L1 身份（授权单/同级登记的发起端） */
+  hostAgentId: string;
+  /** 登记分裂授权单（治理留痕，实现在 `AgentRuntime/splitSemantics`） */
+  requestSplitApproval(input: {
+    agentId: string;
+    domain: string;
+    parts: ReadonlyArray<{ id: string; task?: string }>;
+  }): Result<SplitApprovalOutcomePort>;
+  /** 登记一对同级关系（实现在 `AgentRuntime/splitSemantics`） */
+  registerPeerSplit(a: string, b: string): void;
+  /** 合并形态判定（实现在 `AgentRuntime/splitSemantics`） */
+  mergeKind(a: string, b: string): MergeKindPort;
 }
 
 export function createSplitMergeToolPort(
@@ -202,13 +216,11 @@ export function createSplitMergeToolPort(
       return {
         rootId: deps.domain.snapshot().rootId,
         selfState: deps.domain.snapshot().selfState,
-        peers: deps.domain
-          .peers()
-          .map((p) => ({
-            peerId: p.peerId,
-            state: p.state,
-            conflictDomain: p.conflictDomain,
-          })),
+        peers: deps.domain.peers().map((p) => ({
+          peerId: p.peerId,
+          state: p.state,
+          conflictDomain: p.conflictDomain,
+        })),
         pendingMergeRequests: pending,
         dissolved: deps.domain.dissolved(),
       };
@@ -216,6 +228,22 @@ export function createSplitMergeToolPort(
 
     republishShared(): Promise<Result<void>> {
       return deps.domain.publishToShared(deps.shared);
+    },
+
+    requestSplitApproval(input): Result<SplitApprovalOutcomePort> {
+      return deps.requestSplitApproval({
+        agentId: deps.hostAgentId,
+        domain: input.conflictDomain,
+        parts: [{ id: input.conflictDomain, task: input.task }],
+      });
+    },
+
+    registerPeerSplit(peerId): void {
+      deps.registerPeerSplit(deps.hostAgentId, peerId);
+    },
+
+    mergeKind(peerId): MergeKindPort {
+      return deps.mergeKind(deps.hostAgentId, peerId);
     },
   };
 }

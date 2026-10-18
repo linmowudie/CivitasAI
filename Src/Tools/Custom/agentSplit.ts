@@ -21,11 +21,6 @@ import type { ToolDefinition } from "../Traits/toolSpec.js";
 import { toolSuccess, toolError } from "../Traits/toolSpec.js";
 import { contentOutputSchema } from "../Builtin/_shared.js";
 import { getToolServicePorts } from "../Registry/toolServicePorts.js";
-// 分裂语义层（设计 §3.7）：授权单 + 同级关系登记（生产路径调用，不是库摆设）
-import {
-  requestSplitApproval,
-  registerPeerSplit,
-} from "../../Core/AgentRuntime/splitSemantics.js";
 
 const MAX_CONFLICT_DOMAIN_LENGTH = 120;
 const MAX_TASK_LENGTH = 2000;
@@ -119,14 +114,10 @@ export const agentSplit: ToolDefinition = {
       );
     }
 
-    // 分裂语义层（生产调用点）：先登记**授权单**（治理留痕；不伪造"已批准"），
+    // 分裂语义层（经端口注入调用，设计 §3.7）：先登记**授权单**（治理留痕；不伪造"已批准"），
     // 拿到受理号后再走端口分裂；成功后登记同级关系，供 AgentMerge 的
-    // isPeerSplit/mergeKindOf 判定使用。
-    const approval = requestSplitApproval({
-      agentId: context.agentId,
-      domain: conflictDomain,
-      parts: [{ id: conflictDomain, task }],
-    });
+    // mergeKind / isPeerSplit 判定使用。
+    const approval = port.requestSplitApproval({ conflictDomain, task });
     if (!approval.ok) {
       return toolError(
         context.operationId,
@@ -180,8 +171,8 @@ export const agentSplit: ToolDefinition = {
       );
     }
 
-    // 同级关系登记（生产写方）：AgentMerge 的 isPeerSplit / mergeKindOf 依赖它
-    if (outcome.peerId) registerPeerSplit(context.agentId, outcome.peerId);
+    // 同级关系登记（生产写方）：AgentMerge 的 mergeKind / isPeerSplit 依赖它
+    if (outcome.peerId) port.registerPeerSplit(outcome.peerId);
 
     return toolSuccess(
       context.operationId,
